@@ -1,0 +1,34 @@
+# Dependencies and generated output
+node_modules/
+dist/
+coverage/
+.nyc_output/
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Taku local state
+.taku/
+.taku-publisher/
+.tmp/
+/failed
+
+# Logs, archives, and operating-system files
+*.log
+*.zip
+*.tar.gz
+.DS_Store

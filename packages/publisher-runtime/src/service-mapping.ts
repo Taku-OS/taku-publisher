@@ -1,0 +1,161 @@
+import { createHash } from 'node:crypto';
+
+import {
+  canonicalSubAppJson,
+  type SubAppServiceRequirementV1,
+} from '@taku/subapp-contract';
+
+import { isRecord, PublisherError } from './util.js';
+
+export const SUBAPP_SERVICE_MAPPINGS_SCHEMA_VERSION =
+  'taku.subapp-service-mappings.v1' as const;
+
+const CATALOG_ID_PATTERN = /^[a-z][A-Za-z0-9._-]{0,127}$/;
+const REQUIREMENT_ID_PATTERN = /^[a-z][a-z0-9._-]{0,127}$/;
+
+export interface SubAppServiceMappingReviewV1 {
+  schemaVersion: typeof SUBAPP_SERVICE_MAPPINGS_SCHEMA_VERSION;
+  digest: string;
+  requirementIds: string[];
+}
+
+export function applySubAppServiceMappings(
+  requirements: SubAppServiceRequirementV1[],
+  document: unknown,
+): {
+  requirements: SubAppServiceRequirementV1[];
+  review: SubAppServiceMappingReviewV1;
+} {
+  const root = requireRecord(document, 'SubApp service mappings');
+  assertExactKeys(root, ['schema_version', 'mappings'], 'SubApp service mappings');
+  if (root.schema_version !== SUBAPP_SERVICE_MAPPINGS_SCHEMA_VERSION) {
+    throw invalidMappings('Unsupported SubApp service mappings schema version.');
+  }
+  if (!Array.isArray(root.mappings) || root.mappings.length === 0) {
+    throw invalidMappings('SubApp service mappings must contain at least one mapping.');
+  }
+  if (root.mappings.length > 50) {
+    throw invalidMappings('SubApp service mappings cannot contain more than 50 mappings.');
+  }
+  const requirementIds = new Set(requirements.map((requirement) => requirement.id));
+  const selections = new Map<string, { serviceId: string; endpointIds: string[] }>();
+  for (const rawMapping of root.mappings) {
+    const mapping = requireRecord(rawMapping, 'SubApp service mapping');
+    assertExactKeys(
+      mapping,
+      ['requirement_id', 'service_id', 'endpoint_ids'],
+      'SubApp service mapping',
+    );
+    const requirementId = identifier(
+      mapping.requirement_id,
+      REQUIREMENT_ID_PATTERN,
+      'mapping requirement_id',
+    );
+    if (!requirementIds.has(requirementId)) {
+      throw invalidMappings(
+        `SubApp service mapping references unknown requirement "${requirementId}".`,
+      );
+    }
+    if (selections.has(requirementId)) {
+      throw invalidMappings(
+        `SubApp service mapping duplicates requirement "${requirementId}".`,
+      );
+    }
+    const serviceId = identifier(
+      mapping.service_id,
+      CATALOG_ID_PATTERN,
+      'mapping service_id',
+    );
+    if (!Array.isArray(mapping.endpoint_ids) || mapping.endpoint_ids.length === 0) {
+      throw invalidMappings(
+        `SubApp service mapping for "${requirementId}" requires endpoint_ids.`,
+      );
+    }
+    const endpointIds = mapping.endpoint_ids
+      .map((endpointId) =>
+        identifier(endpointId, CATALOG_ID_PATTERN, 'mapping endpoint_id'),
+      )
+      .sort();
+    if (new Set(endpointIds).size !== endpointIds.length) {
+      throw invalidMappings(
+        `SubApp service mapping for "${requirementId}" contains duplicate endpoint_ids.`,
+      );
+    }
+    selections.set(requirementId, { serviceId, endpointIds });
+  }
+  const normalized = [...selections.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([requirementId, selection]) => ({
+      requirementId,
+      serviceId: selection.serviceId,
+      endpointIds: [...selection.endpointIds].sort(),
+    }));
+  return {
+    requirements: requirements.map((requirement) => {
+      const selection = selections.get(requirement.id);
+      if (!selection) return cloneRequirement(requirement);
+      return {
+        ...cloneRequirement(requirement),
+        mapping: {
+          status: 'mapped',
+          serviceId: selection.serviceId,
+          endpointIds: [...selection.endpointIds],
+        },
+      };
+    }),
+    review: {
+      schemaVersion: SUBAPP_SERVICE_MAPPINGS_SCHEMA_VERSION,
+      digest: `sha256:${createHash('sha256')
+        .update(canonicalSubAppJson(normalized))
+        .digest('hex')}`,
+      requirementIds: normalized.map((mapping) => mapping.requirementId),
+    },
+  };
+}
+
+function cloneRequirement(
+  requirement: SubAppServiceRequirementV1,
+): SubAppServiceRequirementV1 {
+  return {
+    ...requirement,
+    operations: [...requirement.operations],
+    dataClasses: [...requirement.dataClasses],
+    mapping: {
+      ...requirement.mapping,
+      ...(requirement.mapping.endpointIds
+        ? { endpointIds: [...requirement.mapping.endpointIds] }
+        : {}),
+    },
+  };
+}
+
+function identifier(
+  value: unknown,
+  pattern: RegExp,
+  label: string,
+): string {
+  const id = typeof value === 'string' ? value.trim() : '';
+  if (!pattern.test(id)) throw invalidMappings(`${label} is invalid.`);
+  return id;
+}
+
+function requireRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!isRecord(value)) throw invalidMappings(`${label} must be an object.`);
+  return value;
+}
+
+function assertExactKeys(
+  value: Record<string, unknown>,
+  allowed: string[],
+  label: string,
+): void {
+  const allowedKeys = new Set(allowed);
+  const extra = Object.keys(value).filter((key) => !allowedKeys.has(key));
+  if (extra.length > 0) {
+    throw invalidMappings(`${label} contains unsupported field(s): ${extra.join(', ')}.`);
+  }
+}
+
+function invalidMappings(message: string): PublisherError {
+  return new PublisherError(message, 'subapp_service_mappings_invalid');
+}

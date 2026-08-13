@@ -1,0 +1,181 @@
+{
+  "generatedAt": "2026-07-24T00:00:00.000Z",
+  "includeGitHubMetrics": true,
+  "usage": {
+    "primaryPeriodId": "thisMonth",
+    "periodLabel": "This Month",
+    "startsAt": "2026-07-01T00:00:00.000Z",
+    "endsAt": "2026-07-24T00:00:00.000Z",
+    "totalTokens": 123456,
+    "sessionCount": 8,
+    "eventCount": 48,
+    "activity": {
+      "activeEventCount": 48,
+      "nightEventCount": 12,
+      "dayEventCount": 24,
+      "nightShare": 0.25,
+      "dayShare": 0.5,
+      "medianSessionMinutes": 42,
+      "averageSessionMinutes": 47,
+      "longestSessionMinutes": 95,
+      "medianGapMinutes": 35,
+      "snackSessionCount": 1,
+      "deepSessionCount": 2
+    },
+    "workspaces": {
+      "activeWorkspaceCount": 2,
+      "knownWorkspaceSessionCount": 8,
+      "unknownWorkspaceSessionCount": 0,
+      "topWorkspaceSessionShare": 0.75,
+      "topWorkspaceActiveDays": 6,
+      "reopenCount": 9,
+      "activeDaysByWorkspace": [],
+      "topWorkspaces": []
+    },
+    "toolUsage": {
+      "usedToolCount": 3,
+      "toolCallCount": 18,
+      "topTools": [
+        {
+          "name": "review",
+          "count": 8
+        },
+        {
+          "name": "context7",
+          "count": 5
+        }
+      ]
+    },
+    "behaviorProfile": {
+      "schemaVersion": "taku.creator.behavior.v1",
+      "observedSessionCount": 8,
+      "planningRatio": 0.5,
+      "steeringRatio": 0.25,
+      "steeringTurnCount": 4,
+      "autonomyScore": 0.58,
+      "dominantToolCategory": "edit",
+      "topToolsMix": [
+        {
+          "category": "edit",
+          "share": 0.6
+        },
+        {
+          "category": "shell",
+          "share": 0.2
+        }
+      ]
+    },
+    "promptStyle": {
+      "schemaVersion": "taku.creator.prompt-style.v1",
+      "enabled": false,
+      "promptContentRead": false,
+      "rawPromptStored": false,
+      "rawPromptUploaded": false
+    }
+  },
+  "usedTools": [
+    {
+      "type": "skill",
+      "source": "codex",
+      "name": "Review",
+      "description": "Review code."
+    },
+    {
+      "type": "mcp-server",
+      "source": "codex",
+      "name": "Context7",
+      "description": "Documentation lookup."
+    },
+    {
+      "type": "plugin",
+      "source": "claude",
+      "name": "Browser",
+      "description": "Browser automation."
+    }
+  ],
+  "ownedCreations": [
+    {
+      "type": "app",
+      "source": "taku",
+      "name": "Creator Studio",
+      "description": "Desktop creator experience."
+    },
+    {
+      "type": "workflow",
+      "source": "codex",
+      "name": "Release",
+      "description": "Release automation."
+    }
+  ],
+  "projectMetadata": {
+    "projects": {
+      "repoCount": 2
+    },
+    "git": {
+      "commitCount": 12,
+      "branchCount": 2,
+      "dirtyRepoCount": 0,
+      "dirtyFileCount": 1,
+      "maxUncommittedDays": 1
+    },
+    "stack": {
+      "scannedFileCount": 120,
+      "languageCount": 4,
+      "topLanguageShare": 0.55,
+      "uiFileCount": 50,
+      "uiFileRatio": 0.42,
+      "infraFileRatio": 0.15,
+      "docFileCount": 10
+    },
+    "github": {
+      "repoCount": 4,
+      "publicRepoCount": 4,
+      "privateRepoCount": 0,
+      "totalStars": 25,
+      "maxRepoStars": 20,
+      "fetchedRepoCount": 4,
+      "warnings": []
+    }
+  },
+  "creatorMetrics": {
+    "schemaVersion": "taku.creator.metrics.v1",
+    "sources": [
+      "fixture-worker"
+    ],
+    "sourceCount": 1,
+    "warnings": [],
+    "taku": {
+      "skillInstallCount": 150,
+      "skillCount": 3,
+      "skillReferenceCount": 7,
+      "trustedCreatorReferenceCount": 2,
+      "toolReferenceCount": 9,
+      "subscriberCount": 20,
+      "shareCount": 2,
+      "registrationRank": 250,
+      "creatorLevel": 2,
+      "activeInLast30Days": true,
+      "betaTester": true
+    },
+    "github": {
+      "repoCount": 0,
+      "publicRepoCount": 0,
+      "privateRepoCount": 0,
+      "totalStars": 0,
+      "maxRepoStars": 0,
+      "fetchedRepoCount": 0
+    },
+    "percentiles": {
+      "tokens": 0,
+      "stars": 0,
+      "installs": 0,
+      "subscribers": 0
+    },
+    "topPercentiles": {
+      "tokens": 0,
+      "stars": 0,
+      "installs": 0,
+      "subscribers": 0
+    }
+  }
+}

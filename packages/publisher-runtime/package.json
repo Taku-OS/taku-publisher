@@ -1,0 +1,85 @@
+{
+  "name": "@taku/publisher-runtime",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Single-runtime Node.js implementation of the Taku Publisher workflow.",
+  "license": "Apache-2.0",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js",
+      "default": "./dist/cli.js"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.js",
+      "default": "./dist/core.js"
+    },
+    "./contract": {
+      "types": "./dist/contract.d.ts",
+      "import": "./dist/contract.js",
+      "default": "./dist/contract.js"
+    },
+    "./subapp-assessment": {
+      "types": "./dist/subapp-assessment.d.ts",
+      "import": "./dist/subapp-assessment.js",
+      "default": "./dist/subapp-assessment.js"
+    },
+    "./subapp-agent": {
+      "types": "./dist/subapp-agent.d.ts",
+      "import": "./dist/subapp-agent.js",
+      "default": "./dist/subapp-agent.js"
+    },
+    "./subapp-runtime": {
+      "types": "./dist/subapp-runtime.d.ts",
+      "import": "./dist/subapp-runtime.js",
+      "default": "./dist/subapp-runtime.js"
+    },
+    "./subapp-package": {
+      "types": "./dist/subapp-package.d.ts",
+      "import": "./dist/subapp-package.js",
+      "default": "./dist/subapp-package.js"
+    },
+    "./subapp-local-install": {
+      "types": "./dist/subapp-local-install.d.ts",
+      "import": "./dist/subapp-local-install.js",
+      "default": "./dist/subapp-local-install.js"
+    },
+    "./subapp-registration": {
+      "types": "./dist/subapp-registration.d.ts",
+      "import": "./dist/subapp-registration.js",
+      "default": "./dist/subapp-registration.js"
+    }
+  },
+  "bin": {
+    "taku-publisher": "./dist/bin/taku-publisher.js"
+  },
+  "dependencies": {
+    "@taku/capability-contract": "0.2.0",
+    "@taku/subapp-contract": "0.1.0",
+    "repo-to-stax-converter": "0.2.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Taku-OS/taku-publisher.git",
+    "directory": "packages/publisher-runtime"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

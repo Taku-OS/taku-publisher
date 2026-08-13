@@ -1,0 +1,49 @@
+{
+  "name": "taku-publisher-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Taku-OS/taku-publisher.git"
+  },
+  "homepage": "https://github.com/Taku-OS/taku-publisher#readme",
+  "bugs": {
+    "url": "https://github.com/Taku-OS/taku-publisher/issues"
+  },
+  "imports": {
+    "#taku-capability-contract": "./packages/capability-contract/dist/index.js",
+    "#taku-passport-core": "./packages/passport-core/dist/index.js",
+    "#taku-passport-core/privacy": "./packages/passport-core/dist/privacy.js",
+    "#taku-subapp-contract": "./packages/subapp-contract/dist/index.js"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "audit:repo": "node scripts/audit-repository.mjs",
+    "build:adapters": "npm run build:runtime && node scripts/build-adapters.mjs",
+    "build:contract": "npm run build --workspace @taku/capability-contract",
+    "build:converter": "npm run build --workspace repo-to-stax-converter",
+    "build:subapp-contract": "npm run build --workspace @taku/subapp-contract",
+    "build:core": "npm run build:contract && npm run build --workspace @taku/passport-core",
+    "build:runtime": "npm run build:converter && npm run build:subapp-contract && npm run build:core && npm run build --workspace @taku/publisher-runtime",
+    "checksum:source": "node scripts/source-checksum.mjs",
+    "doctor": "node packages/publisher-cli/bin/taku-creator.mjs doctor --json",
+    "pack:contract": "node scripts/package-contract.mjs",
+    "pack:runtime": "node scripts/package-publisher-runtime.mjs",
+    "smoke:clean": "node scripts/clean-copy-smoke.mjs",
+    "smoke:contract": "npm run pack:contract && node scripts/contract-install-smoke.mjs",
+    "smoke:core": "npm run build:core && node scripts/passport-core-install-smoke.mjs",
+    "smoke:plugin": "npm run build:adapters && node scripts/no-python-plugin-smoke.mjs",
+    "test": "npm run test:node && npm run test:python",
+    "test:converter": "npm test --workspace repo-to-stax-converter",
+    "test:node": "npm run test:converter && npm run build:runtime && node --test creator/scripts/*.test.mjs packages/capability-contract/test/*.test.mjs packages/subapp-contract/test/*.test.mjs packages/creator-core/test/*.test.mjs packages/passport-core/test/*.test.mjs packages/publisher-runtime/test/*.test.mjs",
+    "test:python": "python3 -m unittest discover -s tests"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3"
+  }
+}

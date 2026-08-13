@@ -1,0 +1,15 @@
+{
+  "name": "@taku/publisher-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Stable workspace CLI facade for Taku Creator and Taku Publisher.",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@taku/publisher-runtime": "0.1.0"
+  },
+  "bin": {
+    "taku-creator": "./bin/taku-creator.mjs",
+    "taku-publisher": "./bin/taku-publisher.mjs"
+  }
+}

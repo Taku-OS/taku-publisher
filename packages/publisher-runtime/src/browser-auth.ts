@@ -1,0 +1,222 @@
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createServer } from 'node:http';
+import { spawn } from 'node:child_process';
+
+import { authStatus, savePublisherSession } from './auth.js';
+import type { JsonObject } from './types.js';
+import { isRecord, PublisherError } from './util.js';
+
+export const DEFAULT_SITE_URL = 'https://taku.ai';
+const DEFAULT_LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
+const LOOPBACK_HOST = '127.0.0.1';
+
+export async function loginWithBrowser(options: {
+  workerUrl: string;
+  siteUrl?: string;
+  intent?: string;
+  timeoutMs?: number;
+  openBrowser?: boolean;
+  browserOpen?: (url: string) => Promise<boolean> | boolean;
+  env?: NodeJS.ProcessEnv;
+}): Promise<JsonObject> {
+  const state = base64url(randomBytes(24));
+  const codeVerifier = base64url(randomBytes(32));
+  const codeChallenge = base64url(createHash('sha256').update(codeVerifier, 'ascii').digest());
+  let resolveCallback: ((value: { code: string; state: string }) => void) | undefined;
+  const callback = new Promise<{ code: string; state: string }>((resolve) => { resolveCallback = resolve; });
+  const server = createServer((request, response) => {
+    const url = new URL(request.url ?? '/', `http://${LOOPBACK_HOST}`);
+    if (url.pathname !== '/callback') {
+      response.writeHead(404).end();
+      return;
+    }
+    if (request.method === 'GET') {
+      const body = Buffer.from(callbackHtml(), 'utf8');
+      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': body.length });
+      response.end(body);
+      return;
+    }
+    if (request.method !== 'POST') {
+      response.writeHead(405).end();
+      return;
+    }
+    const chunks: Buffer[] = [];
+    let size = 0;
+    request.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size <= 16_384) chunks.push(chunk);
+      else request.destroy();
+    });
+    request.on('end', () => {
+      try {
+        const payload = JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+        if (!isRecord(payload)) throw new Error();
+        const code = String(payload.code ?? '').trim();
+        const returnedState = String(payload.state ?? '').trim();
+        if (!code || !safeEqual(returnedState, state)) {
+          jsonResponse(response, 401, { ok: false, error: 'Authorization state mismatch' });
+          return;
+        }
+        resolveCallback?.({ code, state: returnedState });
+        jsonResponse(response, 200, { ok: true });
+      } catch {
+        jsonResponse(response, 400, { ok: false, error: 'Invalid callback' });
+      }
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, LOOPBACK_HOST, () => resolve());
+  });
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new PublisherError('Unable to start local authorization callback.', 'auth_callback_failed');
+  const returnTo = `http://${LOOPBACK_HOST}:${address.port}/callback`;
+  const intent = options.intent ?? 'publish_tool';
+  const loginUrl = buildLoginUrl({
+    siteUrl: options.siteUrl ?? DEFAULT_SITE_URL,
+    returnTo,
+    intent,
+    workerUrl: options.workerUrl,
+    state,
+    codeChallenge,
+  });
+  process.stderr.write(`Open this Taku authorization page if the browser did not open:\n${loginUrl}\n`);
+  if (options.openBrowser !== false) await (options.browserOpen ?? openExternal)(loginUrl);
+  let received: { code: string; state: string };
+  try {
+    received = await Promise.race([
+      callback,
+      new Promise<never>((_, reject) => setTimeout(
+        () => reject(new PublisherError(
+          'Taku Web authorization timed out. Run auth-login to try again.',
+          'auth_timeout',
+          { login_url: loginUrl },
+        )),
+        Math.max(1_000, options.timeoutMs ?? DEFAULT_LOGIN_TIMEOUT_MS),
+      )),
+    ]);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+  const payload = await redeemLocalCode({
+    workerUrl: options.workerUrl,
+    code: received.code,
+    state: received.state,
+    codeVerifier,
+    intent,
+    timeoutMs: Math.min(Math.max(options.timeoutMs ?? DEFAULT_LOGIN_TIMEOUT_MS, 5_000), 30_000),
+  });
+  const accessToken = String(payload.token ?? '').trim();
+  if (!accessToken) throw new PublisherError('Taku Web did not return a publisher authorization.', 'invalid_auth_response');
+  const now = Date.now();
+  await savePublisherSession({
+    schemaVersion: 'taku.publisher.session.v1',
+    accessToken,
+    expiresAt: now + positiveInt(payload.expiresIn, 3600) * 1000,
+    iconToken: String(payload.iconToken ?? '').trim(),
+    iconExpiresAt: now + positiveInt(payload.iconTokenExpiresIn, 0) * 1000,
+    scopes: Array.isArray(payload.scopes) ? payload.scopes : [],
+    accountHint: String(payload.accountHint ?? '').trim() || null,
+    createdAt: now,
+  }, options.env);
+  return authStatus({ env: options.env });
+}
+
+export function buildLoginUrl(options: {
+  siteUrl: string;
+  returnTo: string;
+  intent: string;
+  workerUrl: string;
+  state: string;
+  codeChallenge: string;
+}): string {
+  const query = new URLSearchParams({
+    source: 'taku_creator',
+    intent: options.intent,
+    worker_url: options.workerUrl.replace(/\/+$/, ''),
+    return_to: options.returnTo,
+    auth_flow: 'local_code',
+    auth_state: options.state,
+    code_challenge: options.codeChallenge,
+    code_challenge_method: 'S256',
+  });
+  return `${options.siteUrl.replace(/\/+$/, '')}/profile?${query}`;
+}
+
+async function redeemLocalCode(options: {
+  workerUrl: string;
+  code: string;
+  state: string;
+  codeVerifier: string;
+  intent: string;
+  timeoutMs: number;
+}): Promise<JsonObject> {
+  try {
+    const response = await fetch(`${options.workerUrl.replace(/\/+$/, '')}/marketplace/local-auth/redeem`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: options.code,
+        state: options.state,
+        codeVerifier: options.codeVerifier,
+        intent: options.intent,
+      }),
+      signal: AbortSignal.timeout(options.timeoutMs),
+    });
+    const payload = await response.json() as unknown;
+    if (!isRecord(payload)) throw new PublisherError('Taku Web returned an invalid authorization response.', 'invalid_auth_response');
+    if (!response.ok) throw new PublisherError(String(payload.error ?? `Authorization failed with HTTP ${response.status}`), 'auth_redeem_failed');
+    return payload;
+  } catch (error) {
+    if (error instanceof PublisherError) throw error;
+    throw new PublisherError('Unable to redeem Taku Web authorization.', 'auth_network_error');
+  }
+}
+
+function openExternal(url: string): Promise<boolean> {
+  const command = process.platform === 'darwin'
+    ? { file: 'open', args: [url] }
+    : process.platform === 'win32'
+      ? { file: 'cmd', args: ['/c', 'start', '', url] }
+      : { file: 'xdg-open', args: [url] };
+  return new Promise((resolve) => {
+    const child = spawn(command.file, command.args, { detached: true, stdio: 'ignore', windowsHide: true });
+    child.once('error', () => resolve(false));
+    child.once('spawn', () => {
+      child.unref();
+      resolve(true);
+    });
+  });
+}
+
+function callbackHtml(): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Taku Publisher</title></head>
+<body><p id="status">Completing Taku Publisher authorization...</p><script>
+(async()=>{const p=new URLSearchParams(location.hash.slice(1));const code=p.get('taku_auth_code')||'';
+const state=p.get('taku_auth_state')||'';const el=document.getElementById('status');
+try{const r=await fetch('/callback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,state})});
+if(!r.ok)throw new Error('Authorization failed');history.replaceState(null,'',location.pathname);el.textContent='Taku Publisher is authorized. You can close this tab.';}
+catch(e){el.textContent='Authorization could not be completed. Return to the terminal and try again.';}})();
+</script></body></html>`;
+}
+
+function jsonResponse(response: import('node:http').ServerResponse, status: number, payload: JsonObject): void {
+  const body = Buffer.from(JSON.stringify(payload), 'utf8');
+  response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Content-Length': body.length });
+  response.end(body);
+}
+
+function base64url(value: Uint8Array): string {
+  return Buffer.from(value).toString('base64url');
+}
+
+function safeEqual(left: string, right: string): boolean {
+  const leftBytes = Buffer.from(left);
+  const rightBytes = Buffer.from(right);
+  return leftBytes.length === rightBytes.length && timingSafeEqual(leftBytes, rightBytes);
+}
+
+function positiveInt(value: unknown, fallback: number): number {
+  const numeric = Number(value);
+  return Number.isInteger(numeric) && numeric > 0 ? numeric : fallback;
+}

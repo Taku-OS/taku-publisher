@@ -1,0 +1,57 @@
+import { createHash } from 'node:crypto';
+import { lstat, readFile, readdir } from 'node:fs/promises';
+import { join } from 'node:path';
+
+const IGNORED_DIRECTORIES = new Set([
+  '.git',
+  'node_modules',
+  '.next',
+  '.next-edit',
+  '.next-preview',
+  'dist',
+  'out',
+  '.turbo',
+  '.cache',
+  '__pycache__',
+  '.venv',
+  'venv',
+]);
+
+export async function computeTreeDigest(
+  root: string,
+  options: { exclude?: string[] } = {}
+): Promise<string> {
+  const hash = createHash('sha256');
+  const excluded = new Set((options.exclude ?? []).map(path => path.replace(/\\/g, '/')));
+
+  async function walk(relativeRoot: string): Promise<void> {
+    const entries = await readdir(join(root, relativeRoot), { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const relativePath = join(relativeRoot, entry.name).replace(/\\/g, '/');
+      if (
+        excluded.has(relativePath) ||
+        [...excluded].some(prefix => relativePath.startsWith(`${prefix}/`))
+      ) {
+        continue;
+      }
+      if (entry.isSymbolicLink()) throw new Error(`Refusing symlink while hashing tree: ${relativePath}`);
+      if (entry.isDirectory()) {
+        if (!IGNORED_DIRECTORIES.has(entry.name)) await walk(relativePath);
+        continue;
+      }
+      const metadata = await lstat(join(root, relativePath));
+      if (!metadata.isFile()) throw new Error(`Unsupported entry while hashing tree: ${relativePath}`);
+      const content = await readFile(join(root, relativePath));
+      hash.update(relativePath);
+      hash.update('\0');
+      hash.update(String(metadata.size));
+      hash.update('\0');
+      hash.update(content);
+      hash.update('\0');
+    }
+  }
+
+  await walk('');
+  return `sha256:${hash.digest('hex')}`;
+}

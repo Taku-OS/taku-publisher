@@ -1,0 +1,182 @@
+#!/usr/bin/env node
+import { Command } from 'commander';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { analyzeForPublisher } from './analyze-cli.js';
+import { checkAgentConversion, createAgentHandoff } from './agent-cli.js';
+import { BENCHMARK_SAMPLES } from './lib/benchmark-contract.js';
+import {
+  assertFreshConverterBuild,
+  converterProjectRootForCompiledRuntime,
+} from './lib/build-freshness.js';
+import { convertRepoToStax } from './lib/converter.js';
+import { prepareTemplateSource } from './lib/template-source.js';
+import { prepareCandidateForPublisher } from './prepare-cli.js';
+import {
+  validateSubAppWorkspace,
+  type PublishAttestationEvidence,
+  type ValidationLevel,
+} from './lib/validator.js';
+
+const runtimeProjectRoot = await converterProjectRootForCompiledRuntime(
+  fileURLToPath(import.meta.url)
+);
+if (runtimeProjectRoot) await assertFreshConverterBuild(runtimeProjectRoot);
+
+const program = new Command();
+
+program
+  .name('repo-to-stax')
+  .description('Convert application-layer GitHub repos into Taku Stax SubApp workspaces')
+  .version('0.2.0');
+
+program
+  .command('pilot')
+  .description('Display the locked benchmark pilot samples')
+  .action(() => {
+    console.log(JSON.stringify(BENCHMARK_SAMPLES.filter(sample => sample.tier === 'pilot'), null, 2));
+  });
+
+program
+  .command('analyze')
+  .argument('<repo-or-path>', 'GitHub repo slug/URL or local path')
+  .option('--work-root <dir>', 'Work root for temporary GitHub clones', resolve(process.cwd(), 'tmp', 'analyze'))
+  .option('--source-ref <ref>', 'Git source commit or ref to analyze')
+  .description('Analyze repo convertibility')
+  .action(async (input: string, options: { workRoot: string; sourceRef?: string }) => {
+    const result = await analyzeForPublisher({
+      input,
+      workRoot: resolve(options.workRoot),
+      ...(options.sourceRef ? { sourceRef: options.sourceRef } : {}),
+    });
+    console.log(JSON.stringify(result, null, 2));
+  });
+
+program
+  .command('convert')
+  .argument('<repo-or-path>', 'GitHub repo slug/URL or local path')
+  .requiredOption('--out <dir>', 'Output root for generated SubApp workspace')
+  .requiredOption(
+    '--template <repo-or-path>',
+    'Explicit local Taku template root or remote GitHub template'
+  )
+  .option('--template-ref <ref>', 'Explicit immutable tag required for a remote template')
+  .option('--source-ref <ref>', 'Git source commit or ref to convert')
+  .option('--name <name>', 'Generated SubApp directory/name')
+  .description('Generate a Taku Stax conversion workspace')
+  .action(
+    async (
+      input: string,
+      options: { out: string; template: string; templateRef?: string; sourceRef?: string; name?: string }
+    ) => {
+      const outputRoot = resolve(options.out);
+      const template = await prepareTemplateSource({
+        input: options.template,
+        ref: options.templateRef,
+        workRoot: outputRoot,
+      });
+      const result = await convertRepoToStax({
+        input,
+        outputRoot,
+        templateRoot: template.templateRoot,
+        templateSource: template,
+        name: options.name,
+        sourceRef: options.sourceRef,
+      });
+      console.log(
+        JSON.stringify(
+          {
+            workspaceRoot: result.workspaceRoot,
+            analysis: result.analysis,
+            route: result.route,
+            workspaceValidation: result.workspaceValidation,
+          },
+          null,
+          2
+        )
+      );
+    }
+  );
+
+program
+  .command('prepare')
+  .argument('<repo-or-path>', 'GitHub repo URL or local path')
+  .requiredOption('--output-root <dir>', 'Existing output root for the candidate')
+  .requiredOption('--work-root <dir>', 'Private work root for source preparation')
+  .requiredOption('--expected-source-digest <digest>', 'Confirmed sha256 source tree digest')
+  .option('--source-ref <ref>', 'Git source commit or ref to prepare')
+  .option('--name <name>', 'Generated candidate directory/name')
+  .description('Prepare a confirmed candidate from the bundled pinned Taku template')
+  .action(async (
+    input: string,
+    options: {
+      outputRoot: string;
+      workRoot: string;
+      expectedSourceDigest: string;
+      sourceRef?: string;
+      name?: string;
+    }
+  ) => {
+    const result = await prepareCandidateForPublisher({
+      input,
+      outputRoot: resolve(options.outputRoot),
+      workRoot: resolve(options.workRoot),
+      expectedSourceDigest: options.expectedSourceDigest,
+      ...(options.sourceRef ? { sourceRef: options.sourceRef } : {}),
+      ...(options.name ? { name: options.name } : {}),
+    });
+    console.log(JSON.stringify(result, null, 2));
+  });
+
+program
+  .command('validate')
+  .argument('<subapp-path>', 'Generated SubApp workspace path')
+  .option('--level <level>', 'Validation gate: workspace, conversion, or publish', 'conversion')
+  .option(
+    '--trusted-attestation <path>',
+    'Untrusted publish evidence; authority is unavailable in this build'
+  )
+  .description('Validate a generated Taku Stax SubApp workspace')
+  .action(async (
+    subappPath: string,
+    options: { level: string; trustedAttestation?: string }
+  ) => {
+    if (!['workspace', 'conversion', 'publish'].includes(options.level)) {
+      throw new Error(`Unsupported validation level: ${options.level}`);
+    }
+    let attestationEvidence: PublishAttestationEvidence | undefined;
+    if (options.trustedAttestation) {
+      attestationEvidence = JSON.parse(
+        await readFile(resolve(options.trustedAttestation), 'utf8')
+      ) as PublishAttestationEvidence;
+    }
+    const result = await validateSubAppWorkspace(resolve(subappPath), {
+      level: options.level as ValidationLevel,
+      attestationEvidence,
+    });
+    console.log(JSON.stringify(result, null, 2));
+    if (!result.ok) process.exitCode = 1;
+  });
+
+program
+  .command('handoff')
+  .argument('<subapp-path>', 'Prepared SubApp candidate workspace')
+  .description('Validate and describe the bounded Agent migration handoff')
+  .action(async (subappPath: string) => {
+    console.log(JSON.stringify(await createAgentHandoff(resolve(subappPath)), null, 2));
+  });
+
+program
+  .command('validate-conversion')
+  .argument('<subapp-path>', 'Agent-modified SubApp candidate workspace')
+  .description('Run the static conversion gate without executing candidate scripts')
+  .action(async (subappPath: string) => {
+    const result = await checkAgentConversion(resolve(subappPath)) as {
+      validation?: { ok?: boolean };
+    };
+    console.log(JSON.stringify(result, null, 2));
+    if (result.validation?.ok !== true) process.exitCode = 1;
+  });
+
+program.parse();

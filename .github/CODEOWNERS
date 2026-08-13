@@ -1,0 +1,11 @@
+# Taku Passport bootstrap repository review.
+# Linear completion approval remains lead-gated by haipro or Jacky.
+* @karr77
+
+# Authentication, security, packaging, and distribution require explicit lead review.
+/SECURITY.md @karr77
+/creator/scripts/privacy.mjs @karr77
+/creator/scripts/publish-*.mjs @karr77
+/scripts/taku_publisher/ @karr77
+/scripts/build-adapters.mjs @karr77
+/adapters/ @karr77

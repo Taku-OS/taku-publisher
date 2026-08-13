@@ -1,0 +1,4 @@
+{
+  "name": "fixture-nextjs",
+  "dependencies": { "next": "15.5.20", "react": "19.1.0" }
+}

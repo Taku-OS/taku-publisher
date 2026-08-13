@@ -1,0 +1,99 @@
+import * as path from 'node:path';
+
+import type { JsonObject } from './types.js';
+import { PublisherError, sha256Bytes } from './util.js';
+import { createStoredZip, readZip, type ZipEntry } from './zip.js';
+
+export const TAKU_PUBLISHER_CORE_API_VERSION = 'taku.publisher-core.v1';
+
+export interface PublisherPackageEntry {
+  path: string;
+  data: Uint8Array;
+  mode?: number;
+}
+
+export interface PublisherPackageArtifact {
+  bytes: Buffer;
+  sha256: string;
+  size: number;
+  fileCount: number;
+  files: JsonObject[];
+}
+
+/**
+ * Build one deterministic ZIP artifact shared by every host.
+ *
+ * Hosts remain responsible for selecting files and collecting user consent.
+ * This boundary owns archive path validation, stable ordering, file modes,
+ * per-file digests, and the final artifact digest.
+ */
+export function buildPublisherPackageArtifact(
+  entries: PublisherPackageEntry[],
+): PublisherPackageArtifact {
+  const normalized = entries.map(normalizePackageEntry);
+  normalized.sort((left, right) => compareText(left.name, right.name));
+  const seen = new Set<string>();
+  for (const entry of normalized) {
+    if (seen.has(entry.name)) {
+      throw new PublisherError(
+        `Publisher package contains a duplicate path: ${entry.name}`,
+        'duplicate_package_path',
+      );
+    }
+    seen.add(entry.name);
+  }
+
+  const bytes = createStoredZip(normalized);
+  const files = normalized.map((entry) => ({
+    path: entry.name,
+    size: entry.data.length,
+    sha256: sha256Bytes(entry.data),
+    mode: entry.mode,
+  }));
+  return {
+    bytes,
+    sha256: sha256Bytes(bytes),
+    size: bytes.length,
+    fileCount: files.length,
+    files,
+  };
+}
+
+export { createStoredZip, readZip, sha256Bytes };
+export type { ZipEntry };
+
+function normalizePackageEntry(entry: PublisherPackageEntry): ZipEntry {
+  const rawPath = String(entry.path ?? '').replace(/\\/g, '/').trim();
+  const normalized = path.posix.normalize(rawPath);
+  if (
+    !rawPath
+    || rawPath.includes('\0')
+    || normalized === '.'
+    || normalized === '..'
+    || normalized.startsWith('../')
+    || normalized.startsWith('/')
+    || /^[a-z]:\//i.test(normalized)
+  ) {
+    throw new PublisherError(
+      `Publisher package path is unsafe: ${rawPath || '<empty>'}`,
+      'unsafe_package_path',
+    );
+  }
+  return {
+    name: normalized,
+    data: Buffer.from(entry.data),
+    mode: entry.mode ?? defaultMode(normalized),
+  };
+}
+
+function defaultMode(relativePath: string): number {
+  return ['.bash', '.command', '.sh', '.zsh'].includes(
+    path.posix.extname(relativePath).toLowerCase(),
+  ) || relativePath.startsWith('bin/')
+    ? 0o755
+    : 0o644;
+}
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}

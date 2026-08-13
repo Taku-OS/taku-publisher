@@ -1,0 +1,55 @@
+name: Passport baseline
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install workspace
+        run: npm ci
+
+      - name: Audit repository boundary
+        run: npm run audit:repo
+
+      - name: Run Node and Python tests
+        run: npm test
+
+      - name: Build Codex and Claude Adapters
+        run: npm run build:adapters
+
+      - name: Verify generated plugin without Python
+        run: npm run smoke:plugin
+
+      - name: Pack Capability Contract
+        run: npm run smoke:contract
+
+      - name: Record source checksum
+        run: npm run checksum:source
+
+      - name: Verify generated output remains ignored
+        run: |
+          test -z "$(git status --short --untracked-files=all)"

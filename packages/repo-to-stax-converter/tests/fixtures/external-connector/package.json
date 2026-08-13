@@ -1,0 +1,6 @@
+{
+  "name": "fixture-lark-bridge",
+  "bin": { "fixture-lark-bridge": "./bin.js" },
+  "scripts": { "daemon": "node bin.js", "start": "node bin.js" },
+  "dependencies": { "ws": "8.18.0" }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "taku",
+  "interface": {
+    "displayName": "Taku"
+  },
+  "plugins": [
+    {
+      "name": "taku-publisher",
+      "source": {
+        "source": "local",
+        "path": "./plugins/taku-publisher"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

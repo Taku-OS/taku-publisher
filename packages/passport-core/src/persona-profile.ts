@@ -1,0 +1,215 @@
+import {
+  PERSONA_BADGE_LOCALIZATIONS,
+  PERSONA_CATALOG,
+  PERSONA_FAMILY_LOCALIZATIONS,
+  PERSONA_HIDDEN_AVATAR_KEYS,
+  PERSONA_PROFILE_SCHEMA_VERSION,
+  PERSONA_TRAIT_AVATAR_KEYS,
+  ROOKIE_PERSONA_LOCALIZATIONS,
+  isPersonaCode,
+  normalizePersonaLocale,
+  personaAxisTagsForCode,
+  personaFamilyForCode,
+  type PersonaLocale,
+} from './persona-catalog.js';
+
+type UnknownRecord = Record<string, unknown>;
+
+export interface PersonaProfileV1 {
+  schemaVersion: typeof PERSONA_PROFILE_SCHEMA_VERSION;
+  code: string;
+  family: {
+    id: string;
+    label: string;
+    localizations: Record<PersonaLocale, string>;
+  };
+  basePersona: {
+    id: string;
+    title: string;
+    subtitle: string;
+    description: string;
+    avatarKey: string;
+    localizations: Record<
+      PersonaLocale,
+      { title: string; subtitle: string; description: string }
+    >;
+  };
+  axisTags: Array<{
+    axis: string;
+    letter: string;
+    id: string;
+    label: string;
+    localizations: Record<PersonaLocale, string>;
+  }>;
+  badges: Array<{
+    id: string;
+    label: string;
+    category: string;
+    localizations: Record<PersonaLocale, string>;
+    avatarKey?: string;
+    characterId?: string;
+  }>;
+  hidden: {
+    featured?: {
+      id: string;
+      title: string;
+      subtitle: string;
+      description: string;
+      avatarKey?: string;
+      characterId?: string;
+    };
+    unlocked: Array<{
+      id: string;
+      title: string;
+      subtitle: string;
+      description: string;
+      avatarKey?: string;
+      characterId?: string;
+    }>;
+  };
+}
+
+function record(value: unknown): UnknownRecord {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as UnknownRecord)
+    : {};
+}
+
+function text(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function localizedBadgeLabel(
+  id: string,
+  fallback: string,
+): Record<PersonaLocale, string> {
+  return (
+    PERSONA_BADGE_LOCALIZATIONS[id] || {
+      'en-US': fallback,
+      'zh-CN': fallback,
+    }
+  );
+}
+
+function projectHidden(value: unknown) {
+  const item = record(value);
+  const id = text(item.id);
+  if (!id) return undefined;
+  return {
+    id,
+    title: text(item.title),
+    subtitle: text(item.subtitle),
+    description: text(item.description),
+    ...(PERSONA_HIDDEN_AVATAR_KEYS[id]
+      ? { avatarKey: PERSONA_HIDDEN_AVATAR_KEYS[id] }
+      : {}),
+  };
+}
+
+export function buildPersonaProfileV1(
+  personaValue: unknown,
+  options: { locale?: unknown } = {},
+): PersonaProfileV1 {
+  const persona = record(personaValue);
+  const locale = normalizePersonaLocale(options.locale);
+  const codeValue = text(persona.code).toUpperCase();
+  const code = isPersonaCode(codeValue) ? codeValue : 'ROOKIE';
+  const familyId =
+    code === 'ROOKIE' ? 'vibe-maker' : personaFamilyForCode(code);
+  const familyLocalizations = PERSONA_FAMILY_LOCALIZATIONS[familyId];
+  const identity = record(persona.identity);
+  const identityHidden = record(identity.hidden);
+  const rawBadges = Array.isArray(identity.badges)
+    ? identity.badges
+    : Array.isArray(persona.traits)
+      ? persona.traits
+      : [];
+  const unlockedSource = Array.isArray(identityHidden.unlocked)
+    ? identityHidden.unlocked
+    : Array.isArray(persona.hiddenCandidates)
+      ? persona.hiddenCandidates
+      : [];
+  const unlocked = unlockedSource.flatMap((item) => {
+    const projected = projectHidden(item);
+    return projected ? [projected] : [];
+  });
+  const featured =
+    projectHidden(identityHidden.featured) ||
+    projectHidden(record(persona.hidden).featured);
+
+  const localizations =
+    code === 'ROOKIE'
+      ? ROOKIE_PERSONA_LOCALIZATIONS
+      : PERSONA_CATALOG[code].localizations;
+  const currentCopy = localizations[locale];
+  const archetype = record(persona.archetype);
+  const basePersona = record(identity.basePersona);
+  const resolvedTitle =
+    code === 'ROOKIE'
+      ? text(basePersona.title) || text(archetype.title) || currentCopy.title
+      : currentCopy.title;
+  const resolvedSubtitle =
+    code === 'ROOKIE'
+      ? text(basePersona.subtitle) ||
+        text(archetype.subtitle) ||
+        currentCopy.subtitle
+      : currentCopy.subtitle;
+  const resolvedDescription =
+    code === 'ROOKIE'
+      ? text(basePersona.signature) ||
+        text(archetype.signature) ||
+        currentCopy.description
+      : currentCopy.description;
+
+  return {
+    schemaVersion: PERSONA_PROFILE_SCHEMA_VERSION,
+    code,
+    family: {
+      id: familyId,
+      label: familyLocalizations[locale],
+      localizations: { ...familyLocalizations },
+    },
+    basePersona: {
+      id: code === 'ROOKIE' ? 'rookie' : code.toLowerCase(),
+      title: resolvedTitle,
+      subtitle: resolvedSubtitle,
+      description: resolvedDescription,
+      avatarKey:
+        code === 'ROOKIE'
+          ? persona.rookieVariant === 'alt'
+            ? 'persona.rookie.alt'
+            : 'persona.rookie.default'
+          : PERSONA_CATALOG[code].avatarKey,
+      localizations: structuredClone(localizations),
+    },
+    axisTags:
+      code === 'ROOKIE'
+        ? []
+        : personaAxisTagsForCode(code).map((tag) => ({
+            ...tag,
+            label: tag.localizations[locale],
+          })),
+    badges: rawBadges.slice(0, 16).flatMap((badgeValue) => {
+      const badge = record(badgeValue);
+      const id = text(badge.id);
+      const fallback = text(badge.label) || id;
+      if (!id || !fallback) return [];
+      const badgeLocalizations = localizedBadgeLabel(id, fallback);
+      return [
+        {
+          id,
+          label: badgeLocalizations[locale],
+          category: text(badge.category) || 'Trait',
+          localizations: { ...badgeLocalizations },
+          ...(PERSONA_TRAIT_AVATAR_KEYS[id]
+            ? { avatarKey: PERSONA_TRAIT_AVATAR_KEYS[id] }
+            : {}),
+        },
+      ];
+    }),
+    hidden: {
+      ...(featured ? { featured } : {}),
+      unlocked,
+    },
+  };
+}

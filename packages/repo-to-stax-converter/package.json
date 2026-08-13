@@ -1,0 +1,53 @@
+{
+  "name": "repo-to-stax-converter",
+  "version": "0.2.0",
+  "description": "Convert application-layer GitHub repositories into Taku Stax SubApp workspaces",
+  "type": "module",
+  "license": "Apache-2.0",
+  "exports": {
+    "./analyze-cli": "./dist/analyze-cli.js",
+    "./prepare-cli": "./dist/prepare-cli.js",
+    "./agent-cli": "./dist/agent-cli.js",
+    "./runtime-cli": "./dist/runtime-cli.js"
+  },
+  "bin": {
+    "repo-to-stax": "./dist/index.js"
+  },
+  "files": [
+    "benchmark",
+    "dist",
+    "scripts",
+    "skills",
+    "src",
+    "template",
+    "template-provenance.json",
+    "README.md",
+    "SKILLS.md",
+    "UPSTREAM.json",
+    "tsconfig.json"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Taku-OS/taku-publisher.git",
+    "directory": "packages/repo-to-stax-converter"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/build.mjs && node --import tsx --test tests/*.test.ts",
+    "smoke:canonical-template": "pnpm build && node scripts/smoke-canonical-template.mjs",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "commander": "^13.1.0",
+    "nanoid": "^5.1.5",
+    "typescript": "^5.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.15.1"
+}

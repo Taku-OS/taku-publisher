@@ -1,0 +1,37 @@
+{
+  "name": "@taku/capability-contract",
+  "version": "0.2.0",
+  "type": "module",
+  "description": "Canonical Taku Passport capability snapshot and package contracts.",
+  "license": "Apache-2.0",
+  "files": [
+    "dist",
+    "fixtures",
+    "schemas",
+    "README.md"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./schemas/capability-snapshot.v1.json": "./schemas/capability-snapshot.v1.schema.json",
+    "./schemas/capability-package.v1.json": "./schemas/capability-package.v1.schema.json",
+    "./fixtures/canonical-v1.json": "./fixtures/canonical-v1.json"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Taku-OS/taku-publisher.git",
+    "directory": "packages/capability-contract"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "name": "@taku/passport-core",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Host-independent deterministic core for Taku Passport.",
+  "license": "Apache-2.0",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./privacy": {
+      "types": "./dist/privacy.d.ts",
+      "import": "./dist/privacy.js",
+      "default": "./dist/privacy.js"
+    },
+    "./persona": {
+      "types": "./dist/persona-public.d.ts",
+      "import": "./dist/persona-public.js",
+      "default": "./dist/persona-public.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@taku/capability-contract": "0.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Taku-OS/taku-publisher.git",
+    "directory": "packages/passport-core"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

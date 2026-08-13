@@ -1,0 +1,140 @@
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+
+import type { SubAppServiceRequirementV1 } from '@taku/subapp-contract';
+import type { JsonObject } from './types.js';
+import { atomicWriteJson, isRecord, PublisherError } from './util.js';
+
+export const SUBAPP_SERVICE_AUTHORIZATIONS_SCHEMA =
+  'taku.subapp-service-authorizations.v1' as const;
+export const SUBAPP_SERVICE_AUTHORIZATIONS_PATH =
+  '.taku/service-authorizations.json' as const;
+
+export interface SubAppServiceAuthorizationV1 {
+  serviceId: string;
+  endpointIds: string[];
+}
+
+export function buildSubAppServiceAuthorizationDocument(
+  requirements: SubAppServiceRequirementV1[],
+  catalogDigest: string,
+): JsonObject {
+  const endpointsByService = new Map<string, Set<string>>();
+  for (const requirement of requirements) {
+    if (requirement.mapping.status !== 'mapped') continue;
+    const serviceId = catalogId(requirement.mapping.serviceId, 'serviceId');
+    const endpointIds = requirement.mapping.endpointIds || [];
+    if (!serviceId || endpointIds.length === 0) {
+      throw invalidServiceAuthorizations(
+        'Mapped service requirements must declare a serviceId and endpointIds.',
+      );
+    }
+    const selected = endpointsByService.get(serviceId) || new Set<string>();
+    endpointIds.forEach(endpointId => {
+      selected.add(catalogId(endpointId, 'endpointId'));
+    });
+    endpointsByService.set(serviceId, selected);
+  }
+  return {
+    schemaVersion: SUBAPP_SERVICE_AUTHORIZATIONS_SCHEMA,
+    catalogDigest: requiredText(catalogDigest, 'catalogDigest', 256),
+    services: [...endpointsByService]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([serviceId, endpointIds]) => ({
+        serviceId,
+        endpointIds: [...endpointIds].sort(),
+      })),
+  };
+}
+
+export async function writeSubAppServiceAuthorizations(
+  workspaceRoot: string,
+  requirements: SubAppServiceRequirementV1[],
+  catalogDigest: string,
+): Promise<JsonObject> {
+  const document = buildSubAppServiceAuthorizationDocument(
+    requirements,
+    catalogDigest,
+  );
+  await atomicWriteJson(
+    path.join(workspaceRoot, SUBAPP_SERVICE_AUTHORIZATIONS_PATH),
+    document,
+  );
+  return document;
+}
+
+export async function readSubAppServiceAuthorizations(
+  workspaceRoot: string,
+): Promise<SubAppServiceAuthorizationV1[]> {
+  const file = path.join(workspaceRoot, SUBAPP_SERVICE_AUTHORIZATIONS_PATH);
+  let value: unknown;
+  try {
+    value = JSON.parse(await fs.readFile(file, 'utf8'));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return [];
+    throw invalidServiceAuthorizations(
+      'SubApp service authorization document is missing or invalid JSON.',
+    );
+  }
+  if (
+    !isRecord(value) ||
+    value.schemaVersion !== SUBAPP_SERVICE_AUTHORIZATIONS_SCHEMA ||
+    typeof value.catalogDigest !== 'string' ||
+    !value.catalogDigest.trim() ||
+    !Array.isArray(value.services) ||
+    Object.keys(value).some(
+      key => !['schemaVersion', 'catalogDigest', 'services'].includes(key),
+    )
+  ) {
+    throw invalidServiceAuthorizations(
+      'SubApp service authorization document does not match the supported contract.',
+    );
+  }
+  const seenServices = new Set<string>();
+  return value.services.map(raw => {
+    if (
+      !isRecord(raw) ||
+      Object.keys(raw).some(key => !['serviceId', 'endpointIds'].includes(key)) ||
+      !Array.isArray(raw.endpointIds)
+    ) {
+      throw invalidServiceAuthorizations('Invalid SubApp service authorization entry.');
+    }
+    const serviceId = catalogId(raw.serviceId, 'serviceId');
+    if (!serviceId || seenServices.has(serviceId)) {
+      throw invalidServiceAuthorizations('Duplicate or invalid SubApp serviceId.');
+    }
+    seenServices.add(serviceId);
+    const endpointIds = raw.endpointIds.map(endpointId =>
+      catalogId(endpointId, 'endpointId'),
+    );
+    if (
+      endpointIds.length === 0 ||
+      new Set(endpointIds).size !== endpointIds.length
+    ) {
+      throw invalidServiceAuthorizations(
+        'SubApp endpointIds must be non-empty and unique.',
+      );
+    }
+    return { serviceId, endpointIds: [...endpointIds].sort() };
+  });
+}
+
+function catalogId(value: unknown, field: string): string {
+  const text = String(value ?? '').trim();
+  if (!/^[a-z][A-Za-z0-9._-]{0,127}$/.test(text)) {
+    throw invalidServiceAuthorizations(`Invalid SubApp service ${field}.`);
+  }
+  return text;
+}
+
+function requiredText(value: unknown, field: string, maxLength: number): string {
+  const text = String(value ?? '').trim();
+  if (!text || text.length > maxLength) {
+    throw invalidServiceAuthorizations(`Invalid SubApp service ${field}.`);
+  }
+  return text;
+}
+
+function invalidServiceAuthorizations(message: string): PublisherError {
+  return new PublisherError(message, 'subapp_service_authorizations_invalid');
+}
