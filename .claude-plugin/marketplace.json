@@ -1,0 +1,19 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "taku",
+  "description": "Taku creator tools for Claude Code.",
+  "owner": {
+    "name": "Taku"
+  },
+  "plugins": [
+    {
+      "name": "taku-publisher",
+      "description": "Scan local AI capabilities, generate a Creator Profile, manage your Creator Center, and safely publish tools to Taku.",
+      "author": {
+        "name": "Taku"
+      },
+      "category": "productivity",
+      "source": "./plugins/taku-publisher"
+    }
+  ]
+}

@@ -1,0 +1,252 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taku.ai/schemas/capability-package.v1.schema.json",
+  "title": "Taku Capability Package Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractVersion",
+    "channel",
+    "packageVersion",
+    "capability",
+    "contentHash",
+    "compatibility",
+    "files",
+    "permissions",
+    "requiredSecrets"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "taku.package.v1"
+    },
+    "contractVersion": {
+      "const": "0.2.0"
+    },
+    "channel": {
+      "enum": [
+        "import",
+        "publish"
+      ]
+    },
+    "packageVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "sourceKind",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "kind": {
+          "enum": [
+            "skill",
+            "agent",
+            "rule",
+            "workflow",
+            "action",
+            "plugin",
+            "mcp"
+          ]
+        },
+        "sourceKind": {
+          "enum": [
+            "skill",
+            "agent",
+            "rule",
+            "workflow",
+            "plugin",
+            "mcp"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      }
+    },
+    "contentHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hosts",
+        "platforms"
+      ],
+      "properties": {
+        "hosts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "platforms": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "size",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "requiredSecrets": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,127}$"
+      }
+    },
+    "permissionReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reviewedPermissions"
+      ],
+      "properties": {
+        "status": {
+          "const": "approved"
+        },
+        "reviewedPermissions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "reviewer": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "channel": {
+            "const": "publish"
+          },
+          "capability": {
+            "properties": {
+              "sourceKind": {
+                "const": "workflow"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "capability": {
+            "properties": {
+              "kind": {
+                "const": "action"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "channel": {
+            "const": "publish"
+          },
+          "capability": {
+            "properties": {
+              "sourceKind": {
+                "const": "plugin"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "permissionReview"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "channel": {
+            "const": "publish"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "capability": {
+            "properties": {
+              "sourceKind": {
+                "not": {
+                  "enum": [
+                    "rule",
+                    "mcp"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

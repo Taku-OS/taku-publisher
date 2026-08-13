@@ -1,0 +1,313 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taku.ai/schemas/capability-snapshot.v1.schema.json",
+  "title": "Taku Capability Snapshot v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractVersion",
+    "scanId",
+    "generatedAt",
+    "privacy",
+    "profile",
+    "roots",
+    "summary",
+    "items"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "taku.capability-snapshot.v1"
+    },
+    "contractVersion": {
+      "const": "0.2.0"
+    },
+    "scanId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "localOnly",
+        "uploads",
+        "localPathsIncluded",
+        "promptContentUploaded",
+        "sourceContentUploaded"
+      ],
+      "properties": {
+        "localOnly": {
+          "const": true
+        },
+        "uploads": {
+          "const": false
+        },
+        "localPathsIncluded": {
+          "const": true
+        },
+        "promptContentUploaded": {
+          "const": false
+        },
+        "sourceContentUploaded": {
+          "const": false
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "persona",
+        "basePersona",
+        "badges",
+        "behaviorProfile",
+        "usage"
+      ],
+      "properties": {
+        "persona": {},
+        "basePersona": {},
+        "badges": {
+          "type": "array"
+        },
+        "behaviorProfile": {},
+        "usage": {}
+      }
+    },
+    "roots": {
+      "type": "array"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/item"
+      }
+    }
+  },
+  "$defs": {
+    "kind": {
+      "enum": [
+        "skill",
+        "agent",
+        "rule",
+        "workflow",
+        "plugin",
+        "mcp"
+      ]
+    },
+    "eligibility": {
+      "enum": [
+        "eligible",
+        "review-required",
+        "blocked"
+      ]
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eligibility"
+      ],
+      "properties": {
+        "eligibility": {
+          "$ref": "#/$defs/eligibility"
+        },
+        "mode": {
+          "const": "local-only"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "source",
+        "sourceLabel",
+        "sourceFormat",
+        "name",
+        "description",
+        "policy"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        },
+        "source": {
+          "type": "string"
+        },
+        "sourceLabel": {
+          "type": "string"
+        },
+        "sourceFormat": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "detectedFrom": {
+          "type": "string"
+        },
+        "locator": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "value"
+          ],
+          "properties": {
+            "type": {
+              "const": "local-path"
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        "scanPreview": {},
+        "policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "import",
+            "publish"
+          ],
+          "properties": {
+            "import": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/decision"
+                },
+                {
+                  "required": [
+                    "mode"
+                  ]
+                }
+              ]
+            },
+            "publish": {
+              "$ref": "#/$defs/decision"
+            }
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalCount",
+        "byKind",
+        "skillCount",
+        "agentCount",
+        "ruleCount",
+        "workflowCount",
+        "pluginCount",
+        "mcpCount",
+        "importEligibleCount",
+        "publishReviewCount",
+        "publishBlockedCount"
+      ],
+      "properties": {
+        "totalCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "byKind": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "skill",
+            "agent",
+            "rule",
+            "workflow",
+            "plugin",
+            "mcp"
+          ],
+          "properties": {
+            "skill": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "agent": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "rule": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "workflow": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "plugin": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "mcp": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "skillCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "agentCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ruleCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "workflowCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pluginCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mcpCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "importEligibleCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "publishReviewCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "publishBlockedCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}
