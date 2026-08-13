@@ -2269,6 +2269,10 @@ async function discoverUnsafeNextRoutes(
 }
 
 function normalizeTrustedSystemAlias(absolutePath: string): string {
+  // macOS exposes these system paths through /private-backed aliases. Linux
+  // uses /tmp, /var, and /etc directly, so rewriting them there would turn a
+  // valid realpath into a false symbolic-link-ancestor finding.
+  if (process.platform !== 'darwin') return absolutePath;
   for (const [alias, canonical] of [
     ['/tmp', '/private/tmp'],
     ['/var', '/private/var'],
