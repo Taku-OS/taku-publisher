@@ -1,0 +1,14 @@
+{
+  "name": "taku-publisher",
+  "version": "0.3.6",
+  "description": "Convert repositories into local Taku SubApps, search the Taku community, manage your Creator Center, and safely publish tools.",
+  "author": {
+    "name": "Taku",
+    "url": "https://taku.ai/"
+  },
+  "homepage": "https://taku.ai/",
+  "repository": "https://github.com/Taku-OS/taku-passport",
+  "skills": [
+    "./skills/taku-publisher"
+  ]
+}

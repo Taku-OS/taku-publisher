@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "taku.vendored-source.v1",
+  "repository": "https://github.com/Taku-OS/repo-to-stax-converter",
+  "importedCommit": "8bf1659669e824c3a5162edc32e0192a1a41b4fc",
+  "integration": "Publisher workspace package; generated plugins include the assessment and candidate-preparation runtime, pinned template, and validator"
+}

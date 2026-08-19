@@ -1,0 +1,293 @@
+{
+  "assessmentInput": {
+    "assessmentId": "assessment_roomgpt_v1",
+    "assessedAt": "2026-08-11T08:00:00.000Z",
+    "source": {
+      "kind": "github",
+      "locator": "https://github.com/example/roomgpt",
+      "repo": "example/roomgpt",
+      "url": "https://github.com/example/roomgpt",
+      "ref": "main",
+      "commit": "1111111111111111111111111111111111111111",
+      "dirty": false
+    },
+    "analysis": {
+      "packageName": "roomgpt",
+      "description": "Generate room redesign concepts.",
+      "appType": "nextjs",
+      "score": 88,
+      "recommendation": "convertible",
+      "strategy": "Port the product workflow into the canonical Next.js SubApp runtime.",
+      "license": "MIT",
+      "hasReadme": true,
+      "hasUi": true,
+      "reasons": [
+        "Next.js app detected",
+        "Interactive UI surface detected",
+        "License detected: MIT"
+      ],
+      "risks": []
+    },
+    "route": {
+      "kind": "subapp-migration",
+      "capability": "nextjs",
+      "reason": "An interactive application runtime was detected.",
+      "nextAction": "Create a versioned Taku SubApp migration workspace."
+    },
+    "serviceRequirements": [
+      {
+        "id": "image-generation",
+        "capability": "text-to-image generation",
+        "required": true,
+        "detectedProvider": "Replicate",
+        "operations": ["text-to-image"],
+        "dataClasses": ["user-prompt"],
+        "mutation": false,
+        "mapping": {
+          "status": "mapped",
+          "serviceId": "nano_banana",
+          "endpointIds": ["text_to_image"]
+        }
+      }
+    ],
+    "findings": []
+  },
+  "assessment": {
+    "schemaVersion": "taku.subapp-assessment.v1",
+    "contractVersion": "0.1.0",
+    "assessmentId": "assessment_roomgpt_v1",
+    "assessedAt": "2026-08-11T08:00:00.000Z",
+    "privacy": {
+      "localOnly": true,
+      "uploads": false,
+      "localLocatorIncluded": true
+    },
+    "source": {
+      "kind": "github",
+      "locator": "https://github.com/example/roomgpt",
+      "repo": "example/roomgpt",
+      "url": "https://github.com/example/roomgpt",
+      "ref": "main",
+      "commit": "1111111111111111111111111111111111111111",
+      "dirty": false
+    },
+    "analysis": {
+      "packageName": "roomgpt",
+      "description": "Generate room redesign concepts.",
+      "appType": "nextjs",
+      "score": 88,
+      "recommendation": "convertible",
+      "strategy": "Port the product workflow into the canonical Next.js SubApp runtime.",
+      "license": "MIT",
+      "hasReadme": true,
+      "hasUi": true,
+      "reasons": [
+        "Next.js app detected",
+        "Interactive UI surface detected",
+        "License detected: MIT"
+      ],
+      "risks": []
+    },
+    "route": {
+      "kind": "subapp-migration",
+      "capability": "nextjs",
+      "reason": "An interactive application runtime was detected.",
+      "nextAction": "Create a versioned Taku SubApp migration workspace."
+    },
+    "serviceRequirements": [
+      {
+        "id": "image-generation",
+        "capability": "text-to-image generation",
+        "required": true,
+        "detectedProvider": "Replicate",
+        "operations": ["text-to-image"],
+        "dataClasses": ["user-prompt"],
+        "mutation": false,
+        "mapping": {
+          "status": "mapped",
+          "serviceId": "nano_banana",
+          "endpointIds": ["text_to_image"]
+        }
+      }
+    ],
+    "eligibility": "eligible",
+    "nextStep": "start-conversion",
+    "findings": []
+  },
+  "migration": {
+    "schemaVersion": "taku.subapp-migration.v2",
+    "status": "converted",
+    "createdAt": "2026-08-11T08:05:00.000Z",
+    "source": {
+      "kind": "github",
+      "url": "https://github.com/example/roomgpt",
+      "repo": "example/roomgpt",
+      "commit": "1111111111111111111111111111111111111111",
+      "ref": "main",
+      "dirty": false,
+      "license": "MIT",
+      "snapshotPath": "upstream-source",
+      "snapshotDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "snapshotPolicy": "taku.upstream-source-snapshot.v1",
+      "snapshotCompleteness": "complete",
+      "omissions": [],
+      "sourceManifestPath": ".taku/upstream-source-manifest.json",
+      "sourceManifestDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "sourceEvidencePolicyPath": ".taku/source-evidence-policy.json",
+      "sourceEvidencePolicyDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "migrationImmutableDigest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "provenanceDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+    },
+    "template": {
+      "kind": "github",
+      "url": "https://github.com/Taku-OS/takuai-template",
+      "requestedRef": "v0.3.2",
+      "resolvedRef": "v0.3.2",
+      "commit": "7777777777777777777777777777777777777777",
+      "version": "0.3.2",
+      "policyApplied": true,
+      "dirty": false,
+      "snapshotDigest": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+    },
+    "analysis": {
+      "appType": "nextjs",
+      "strategy": "Port the product workflow into the canonical Next.js SubApp runtime.",
+      "score": 88,
+      "recommendation": "convertible",
+      "risks": [
+        "Hard-coded provider key configuration must be removed"
+      ],
+      "riskResolutions": [
+        {
+          "risk": "Hard-coded provider key configuration must be removed",
+          "status": "resolved",
+          "evidence": "Provider calls now use the server-only Taku managed-service proxy."
+        }
+      ]
+    }
+  },
+  "validation": {
+    "schemaVersion": "taku.subapp-validation.v1",
+    "level": "conversion",
+    "ok": true,
+    "findings": [],
+    "errors": [],
+    "warnings": []
+  },
+  "runtimeManifest": {
+    "name": "roomgpt-subapp",
+    "description": "Generate room redesign concepts inside Taku.",
+    "version": "1.0.0",
+    "iconPath": "src/app/icon.png",
+    "actions": [
+      {
+        "name": "createRedesign",
+        "description": "Create a room redesign concept.",
+        "runtime": "server_http",
+        "params": {
+          "style": {
+            "type": "string",
+            "required": true,
+            "description": "Target interior style."
+          }
+        },
+        "returns": {
+          "type": "object",
+          "description": "Generated concept metadata."
+        },
+        "execution": {
+          "defaultMode": "async",
+          "timeoutMs": 120000
+        },
+        "isUserVisible": true
+      }
+    ],
+    "llm": {
+      "required": true,
+      "preferLocal": false,
+      "fallback": "cloud"
+    }
+  },
+  "release": {
+    "schemaVersion": "taku.subapp-release.v1",
+    "contractVersion": "0.1.0",
+    "appId": "app_roomgpt",
+    "versionNumber": 1,
+    "manifest": {
+      "name": "roomgpt-subapp",
+      "description": "Generate room redesign concepts inside Taku.",
+      "version": "1.0.0",
+      "iconPath": "src/app/icon.png",
+      "actions": [
+        {
+          "name": "createRedesign",
+          "description": "Create a room redesign concept.",
+          "runtime": "server_http",
+          "params": {
+            "style": {
+              "type": "string",
+              "required": true,
+              "description": "Target interior style."
+            }
+          },
+          "returns": {
+            "type": "object",
+            "description": "Generated concept metadata."
+          },
+          "execution": {
+            "defaultMode": "async",
+            "timeoutMs": 120000
+          },
+          "isUserVisible": true
+        }
+      ],
+      "llm": {
+        "required": true,
+        "preferLocal": false,
+        "fallback": "cloud"
+      }
+    },
+    "source": {
+      "fileName": "source.zip",
+      "url": "https://packages.example.test/apps/app_roomgpt/versions/1/source.zip",
+      "sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+      "size": 1048576
+    },
+    "build": {
+      "fileName": "build.zip",
+      "url": "https://packages.example.test/apps/app_roomgpt/versions/1/build.zip",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "size": 2097152
+    },
+    "publishManifest": {
+      "releaseNotes": "Initial converted release.",
+      "buildRequired": true,
+      "buildOutputDir": ".next-preview",
+      "startScriptPreview": "start:preview",
+      "startScriptEdit": "start:edit",
+      "sourceHash": "9999999999999999999999999999999999999999999999999999999999999999",
+      "buildHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sourceSize": 1048576,
+      "buildSize": 2097152,
+      "sourceRights": {
+        "authorshipKind": "derived",
+        "rightsBasis": "open_source_license",
+        "sourceUrl": "https://github.com/example/roomgpt",
+        "sourceAuthor": "Example Author",
+        "license": "MIT",
+        "sourceNotes": "Ported to the canonical Taku SubApp runtime; upstream attribution is preserved."
+      },
+      "serviceAuthorizations": [
+        {
+          "serviceId": "weatherapi",
+          "endpointIds": ["weather_api.current.retrieve.v1.eb62c855"]
+        }
+      ]
+    }
+  },
+  "expected": {
+    "assessmentHash": "28a5a65f2ecc41419471fd35870d55f0f3e3bd42995e3af4771b0dc0c39a5921",
+    "migrationHash": "25286bf096047c0c88bcbfe9221d2d17a98502f10675a00d6525840b71bd68ed",
+    "releaseHash": "ede004fe24603232df8846eada938326f7e88f3cff314385099bfbfd77661235"
+  }
+}
