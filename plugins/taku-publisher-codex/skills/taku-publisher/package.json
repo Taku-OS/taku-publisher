@@ -1,0 +1,11 @@
+{
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#taku-capability-contract": "@taku/capability-contract",
+    "#taku-subapp-contract": "@taku/subapp-contract",
+    "#taku-passport-core": "@taku/passport-core",
+    "#taku-passport-core/privacy": "@taku/passport-core/privacy",
+    "#taku-publisher-runtime": "@taku/publisher-runtime"
+  }
+}

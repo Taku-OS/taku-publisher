@@ -8,12 +8,12 @@
   "plugins": [
     {
       "name": "taku-publisher",
-      "description": "Scan local AI capabilities, generate a Creator Profile, manage your Creator Center, and safely publish tools to Taku.",
+      "description": "Convert repositories into local Taku SubApps, generate a Creator Profile, manage your Creator Center, and safely publish tools.",
       "author": {
         "name": "Taku"
       },
       "category": "productivity",
-      "source": "./plugins/taku-publisher"
+      "source": "./plugins/taku-publisher-claude"
     }
   ]
 }

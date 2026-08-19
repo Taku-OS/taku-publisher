@@ -1,0 +1,5 @@
+{
+  "schemaVersion": "taku.creator.persona-rules.v1",
+  "extends": "@taku/passport-core",
+  "note": "Optional host override only. Canonical persona codes, copy, labels, descriptions, avatars, scoring defaults, and badge definitions live in @taku/passport-core."
+}

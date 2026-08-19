@@ -1,0 +1,45 @@
+{
+  "name": "taku-publisher",
+  "version": "0.3.6",
+  "description": "Convert repositories into local Taku SubApps, search the Taku community, manage your Creator Center, and safely publish tools.",
+  "author": {
+    "name": "Taku",
+    "url": "https://taku.ai/"
+  },
+  "homepage": "https://taku.ai/",
+  "repository": "https://github.com/Taku-OS/taku-passport",
+  "keywords": [
+    "taku",
+    "marketplace",
+    "creator",
+    "publisher",
+    "subapp",
+    "skills"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Taku Publisher",
+    "shortDescription": "Convert repositories and manage Taku AI tools.",
+    "longDescription": "Assess and convert a local App or GitHub repository into a verified Taku SubApp; install it locally in Taku Desktop; search community tools; publish local tools; manage creator works; or generate an editable Creator Profile, directly from Codex.",
+    "developerName": "Taku",
+    "category": "Productivity",
+    "websiteURL": "https://taku.ai/",
+    "privacyPolicyURL": "https://taku.ai/privacy",
+    "termsOfServiceURL": "https://taku.ai/terms",
+    "capabilities": [
+      "Local discovery",
+      "Repository to SubApp conversion",
+      "Local Taku Desktop installation",
+      "Community catalog search",
+      "Marketplace Skill installation",
+      "Security review",
+      "Publishing",
+      "Creator Center management"
+    ],
+    "defaultPrompt": [
+      "Convert this repository into a Taku SubApp and install it locally.",
+      "Publish the tool in this workspace to Taku.",
+      "Show my Taku Creator Center."
+    ]
+  }
+}

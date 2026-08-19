@@ -8,7 +8,7 @@
       "name": "taku-publisher",
       "source": {
         "source": "local",
-        "path": "./plugins/taku-publisher"
+        "path": "./plugins/taku-publisher-codex"
       },
       "policy": {
         "installation": "AVAILABLE",
