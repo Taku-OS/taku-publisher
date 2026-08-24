@@ -1,7 +1,7 @@
 {
   "name": "taku-publisher",
-  "version": "0.3.6",
-  "description": "Convert repositories into local Taku SubApps, search the Taku community, manage your Creator Center, and safely publish tools.",
+  "version": "0.3.7",
+  "description": "Discover Codex and Claude Code projects, convert them into Taku SubApps or Skills, and safely publish tools.",
   "author": {
     "name": "Taku",
     "url": "https://taku.ai/"
@@ -19,8 +19,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Taku Publisher",
-    "shortDescription": "Convert repositories and manage Taku AI tools.",
-    "longDescription": "Assess and convert a local App or GitHub repository into a verified Taku SubApp; install it locally in Taku Desktop; search community tools; publish local tools; manage creator works; or generate an editable Creator Profile, directly from Codex.",
+    "shortDescription": "Import AI coding projects into Taku.",
+    "longDescription": "Discover recent Codex and Claude Code workspaces from local metadata, route one selected project to verified SubApp conversion or bounded Skill generation, install SubApps locally, publish Skills, search community tools, and manage creator works.",
     "developerName": "Taku",
     "category": "Productivity",
     "websiteURL": "https://taku.ai/",
@@ -28,7 +28,9 @@
     "termsOfServiceURL": "https://taku.ai/terms",
     "capabilities": [
       "Local discovery",
+      "Codex and Claude Code project import",
       "Repository to SubApp conversion",
+      "Repository to Skill conversion",
       "Local Taku Desktop installation",
       "Community catalog search",
       "Marketplace Skill installation",
@@ -37,7 +39,7 @@
       "Creator Center management"
     ],
     "defaultPrompt": [
-      "Convert this repository into a Taku SubApp and install it locally.",
+      "Find my recent Codex and Claude Code projects and import one into Taku.",
       "Publish the tool in this workspace to Taku.",
       "Show my Taku Creator Center."
     ]

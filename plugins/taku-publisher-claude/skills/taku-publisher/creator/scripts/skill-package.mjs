@@ -14,6 +14,7 @@ const EXCLUDED_DIR_NAMES = new Set([
   '.git',
   '.github',
   '.next',
+  '.temp',
   '.turbo',
   '.venv',
   '.vscode',
@@ -163,6 +164,12 @@ export function scanInlineSkillPackageSource(sourceText) {
 
 function shouldIgnoreInlineSkillFinding(label, line) {
   const text = String(line || '');
+  if (
+    ['local filesystem path', 'Windows user path', 'file URL', 'private network URL'].includes(label) &&
+    /(?:\bre\.compile\s*\(|\bRegExp\s*\(|\.compile\s*\(|(?:PATTERN|REGEX|RE)\b\s*=)/i.test(text)
+  ) {
+    return true;
+  }
   if (label === 'private network URL') {
     return /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(?:[/?#\s"'`)]|$)/i.test(text);
   }
@@ -182,6 +189,15 @@ function shouldIgnoreInlineSkillFinding(label, line) {
     CREDENTIAL_PLACEHOLDER_PATTERN.test(value) ||
     /\b(?:os\.environ|process\.env|getenv|import\.meta\.env)\b/i.test(text) ||
     /^[A-Z][A-Z0-9_]{2,}$/.test(value) ||
+    // A bare identifier is a runtime variable reference, not an embedded
+    // credential value (for example access_token=access_token).
+    /^[A-Za-z_][A-Za-z0-9_.]*$/.test(value) ||
+    // Python/TypeScript annotations such as access_token: Optional[str] must
+    // not be interpreted as assigning a secret.
+    /\b(?:[A-Za-z0-9]+[_-])*(?:api[_-]?key|access[_-]?key|secret|token|password|authorization|bearer|client[_-]?secret|private[_-]?key)\b\s*:\s*[A-Za-z_][A-Za-z0-9_.]*(?:\[[^\]\r\n]+\])?/i.test(text) ||
+    // Normalization/lookup calls receive credentials at runtime rather than
+    // embedding them in the package (for example token = str(token or '')).
+    /\b(?:[A-Za-z0-9]+[_-])*(?:api[_-]?key|access[_-]?key|secret|token|password|authorization|bearer|client[_-]?secret|private[_-]?key)\b\s*=\s*[A-Za-z_][A-Za-z0-9_.]*\s*\(/i.test(text) ||
     /[`'"]?\s*f?["']?[^"'`]*\{[^}]+\}/.test(value)
   );
 }
@@ -235,6 +251,22 @@ export async function createInlineSkillPackage(item, privateInventory) {
     size: archive.byteLength,
     files: [...packageFiles.map((file) => file.name), 'taku.stax.json'],
   };
+}
+
+export async function preflightInlineSkillPackage(item, privateInventory) {
+  const pkg = await createInlineSkillPackage(item, privateInventory);
+  if (pkg) {
+    return {
+      ok: true,
+      kind: pkg.kind,
+      size: pkg.size,
+      files: pkg.files,
+    };
+  }
+  const title = publicText(item?.title || item?.name || item?.customTitle, 160) || 'selected skill';
+  throw new Error(
+    `Refusing to publish inline skill package "${title}": no readable local SKILL.md package was found.`
+  );
 }
 
 async function collectSkillPackageFiles(root, title) {

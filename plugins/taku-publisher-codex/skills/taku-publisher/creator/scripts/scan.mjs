@@ -64,7 +64,7 @@ export function parseFrontmatter(markdown) {
   return result;
 }
 
-export async function readSkillFile(filePath, source) {
+export async function readSkillFile(filePath, source, extra = {}) {
   try {
     const raw = await fs.readFile(filePath, 'utf8');
     const meta = parseFrontmatter(raw);
@@ -79,6 +79,7 @@ export async function readSkillFile(filePath, source) {
       name,
       description: cleanText(meta.description),
       detectedFrom: 'SKILL.md',
+      ...extra,
       localPath: filePath,
     };
     return {
@@ -187,56 +188,83 @@ function firstMarkdownHeading(markdown) {
   return cleanText(match?.[1], 120);
 }
 
-export function defaultToolRoots() {
-  const home = getHomeDir();
+export function resolveCliHomes(options = {}) {
+  const env = options.env || process.env;
+  const homeDir = path.resolve(options.homeDir || getHomeDir());
+  const configuredPath = (explicit, environmentValue, fallback) =>
+    path.resolve(explicit || String(environmentValue || '').trim() || fallback);
+  return {
+    homeDir,
+    codex: configuredPath(options.codexHome, env.CODEX_HOME, path.join(homeDir, '.codex')),
+    claude: configuredPath(options.claudeConfigDir, env.CLAUDE_CONFIG_DIR, path.join(homeDir, '.claude')),
+    taku: configuredPath(options.takuHome, env.TAKU_HOME, path.join(homeDir, '.taku')),
+    cursor: configuredPath(options.cursorHome, env.CURSOR_HOME, path.join(homeDir, '.cursor')),
+  };
+}
+
+export function defaultToolRoots(options = {}) {
+  const cliHomes = resolveCliHomes(options);
+  const env = options.env || process.env;
+  const invokingHost = normalizeInventoryHost(options.invokingHost);
   const roots = [
-    { source: 'codex', path: path.join(home, '.codex', 'skills') },
-    { source: 'claude-code', path: path.join(home, '.claude', 'skills') },
-    { source: 'taku', path: path.join(home, '.taku', 'skills') },
-    { source: 'cursor', path: path.join(home, '.cursor', 'skills') },
-  ];
-  if (process.env.TAKU_CREATOR_EXTRA_SKILL_ROOTS) {
-    for (const raw of process.env.TAKU_CREATOR_EXTRA_SKILL_ROOTS.split(path.delimiter)) {
+    { source: 'codex', path: path.join(cliHomes.codex, 'skills') },
+    { source: 'claude-code', path: path.join(cliHomes.claude, 'skills') },
+    { source: 'taku', path: path.join(cliHomes.taku, 'skills') },
+    { source: 'cursor', path: path.join(cliHomes.cursor, 'skills') },
+  ].filter((root) => !invokingHost || normalizeInventoryHost(root.source) === invokingHost);
+  if (env.TAKU_CREATOR_EXTRA_SKILL_ROOTS) {
+    for (const raw of env.TAKU_CREATOR_EXTRA_SKILL_ROOTS.split(path.delimiter)) {
       if (raw.trim()) roots.push({ source: 'custom', path: path.resolve(raw.trim()) });
     }
   }
   return roots;
 }
 
-export async function scanUsedTools(workspaceRoot) {
+export async function scanUsedTools(workspaceRoot, options = {}) {
+  const cliHomes = resolveCliHomes(options);
+  const invokingHost = normalizeInventoryHost(options.invokingHost);
   const tools = [];
   const roots = [];
-  await scanSkillInventory(roots, tools);
-  await scanSubagentInventory(roots, tools, workspaceRoot);
-  await scanSlashCommandInventory(roots, tools, workspaceRoot);
-  await scanCodexPluginInventory(roots, tools);
-  await scanTakuPluginInventory(roots, tools);
-  await scanCursorPluginInventory(roots, tools);
-  await scanClaudePluginInventory(roots, tools);
-  await scanMcpInventory(roots, tools);
-  await scanWorkflowInventory(roots, tools, workspaceRoot);
-  await scanAgentInstructionInventory(roots, tools, workspaceRoot);
+  await scanSkillInventory(roots, tools, options);
+  await scanSubagentInventory(roots, tools, workspaceRoot, cliHomes, invokingHost);
+  await scanSlashCommandInventory(roots, tools, workspaceRoot, cliHomes, invokingHost);
+  if (!invokingHost || invokingHost === 'codex') await scanCodexPluginInventory(roots, tools, cliHomes);
+  if (!invokingHost || invokingHost === 'taku') await scanTakuPluginInventory(roots, tools, cliHomes);
+  if (!invokingHost || invokingHost === 'cursor') await scanCursorPluginInventory(roots, tools, cliHomes);
+  if (!invokingHost || invokingHost === 'claude-code') await scanClaudePluginInventory(roots, tools, cliHomes);
+  await scanMcpInventory(roots, tools, cliHomes, invokingHost);
+  await scanWorkflowInventory(roots, tools, workspaceRoot, cliHomes, invokingHost);
+  await scanAgentInstructionInventory(roots, tools, workspaceRoot, cliHomes, invokingHost);
   return { roots, tools: dedupeItems(tools) };
 }
 
-function platformInventoryRoots(kind, workspaceRoot) {
-  const home = getHomeDir();
+function normalizeInventoryHost(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'codex' || normalized === 'openai') return 'codex';
+  if (['claude', 'claude-code', 'anthropic'].includes(normalized)) return 'claude-code';
+  if (normalized === 'cursor') return 'cursor';
+  if (normalized === 'taku') return 'taku';
+  return '';
+}
+
+function platformInventoryRoots(kind, workspaceRoot, cliHomes = resolveCliHomes(), invokingHost = '') {
   const directoryName = {
     subagent: 'agents',
     'slash-command': 'commands',
     workflow: 'workflows',
   }[kind] || `${kind}s`;
   const specs = [
-    { platform: 'codex', homeDir: '.codex' },
-    { platform: 'claude', homeDir: '.claude' },
-    { platform: 'taku', homeDir: '.taku' },
-    { platform: 'cursor', homeDir: '.cursor' },
+    { platform: 'codex', root: cliHomes.codex, workspaceDir: '.codex' },
+    { platform: 'claude', root: cliHomes.claude, workspaceDir: '.claude' },
+    { platform: 'taku', root: cliHomes.taku, workspaceDir: '.taku' },
+    { platform: 'cursor', root: cliHomes.cursor, workspaceDir: '.cursor' },
   ];
   const roots = [];
   for (const spec of specs) {
+    if (invokingHost && normalizeInventoryHost(spec.platform) !== invokingHost) continue;
     roots.push({
       source: `${spec.platform}-${kind}`,
-      path: path.join(home, spec.homeDir, directoryName),
+      path: path.join(spec.root, directoryName),
       maxDepth: 4,
       structured: true,
     });
@@ -244,9 +272,10 @@ function platformInventoryRoots(kind, workspaceRoot) {
   if (workspaceRoot) {
     const resolved = path.resolve(workspaceRoot);
     for (const spec of specs) {
+      if (invokingHost && normalizeInventoryHost(spec.platform) !== invokingHost) continue;
       roots.push({
         source: `workspace-${spec.platform}-${kind}`,
-        path: path.join(resolved, spec.homeDir, directoryName),
+        path: path.join(resolved, spec.workspaceDir, directoryName),
         maxDepth: 4,
         structured: true,
       });
@@ -298,16 +327,16 @@ async function scanStructuredInventoryRoots(roots, tools, rootsToScan, options =
   }
 }
 
-async function scanSubagentInventory(roots, tools, workspaceRoot) {
-  await scanStructuredInventoryRoots(roots, tools, platformInventoryRoots('subagent', workspaceRoot), {
+async function scanSubagentInventory(roots, tools, workspaceRoot, cliHomes, invokingHost) {
+  await scanStructuredInventoryRoots(roots, tools, platformInventoryRoots('subagent', workspaceRoot, cliHomes, invokingHost), {
     itemType: 'subagent',
     rootType: 'subagent-root',
     fallbackDescription: 'Delegated subagent.',
   });
 }
 
-async function scanSlashCommandInventory(roots, tools, workspaceRoot) {
-  await scanStructuredInventoryRoots(roots, tools, platformInventoryRoots('slash-command', workspaceRoot), {
+async function scanSlashCommandInventory(roots, tools, workspaceRoot, cliHomes, invokingHost) {
+  await scanStructuredInventoryRoots(roots, tools, platformInventoryRoots('slash-command', workspaceRoot, cliHomes, invokingHost), {
     itemType: 'slash-command',
     rootType: 'slash-command-root',
     fallbackDescription: 'Slash command.',
@@ -502,8 +531,8 @@ function parseSimpleKeyValueHeader(raw) {
   return result;
 }
 
-async function scanSkillInventory(roots, tools) {
-  for (const root of defaultToolRoots()) {
+async function scanSkillInventory(roots, tools, options) {
+  for (const root of defaultToolRoots(options)) {
     const rootExists = await isDirectory(root.path);
     roots.push({
       source: root.source,
@@ -520,8 +549,9 @@ async function scanSkillInventory(roots, tools) {
   }
 }
 
-async function scanCodexPluginInventory(roots, tools) {
-  const rootPath = path.join(getHomeDir(), '.codex', 'plugins', 'cache');
+async function scanCodexPluginInventory(roots, tools, cliHomes) {
+  const rootPath = path.join(cliHomes.codex, 'plugins', 'cache');
+  const pluginStatuses = await readCodexPluginStatuses(path.join(cliHomes.codex, 'config.toml'));
   const rootExists = await isDirectory(rootPath);
   roots.push({
     source: 'codex-plugin',
@@ -535,13 +565,49 @@ async function scanCodexPluginInventory(roots, tools) {
     include: (filePath) => filePath.endsWith(path.join('.codex-plugin', 'plugin.json')),
   });
   for (const filePath of pluginFiles) {
+    const pluginKey = codexPluginKeyFromCachePath(rootPath, filePath);
+    if (pluginStatuses.size > 0 && pluginStatuses.get(pluginKey) !== 'enabled') continue;
     const item = await readPluginManifest(filePath, 'codex-plugin');
     if (item) tools.push(item);
+    await scanDeclaredPluginResources(filePath, 'codex-plugin', tools);
   }
 }
 
-async function scanTakuPluginInventory(roots, tools) {
-  const rootPath = path.join(getHomeDir(), '.taku', 'plugins');
+function codexPluginKeyFromCachePath(cacheRoot, filePath) {
+  const parts = path.relative(cacheRoot, filePath).split(path.sep);
+  return parts.length >= 2 ? `${parts[1]}@${parts[0]}`.toLowerCase() : '';
+}
+
+async function readCodexPluginStatuses(filePath) {
+  let raw = '';
+  try {
+    raw = await fs.readFile(filePath, 'utf8');
+  } catch {
+    return new Map();
+  }
+  const statuses = new Map();
+  let currentKey = '';
+  for (const line of raw.split(/\r?\n/)) {
+    const section = line.match(/^\[plugins\."([^"]+)"\]\s*$/);
+    if (section) {
+      currentKey = section[1].trim().toLowerCase();
+      statuses.set(currentKey, 'disabled');
+      continue;
+    }
+    if (/^\s*\[/.test(line)) {
+      currentKey = '';
+      continue;
+    }
+    const enabled = line.match(/^\s*enabled\s*=\s*(true|false)\s*$/);
+    if (currentKey && enabled) {
+      statuses.set(currentKey, enabled[1] === 'true' ? 'enabled' : 'disabled');
+    }
+  }
+  return statuses;
+}
+
+async function scanTakuPluginInventory(roots, tools, cliHomes) {
+  const rootPath = path.join(cliHomes.taku, 'plugins');
   const rootExists = await isDirectory(rootPath);
   roots.push({
     source: 'taku-plugin',
@@ -561,8 +627,8 @@ async function scanTakuPluginInventory(roots, tools) {
   }
 }
 
-async function scanCursorPluginInventory(roots, tools) {
-  const rootPath = path.join(getHomeDir(), '.cursor', 'extensions');
+async function scanCursorPluginInventory(roots, tools, cliHomes) {
+  const rootPath = path.join(cliHomes.cursor, 'extensions');
   const rootExists = await isDirectory(rootPath);
   roots.push({
     source: 'cursor-plugin',
@@ -582,9 +648,9 @@ async function scanCursorPluginInventory(roots, tools) {
   }
 }
 
-async function scanClaudePluginInventory(roots, tools) {
-  const installedPath = path.join(getHomeDir(), '.claude', 'plugins', 'installed_plugins.json');
-  const cacheRoot = path.join(getHomeDir(), '.claude', 'plugins', 'cache');
+async function scanClaudePluginInventory(roots, tools, cliHomes) {
+  const installedPath = path.join(cliHomes.claude, 'plugins', 'installed_plugins.json');
+  const cacheRoot = path.join(cliHomes.claude, 'plugins', 'cache');
   const statusInfo = await readClaudePluginStatusInfo();
   roots.push({
     source: 'claude-plugin',
@@ -639,6 +705,9 @@ async function scanClaudePluginInventory(roots, tools) {
         availability: getClaudePluginAvailability(statusInfo, pluginKey),
       });
       if (item) tools.push(item);
+      await scanDeclaredPluginResources(filePath, 'claude-plugin', tools, {
+        availability: getClaudePluginAvailability(statusInfo, pluginKey),
+      });
       installPaths.add(path.dirname(path.dirname(filePath)));
     }
   }
@@ -647,6 +716,12 @@ async function scanClaudePluginInventory(roots, tools) {
     const pluginKey = claudePluginKeyFromInstallPath(cacheRoot, installPath);
     if (!shouldScanClaudePlugin(statusInfo, pluginKey)) continue;
     const availability = getClaudePluginAvailability(statusInfo, pluginKey);
+    await scanDeclaredPluginResources(
+      path.join(installPath, '.claude-plugin', 'plugin.json'),
+      'claude-plugin',
+      tools,
+      { availability },
+    );
     await scanClaudePluginWorkflows(installPath, tools, { availability });
     await scanMcpJsonFile(path.join(installPath, '.mcp.json'), 'claude-plugin-mcp', tools, undefined, { availability });
   }
@@ -758,6 +833,91 @@ async function readPluginManifest(filePath, source, extra = {}) {
   };
 }
 
+function declaredPluginResourcePaths(pluginRoot, value) {
+  const entries = Array.isArray(value) ? value : [value];
+  const paths = [];
+  for (const entry of entries) {
+    const raw = typeof entry === 'string'
+      ? entry
+      : entry && typeof entry === 'object' && typeof entry.path === 'string'
+        ? entry.path
+        : '';
+    if (!raw.trim()) continue;
+    const resolved = path.resolve(pluginRoot, raw.trim());
+    const relative = path.relative(pluginRoot, resolved);
+    if (relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))) {
+      paths.push(resolved);
+    }
+  }
+  return [...new Set(paths)];
+}
+
+async function isRealPathInside(root, candidate) {
+  try {
+    const [realRoot, realCandidate] = await Promise.all([fs.realpath(root), fs.realpath(candidate)]);
+    const relative = path.relative(realRoot, realCandidate);
+    return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
+  } catch {
+    return false;
+  }
+}
+
+async function scanDeclaredPluginResources(filePath, source, tools, extra = {}) {
+  const manifest = await readJsonFile(filePath);
+  if (!manifest) return;
+  const pluginRoot = path.dirname(path.dirname(filePath));
+  const pluginName = cleanText(manifest.name || manifest.title, 120) || path.basename(pluginRoot);
+
+  for (const skillRoot of declaredPluginResourcePaths(pluginRoot, manifest.skills)) {
+    if (!await isRealPathInside(pluginRoot, skillRoot)) continue;
+    const skillFiles = path.basename(skillRoot).toLowerCase() === 'skill.md'
+      ? [skillRoot]
+      : await walkForSkillFiles(skillRoot, { maxDepth: 5, maxFiles: 300 });
+    for (const skillFile of skillFiles) {
+      const item = await readSkillFile(skillFile, `${source}-skill`, extra);
+      if (item) tools.push(item);
+    }
+  }
+
+  if (manifest.apps && typeof manifest.apps === 'object' && !Array.isArray(manifest.apps)) {
+    tools.push(...await readPluginApps(filePath, manifest.apps, source, pluginName, extra));
+  }
+  for (const appPath of declaredPluginResourcePaths(pluginRoot, manifest.apps)) {
+    if (!await isRealPathInside(pluginRoot, appPath)) continue;
+    const appManifest = await readJsonFile(appPath);
+    if (!appManifest?.apps || typeof appManifest.apps !== 'object' || Array.isArray(appManifest.apps)) continue;
+    tools.push(...await readPluginApps(appPath, appManifest.apps, source, pluginName, extra));
+  }
+}
+
+async function readPluginApps(filePath, apps, source, pluginName, extra = {}) {
+  const items = [];
+  for (const [appKey, definition] of Object.entries(apps)) {
+    const app = definition && typeof definition === 'object' && !Array.isArray(definition) ? definition : {};
+    const name = cleanText(app.name || app.title || appKey, 120);
+    if (!name) continue;
+    const item = {
+      id: stableId(`${source}-app`, 'app', name, filePath),
+      type: 'app',
+      source: `${source}-app`,
+      name,
+      description: cleanText(app.description || app.summary || `App connection provided by ${pluginName}.`),
+      detectedFrom: path.basename(filePath),
+      ...extra,
+      localPath: filePath,
+    };
+    items.push({
+      ...item,
+      scanPreview: await jsonManifestScanPreview(item, filePath, {
+        name,
+        plugin: pluginName,
+        required: app.required === true,
+      }),
+    });
+  }
+  return items;
+}
+
 async function readCursorPluginManifest(filePath) {
   const manifest = await readJsonFile(filePath);
   if (!manifest || !isAiRelevantCursorExtension(manifest)) return null;
@@ -842,16 +1002,20 @@ async function readMarkdownWorkflow(filePath, source, type = 'workflow', fallbac
   }
 }
 
-async function scanMcpInventory(roots, tools) {
-  const home = getHomeDir();
-  await scanCodexTomlInventory(path.join(home, '.codex', 'config.toml'), roots, tools);
-  await scanMcpJsonFile(path.join(home, '.claude', 'settings.json'), 'claude-mcp', tools, roots);
-  await scanMcpJsonFile(path.join(home, '.claude', 'config.json'), 'claude-mcp', tools, roots);
-  await scanMcpJsonFile(path.join(home, '.cursor', 'mcp.json'), 'cursor-mcp', tools, roots);
+async function scanMcpInventory(roots, tools, cliHomes, invokingHost) {
+  if (!invokingHost || invokingHost === 'codex') {
+    await scanCodexTomlInventory(path.join(cliHomes.codex, 'config.toml'), roots, tools);
+  }
+  if (!invokingHost || invokingHost === 'claude-code') {
+    await scanMcpJsonFile(path.join(cliHomes.claude, 'settings.json'), 'claude-mcp', tools, roots);
+    await scanMcpJsonFile(path.join(cliHomes.claude, 'config.json'), 'claude-mcp', tools, roots);
+  }
+  if (invokingHost && invokingHost !== 'cursor') return;
+  await scanMcpJsonFile(path.join(cliHomes.cursor, 'mcp.json'), 'cursor-mcp', tools, roots);
 
   const cursorRoots = [
-    path.join(home, '.cursor', 'extensions'),
-    path.join(home, '.cursor', 'projects'),
+    path.join(cliHomes.cursor, 'extensions'),
+    path.join(cliHomes.cursor, 'projects'),
   ];
   for (const rootPath of cursorRoots) {
     const rootExists = await isDirectory(rootPath);
@@ -945,10 +1109,12 @@ function createMcpItem(name, source, filePath, detectedFrom, extra = {}, serverC
   };
 }
 
-async function scanWorkflowInventory(roots, tools, workspaceRoot) {
+async function scanWorkflowInventory(roots, tools, workspaceRoot, cliHomes, invokingHost) {
   const rootsToScan = [
-    ...platformInventoryRoots('workflow', workspaceRoot),
-    { source: 'workspace-workflow', path: workspaceRoot || process.cwd(), maxDepth: 3, structured: false },
+    ...platformInventoryRoots('workflow', workspaceRoot, cliHomes, invokingHost),
+    ...(!invokingHost
+      ? [{ source: 'workspace-workflow', path: workspaceRoot || process.cwd(), maxDepth: 3, structured: false }]
+      : []),
   ];
   await scanStructuredInventoryRoots(roots, tools, rootsToScan, {
     itemType: 'workflow',
@@ -957,11 +1123,12 @@ async function scanWorkflowInventory(roots, tools, workspaceRoot) {
   });
 }
 
-async function scanAgentInstructionInventory(roots, tools, workspaceRoot) {
-  const home = getHomeDir();
+async function scanAgentInstructionInventory(roots, tools, workspaceRoot, cliHomes, invokingHost) {
   const rootsToScan = [
     { source: 'workspace-agents-md', path: workspaceRoot || process.cwd(), maxDepth: 3 },
-    { source: 'codex-agents-md', path: path.join(home, '.codex'), maxDepth: 2 },
+    ...(!invokingHost || invokingHost === 'codex'
+      ? [{ source: 'codex-agents-md', path: cliHomes.codex, maxDepth: 2 }]
+      : []),
   ];
   const names = new Set(['agents.md', 'agent.md']);
   for (const root of rootsToScan) {

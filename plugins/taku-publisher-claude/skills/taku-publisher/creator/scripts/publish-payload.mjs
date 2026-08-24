@@ -243,7 +243,13 @@ function githubManifestFromItem(item) {
   }
 }
 
-async function createPublicInventoryItem(entry, privateInventory) {
+async function createPublicInventoryItem(entry, privateInventory, options = {}) {
+  const publishToCommunity = options.publishToCommunity === true;
+  if (!publishToCommunity) {
+    return toPublicInventoryImportItem(entry.item, entry.item?.role, {
+      publishToCommunity: false,
+    });
+  }
   const referenceMetadata = await createReferenceInstallMetadata(entry.sourceItem, privateInventory, entry.item?.type);
   const publishItem = referenceMetadata
     ? {
@@ -254,7 +260,9 @@ async function createPublicInventoryItem(entry, privateInventory) {
         },
       }
     : entry.item;
-  const item = toPublicInventoryImportItem(publishItem);
+  const item = toPublicInventoryImportItem(publishItem, publishItem?.role, {
+    publishToCommunity,
+  });
   // Public GitHub tools are references, not user-authored local packages. Once
   // reference metadata is available, do not inspect or inline their install
   // directories. Explicit local uploads still take the packaging path below.
@@ -270,10 +278,21 @@ async function createPublicInventoryItem(entry, privateInventory) {
     inlinePackage = await createInlineSkillPackage(entry.sourceItem, privateInventory);
   } catch (error) {
     if (!isInlineSkillPackageSafetyError(error)) throw error;
-    if (isExplicitLocalInstallable(entry.sourceItem)) throw error;
-    return withSkippedInlinePackageMetadata(item, error);
+    // An explicitly selected Community Skill must either carry a verified
+    // installable package or fail the publish. Silently downgrading it to a
+    // reference creates a public card that cannot be installed or run.
+    throw error;
   }
   if (inlinePackage) return withInlinePackageInstallability(item, inlinePackage);
+  if (publishToCommunity && normalizeStaxDisplayItemType(entry.sourceItem?.type, '') === 'skill') {
+    const name = publicText(
+      entry.sourceItem?.customTitle || entry.sourceItem?.title || entry.sourceItem?.name,
+      160
+    ) || 'selected skill';
+    throw new Error(
+      `Refusing to publish Community Skill "${name}" without an install package.`
+    );
+  }
   if (isExplicitLocalInstallable(entry.sourceItem)) {
     const name = publicText(
       entry.sourceItem?.customTitle || entry.sourceItem?.title || entry.sourceItem?.name,
@@ -1465,16 +1484,21 @@ export async function createStaxCreatorPublishPayload(draft, privateInventory, o
   const builtSourceKeys = new Set(
     [...madeSourceItems, ...remixedSourceItems].map(publicInventorySourceKey).filter(Boolean)
   );
-  const baseUsingSourceItems = creatorToolSelectionIsCustom
-    ? []
-    : getDraftSectionItemsByCanonicalId(draft, 'using-tools');
+  const communitySourceKeys = new Set(
+    creatorToolSourceItems.map(publicInventorySourceKey).filter(Boolean)
+  );
+  const baseUsingSourceItems = getDraftSectionItemsByCanonicalId(draft, 'using-tools');
   const usingSourceItems = dedupePublicInventorySourceItems([
     ...baseUsingSourceItems,
     ...creatorToolSourceItems.filter((item) => creatorToolPublishRole(item) === 'using'),
   ]).filter((item) => !builtSourceKeys.has(publicInventorySourceKey(item)));
   const usingEntries = usingSourceItems
     .map((item) => toPublishDraftEntry(item, 'using', listingDrafts))
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((entry) => ({
+      ...entry,
+      publishToCommunity: communitySourceKeys.has(publicInventorySourceKey(entry.sourceItem)),
+    }));
   const madeEntries = madeSourceItems
     .map((item) => toPublishDraftEntry(item, 'made', listingDrafts))
     .filter(Boolean);
@@ -1483,13 +1507,19 @@ export async function createStaxCreatorPublishPayload(draft, privateInventory, o
     .filter(Boolean);
   const selectedItems = [...usingEntries, ...madeEntries, ...remixedEntries].map((entry) => entry.item);
   const usingTools = (await Promise.all(
-    usingEntries.map((entry) => createPublicInventoryItem(entry, privateInventory))
+    usingEntries.map((entry) => createPublicInventoryItem(entry, privateInventory, {
+      publishToCommunity: entry.publishToCommunity,
+    }))
   )).filter(Boolean);
   const madeItems = (await Promise.all(
-    madeEntries.map((entry) => createPublicInventoryItem(entry, privateInventory))
+    madeEntries.map((entry) => createPublicInventoryItem(entry, privateInventory, {
+      publishToCommunity: true,
+    }))
   )).filter(Boolean);
   const remixedItems = (await Promise.all(
-    remixedEntries.map((entry) => createPublicInventoryItem(entry, privateInventory))
+    remixedEntries.map((entry) => createPublicInventoryItem(entry, privateInventory, {
+      publishToCommunity: true,
+    }))
   )).filter(Boolean);
   const builtItems = [...madeItems, ...remixedItems];
   const usage = createPublicUsageSummary(draft.stats?.usage);

@@ -153,7 +153,7 @@ async function scan(parsed, options = {}) {
     explicitHost: getFlag(parsed, 'ai-host') || getFlag(parsed, 'creator-host'),
     moduleUrl: import.meta.url,
   });
-  const used = await scanUsedTools(workspaceRoot);
+  const used = await scanUsedTools(workspaceRoot, { invokingHost: invokingAiClient });
   const referencePricing = await referencePricingPromise;
   const [ownedCreations, usage] = await Promise.all([
     includeCreationCandidates

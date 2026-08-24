@@ -3,17 +3,6 @@
 This document records third-party software and assets bundled with Taku
 Publisher. It does not change the license of Taku-owned source code or assets.
 
-## qrcode-generator
-
-The Publisher includes `qrcode-generator` 2.0.4 for local QR matrix generation.
-
-- Copyright © 2009 Kazuhiko Arase
-- License: MIT
-- Source: <https://github.com/kazuhikoarase/qrcode-generator>
-
-The upstream copyright and license notice is retained in the bundled package
-source.
-
 ## Fonts
 
 The font files under `creator/assets/fonts/` are distributed under the SIL Open
@@ -56,6 +45,15 @@ setting any of the following environment variables to a true value:
 Generated Codex and Claude Code plugins include a minimal TypeScript runtime.
 Its `LICENSE.txt` and `ThirdPartyNoticeText.txt` files are copied alongside the
 runtime in `node_modules/typescript/`.
+
+## QR Code Generator
+
+Generated Codex and Claude Code plugins include `qrcode-generator` 2.0.4 by
+Kazuhiko Arase under the MIT License. The upstream copyright and license notice
+is retained in `node_modules/qrcode-generator/dist/qrcode.mjs` and recorded in
+this notice.
+
+Upstream: <https://github.com/kazuhikoarase/qrcode-generator>
 
 ## Product logos and Taku artwork
 

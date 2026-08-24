@@ -267,12 +267,31 @@ body{overflow-x:hidden}
 @media(max-width:620px){.authgrid{grid-template-columns:1fr}.authgate h2{font-size:28px}}
 .revglow{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);width:900px;height:600px;border-radius:50%;
   background:radial-gradient(50% 50% at 50% 50%, var(--rg,rgba(240,100,30,.35)), transparent 70%);filter:blur(40px)}
-.reveyebrow{font-family:'Space Mono';font-size:9.5px;letter-spacing:.34em;color:rgba(255,255,255,.45);z-index:2}
-.revtitle{font-family:'Space Grotesk';font-weight:700;font-size:46px;letter-spacing:-.03em;margin:10px 0 30px;z-index:2;
-  background:linear-gradient(120deg,#fff,rgba(255,255,255,.6));-webkit-background-clip:text;background-clip:text;color:transparent}
-#revhero{position:relative;z-index:2;animation:stampin .6s cubic-bezier(.2,1.4,.4,1)}
 @keyframes stampin{0%{transform:scale(1.5) rotate(-5deg);opacity:0}60%{transform:scale(.97) rotate(1deg);opacity:1}100%{transform:scale(1) rotate(0)}}
-.revser{font-family:'Space Mono';font-size:11px;letter-spacing:.3em;color:rgba(255,255,255,.6);margin:24px 0 26px;z-index:2}
+.cslide{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;text-align:center;
+  width:min(760px,92vw);min-height:540px;justify-content:center;cursor:pointer;animation:msin .4s cubic-bezier(.3,1.3,.5,1)}
+.cfooter{position:absolute;bottom:28px;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:14px;z-index:3}
+.cdots{display:flex;gap:7px;max-width:min(760px,82vw);overflow-x:auto;padding:3px 2px;scrollbar-width:none}
+.cdots::-webkit-scrollbar{display:none}
+.cdots i{width:7px;height:7px;border-radius:2px;background:rgba(255,255,255,.2);flex:none}
+.cdots i.on{background:#C9F24C}
+.ceye{font-family:'Space Mono';font-size:9.5px;letter-spacing:.3em;color:rgba(255,255,255,.45)}
+.ctitle{font-family:'Space Grotesk';font-weight:700;font-size:42px;letter-spacing:-.03em;margin:8px 0 4px;
+  background:linear-gradient(120deg,#fff,rgba(255,255,255,.6));-webkit-background-clip:text;background-clip:text;color:transparent}
+.ctitle em{font-family:'Instrument Serif';font-style:italic;font-weight:400}
+.ctag{font-family:'Space Mono';font-size:12px;letter-spacing:.06em;color:rgba(255,255,255,.7);margin:6px 0 18px;max-width:520px;line-height:1.6}
+.cfig{height:250px;max-width:70vw;object-fit:contain;filter:drop-shadow(4px 12px 12px rgba(0,0,0,.45));animation:figfloat 3.4s ease-in-out infinite}
+@keyframes figfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+.cletters{display:flex;gap:9px;margin-top:14px}
+.cletters b{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  font-family:'Space Grotesk';font-weight:700;font-size:19px;box-shadow:4px 5px 0 rgba(0,0,0,.5);
+  opacity:0;animation:popin .4s cubic-bezier(.25,1.2,.4,1) forwards}
+.cblock{margin:6px 0 14px;animation:stampin .55s cubic-bezier(.2,1.4,.4,1)}
+.cblock .guidestage{padding:10px 14px 14px 8px;background:transparent}
+.cmeaning{font-family:'DM Sans';font-size:14px;color:rgba(255,255,255,.72);max-width:580px;line-height:1.55}
+.csource{font-family:'Space Mono';font-size:8.5px;letter-spacing:.1em;color:rgba(255,255,255,.38);margin-top:9px;max-width:620px;line-height:1.5}
+.ccount{font-family:'Space Mono';font-size:9px;letter-spacing:.24em;color:rgba(255,255,255,.4);margin-top:14px}
+@media(max-height:700px){.cslide{min-height:470px;transform:scale(.88)}.cfooter{bottom:16px}.cfig{height:205px}}
 .hud{position:fixed;top:0;left:0;right:0;z-index:300;display:flex;align-items:center;gap:14px;padding:16px 26px;pointer-events:none}
 .hud>*{pointer-events:auto}
 .hud .tt{font-family:'Space Grotesk';font-weight:700;font-size:15px;letter-spacing:-.02em}
@@ -356,6 +375,21 @@ body{overflow-x:hidden}
 .btn2.big{padding:14px 30px;font-size:12px}
 .cap{width:min(620px,86vw);box-sizing:border-box;margin-top:20px;background:#0C0C10;border:1px solid rgba(255,255,255,.12);border-radius:12px;
   color:#fff;font-family:'DM Sans';font-size:13px;padding:12px 16px;outline:none;text-align:center}
+.communitypick{width:min(620px,86vw);box-sizing:border-box;margin-top:18px;padding:15px 16px;border:1px solid rgba(255,255,255,.12);border-radius:14px;background:rgba(255,255,255,.035);text-align:left}
+.communitypick[hidden]{display:none}
+.communitypickhead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:10px}
+.communitypickhead b{display:block;font-family:'Space Mono';font-size:9px;letter-spacing:.18em;color:#C9F24C}
+.communitypickhead span{display:block;margin-top:5px;font-family:'DM Sans';font-size:12px;line-height:1.45;color:rgba(255,255,255,.5)}
+.communitypickcount{flex:none!important;margin:0!important;padding:5px 9px;border-radius:999px;background:rgba(201,242,76,.11);color:#C9F24C!important;font-family:'Space Mono'!important;font-size:9px!important}
+.communitypicklist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:180px;overflow:auto}
+.communitytool{display:flex;align-items:center;gap:10px;min-width:0;padding:9px 10px;border:1px solid rgba(255,255,255,.09);border-radius:10px;background:#111118;cursor:pointer}
+.communitytool:has(input:checked){border-color:rgba(201,242,76,.48);background:rgba(201,242,76,.07)}
+.communitytool.is-disabled{cursor:not-allowed;opacity:.48}
+.communitytool input{accent-color:#C9F24C}
+.communitytoolcopy{min-width:0;display:block}
+.communitytoolcopy strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'Space Grotesk';font-size:12px;color:#fff}
+.communitytoolcopy small{display:block;margin-top:3px;font-family:'Space Mono';font-size:8px;letter-spacing:.05em;color:rgba(255,255,255,.42)}
+@media(max-width:620px){.communitypicklist{grid-template-columns:1fr}}
 .mrow{display:flex;gap:10px;margin-top:22px;justify-content:center;flex-wrap:wrap}
 .mclose{position:fixed;top:22px;right:28px;font-family:'Space Mono';font-size:11px;letter-spacing:.1em;color:rgba(255,255,255,.6);cursor:pointer;z-index:510}
 .mclose:hover{color:#fff}
@@ -400,11 +434,11 @@ body{overflow-x:hidden}
 </div>
 <div id="revealov">
   <div class="revglow" id="revglow"></div>
-  <div class="reveyebrow">GENESIS EDITION · MINTED TODAY</div>
-  <h1 class="revtitle">Your Stax is born.</h1>
-  <div id="revhero"></div>
-  <div class="revser" id="revser">Nº 000417</div>
-  <button class="btn2 pri big" id="renter">ENTER YOUR STUDIO →</button>
+  <div class="cslide" id="cslide"></div>
+  <div class="cfooter">
+    <div class="cdots" id="cdots"></div>
+    <button class="btn2" id="cskip">SKIP INTRO ▸</button>
+  </div>
 </div>
 <div id="shareov">
   <div class="shhud">
@@ -496,6 +530,13 @@ body{overflow-x:hidden}
       <svg class="spk s1" viewBox="0 0 20 20"><path d="M10 0 Q11 9 20 10 Q11 11 10 20 Q9 11 0 10 Q9 9 10 0Z"/></svg>
       <svg class="spk s2" viewBox="0 0 20 20"><path d="M10 0 Q11 9 20 10 Q11 11 10 20 Q9 11 0 10 Q9 9 10 0Z"/></svg>
       <div class="pvbox" id="pvbox"><div class="pv" id="pv"></div></div>
+    </div>
+    <div class="communitypick" id="communitypick" hidden>
+      <div class="communitypickhead">
+        <div><b>COMMUNITY · OPTIONAL</b><span>默认只显示在 Profile。只有你勾选的 Skill 才会发布到 Community；每次最多发布一个。</span></div>
+        <span class="communitypickcount" id="communitypickcount">0 SELECTED</span>
+      </div>
+      <div class="communitypicklist" id="communitypicklist"></div>
     </div>
     <div class="mrow">
       <button class="btn2 pri big" id="mpost">PUBLISH STAX</button>
@@ -639,21 +680,9 @@ R.aura=(w,h)=>{
 };
 
 /* ============ 02 CARRIERS ============ *//* ============ 02 CARRIERS ============ */
-R.basic=(w,h)=>{
-  const value=safeText(String(PD.basicVal||'0').trim());
-  const valueSize=h*(value.length>3?0.27:value.length>2?0.31:0.35);
-  const daysSize=F(h*0.12);
-  const groupW=value.length*valueSize*0.55+w*0.045+daysSize*2.3;
-  const groupX=(w-groupW)/2;
-  const valueY=h*0.57;
-  return svgWrap(w,h,`
-    ${shadowed(rr(w,h),C.violet)}
-    <circle cx="${w*0.19}" cy="${h*0.18}" r="${h*0.043}" fill="${C.lime}"/>
-    <text x="${w*0.31}" y="${h*0.205}" font-family="Space Mono" font-size="${F(h*0.085)}" letter-spacing="1.5" fill="#17123A">LIVE</text>
-    <text x="${groupX}" y="${valueY}" font-family="Space Grotesk" font-weight="700" font-size="${valueSize}" letter-spacing="-1.5" fill="#17123A">${value}</text>
-    <text x="${groupX+value.length*valueSize*0.55+w*0.045}" y="${valueY}" font-family="Space Grotesk" font-weight="700" font-size="${daysSize}" letter-spacing="-1" fill="#17123A">DAYS</text>
-    <text x="${w*0.5}" y="${h*0.81}" text-anchor="middle" font-family="Space Grotesk" font-weight="700" font-size="${F(h*0.145)}" letter-spacing="1.1" fill="#17123A">ON TAKU</text>`);
-};
+R.basic=(w,h)=>svgWrap(w,h,shadowed(rr(w,h),C.violet))+
+  LBL('left:11px','top:10px',safeText(PD.basicLbl||'DAYS · ON TAKU'),'rgba(23,18,58,.62)',h*0.085)+
+  `<div class="ct v" style="left:11px;bottom:${h*0.13}px;font-size:${h*0.4}px;color:#17123A">${safeText(PD.basicVal||'0')}</div>`;
 R.stadium=(w,h)=>{
   const d=`M${h/2},0 H${w-h/2} A${h/2},${h/2} 0 0 1 ${w-h/2},${h} H${h/2} A${h/2},${h/2} 0 0 1 ${h/2},0 Z`;
   const rawDisplay=String(PD.stadium?.tokensAllTime||PD.stadium?.tokensTotal||'0').trim().toUpperCase();
@@ -893,36 +922,33 @@ R.peaks=(w,h)=>{
   `<div class="ct v" style="right:13px;top:${h-base*0.46}px;transform:translateY(-50%);font-size:${h*0.18}px;color:#3A2803">${safeText(amount)}${suffix?`<small>${safeText(suffix)}</small>`:''}</div>`;
 };
 
-/* SEAL 2×2 — serial card */
+/* SEAL 2×2 — circular block: serial/edition */
 R.seal=(w,h)=>{
   const serialRaw=String(PD.seal?.serial||'UNMINTED').trim();
-  const serial=safeText(serialRaw.replace(/^N[º°]\s*/i,'N°').replace(/\s+/g,''));
-  const corner=Math.max(7,Math.min(10,Math.min(w,h)*0.032));
-  const pad=Math.max(16,Math.min(w,h)*0.09);
-  const dot=Math.max(8,Math.min(w,h)*0.045);
-  const labelSize=F(h*0.064);
-  const serialSize=Math.max(30,Math.min(h*0.185,(w-pad*2)/Math.max(7,serial.length)*1.44));
-  const metaSize=F(h*0.055);
-  const lineY=h*0.73;
-  const ink='#5A5A5D',muted='rgba(86,84,86,.68)';
+  const serialDigits=serialRaw.match(/\d+$/)?.[0];
+  const serial=safeText(serialDigits?`Nº ${serialDigits}`:serialRaw);
+  const cx=w/2,cy=h/2,R0=Math.min(w,h)*0.44;
   return svgWrap(w,h,`
-    <rect x="0" y="0" width="${w}" height="${h}" rx="${corner}" fill="${SH}" transform="translate(${DX},${DY})"/>
-    <rect x="0" y="0" width="${w}" height="${h}" rx="${corner}" fill="${C.cream}"/>
-    <circle cx="${pad+dot/2}" cy="${h*0.125}" r="${dot/2}" fill="${C.yellow}"/>
-    <text x="${pad+dot+11}" y="${h*0.15}" font-family="Space Mono" font-size="${labelSize}" letter-spacing=".6" fill="${muted}">SERIAL</text>
-    <text x="${pad}" y="${h*0.39}" font-family="Pixelify Sans" font-weight="700" font-size="${serialSize}" letter-spacing=".5" fill="${ink}">${serial}</text>
-    <text x="${pad}" y="${h*0.52}" font-family="Space Mono" font-size="${metaSize}" letter-spacing=".9" fill="${muted}">TAKU STAX</text>
-    <line x1="${pad+5}" x2="${w-pad-5}" y1="${lineY}" y2="${lineY}" stroke="rgba(86,84,86,.18)" stroke-width="1.4"/>
-    <text x="${pad+5}" y="${h*0.87}" font-family="Space Mono" font-size="${metaSize}" letter-spacing=".3" fill="${muted}">GENESIS EDITION</text>`);
+    <circle cx="${cx}" cy="${cy}" r="${R0}" fill="${SH}" transform="translate(${DX},${DY})"/>
+    <circle cx="${cx}" cy="${cy}" r="${R0}" fill="${C.cream}"/>
+    <circle cx="${cx}" cy="${cy}" r="${R0-5}" fill="none" stroke="rgba(20,20,16,.7)" stroke-width="1.6"/>
+    <circle cx="${cx}" cy="${cy}" r="${R0-9.5}" fill="none" stroke="rgba(20,20,16,.28)" stroke-width="1"/>
+    <text x="${cx}" y="${cy-R0*0.42}" text-anchor="middle" font-family="Space Mono" font-weight="700" font-size="${F(h*0.048)}" letter-spacing="3.4" fill="rgba(20,20,16,.66)">TAKU STAX</text>
+    <line x1="${cx-R0*0.5}" y1="${cy-R0*0.22}" x2="${cx+R0*0.5}" y2="${cy-R0*0.22}" stroke="rgba(20,20,16,.22)" stroke-width="1"/>
+    <text x="${cx}" y="${cy+h*0.035}" text-anchor="middle" font-family="Space Grotesk" font-weight="700" font-size="${h*0.125}" letter-spacing="-.5" fill="#141410">${serial}</text>
+    <text x="${cx}" y="${cy+R0*0.34}" text-anchor="middle" font-family="Space Mono" font-size="${F(h*0.042)}" letter-spacing="2.6" fill="rgba(20,20,16,.55)">SERIAL</text>
+    <line x1="${cx-R0*0.5}" y1="${cy+R0*0.46}" x2="${cx+R0*0.5}" y2="${cy+R0*0.46}" stroke="rgba(20,20,16,.22)" stroke-width="1"/>
+    <text x="${cx}" y="${cy+R0*0.68}" text-anchor="middle" font-family="Space Mono" font-size="${F(h*0.04)}" letter-spacing="2.2" fill="rgba(20,20,16,.5)">GENESIS EDITION</text>`);
 };
+/* QR 2×2 — locally generated, scannable profile or Stax card link */
 R.qr=(w,h)=>{
   const data=PD.qr||{};
   const size=Math.max(0,Math.floor(Number(data.size)||0));
   const matrix=String(data.matrix||'');
   const valid=size>=21&&matrix.length===size*size&&/^[01]+$/.test(matrix);
-  const quiet=4,total=(valid?size:21)+quiet*2;
-  const side=Math.min(w*0.86,h*0.68);
-  const module=side/total;
+  const quiet=4,total=size+quiet*2;
+  const side=Math.min(w*0.7,h*0.7);
+  const module=valid?side/total:0;
   const qrSide=module*total;
   const qx=(w-qrSide)/2,qy=h*0.13;
   let path='';
@@ -1070,19 +1096,6 @@ function modelDisplayName(name){
   if(lower.includes('grok'))return withoutVendor.toUpperCase();
   if(lower.includes('llama'))return withoutVendor.toUpperCase();
   return normalized.toUpperCase()||'MODEL';
-}
-function isCodexModel(name){
-  const text=String(name||'').toUpperCase();
-  return text.includes('GPT')||text.includes('OPENAI')||text.includes('CODEX')||text.includes('O1')||text.includes('O3')||text.includes('O4');
-}
-function modelIconSvg(name,x,y,r,color){
-  if(isCodexModel(name)&&ART.ic_codex){
-    const s=r*2.08,x0=x-s/2,y0=y-s/2;
-    return `<image href="${ART.ic_codex}" x="${x0.toFixed(1)}" y="${y0.toFixed(1)}" width="${s.toFixed(1)}" height="${s.toFixed(1)}" preserveAspectRatio="xMidYMid meet"/>`;
-  }
-  const badge=safeText(modelBadgeLabel(name));
-  return `<circle cx="${x}" cy="${y}" r="${r}" fill="${color}"/>
-    <text x="${x}" y="${y+r*0.38}" text-anchor="middle" font-family="Space Grotesk" font-weight="700" font-size="${F(r*1.35)}" fill="#111116">${badge}</text>`;
 }
 function percentParts(label){
   const text=String(label||'').trim();
@@ -1589,8 +1602,8 @@ R.trend=(w,h)=>{
     `<g transform="translate(${ax},${ay}) rotate(${up?-38:38})">
        <path d="${ar}" fill="${color}" stroke="${color}" stroke-width="5" stroke-linejoin="round"/>
      </g>`))+
-  `<div class="ct" style="left:11px;top:11px;font-family:${SM};font-size:${F(h*0.041)}px;line-height:1;letter-spacing:.12em;color:rgba(255,255,255,.55);white-space:nowrap">LOCAL<br>TREND</div>
-   <div class="ct" style="left:11px;top:${h*0.27}px;font-family:${SM};font-size:${F(h*0.043)}px;letter-spacing:.08em;color:rgba(255,255,255,.38)">VS PREV 6D</div>
+  `<div class="ct" style="left:11px;top:11px;font-family:${SM};font-size:${Math.max(7,h*0.037)}px;line-height:1;letter-spacing:.1em;color:rgba(255,255,255,.55);white-space:nowrap">LOCAL TREND</div>
+   <div class="ct" style="left:11px;top:${h*0.19}px;font-family:${SM};font-size:${Math.max(6.5,h*0.034)}px;letter-spacing:.07em;color:rgba(255,255,255,.38);white-space:nowrap">VS PREV 6D</div>
    <div class="ct v" style="left:11px;bottom:${h*0.12}px;font-size:${h*0.25}px;color:${color}">${safeText(display)}</div>`;
 };
 /* TALLY 2x1: tally-mark counter. */
@@ -1727,7 +1740,7 @@ const GUIDE_DESCRIPTIONS={
 const GUIDE_SOURCE_LABELS={
   'publisher.persona':'Publisher persona summary',
   'publisher.ai_identity':'Primary AI identity',
-  'publisher.profile_link':'Public Taku profile or Stax link',
+  'publisher.profile_link':'Public Taku profile link',
   'publisher.usage.sources':'Local AI usage sources',
   'publisher.local_usage':'Local usage logs',
   'publisher.local_activity':'Local activity logs',
@@ -1753,7 +1766,7 @@ function guideSourceDetail(source,block){
   if(raw.startsWith('publisher.local_activity'))return 'Computed from local session, build, and tool-call signals. Only days found in readable local logs are colored; missing local history is not treated as zero.';
   if(raw==='publisher.persona')return 'Generated from the local persona scan and normalized into display-safe labels, definitions, axes, and badges.';
   if(raw==='publisher.ai_identity')return 'Primary AI defaults to the Taku Stax host adapter. Other locally detected AI clients can be selected explicitly; model usage is only a legacy fallback.';
-  if(raw==='publisher.profile_link')return 'Generated locally from the public Taku username. The QR target can be switched between the public profile and public Stax card.';
+  if(raw==='publisher.profile_link')return 'Generated locally from the public Taku username. The QR target can be switched between the profile page and the Stax card page.';
   if(raw==='publisher.usage.sources')return 'Detected from local AI tool usage sources, then reduced to model/tool family labels.';
   if(raw==='publisher.inventory')return 'Built from locally detected or user-selected tools. Public output keeps names and categories, not local paths.';
   if(raw==='publisher.activity_snapshot')return 'Combines local prompts/builds with trusted Taku ship stats when the account is connected.';
@@ -2302,6 +2315,64 @@ document.getElementById('bclear').addEventListener('click',()=>{
 });
 /* publish */
 const modal=document.getElementById('modal');
+let COMMUNITY_TOOLS=[];
+function selectedCommunityToolCount(){return COMMUNITY_TOOLS.filter(tool=>tool&&tool.supported&&tool.selected).length;}
+function refreshPublishButtonLabel(){
+  const primary=document.getElementById('mpost');
+  if(!primary)return;
+  const count=selectedCommunityToolCount();
+  const base=STAX_PUBLICATION&&STAX_PUBLICATION.published?'REPUBLISH STAX':'PUBLISH STAX';
+  primary.textContent=count?base+' + '+count+' SKILL'+(count===1?'':'S'):base;
+  primary.dataset.mode='publish';
+}
+function renderCommunityPicker(){
+  const panel=document.getElementById('communitypick');
+  const list=document.getElementById('communitypicklist');
+  const count=document.getElementById('communitypickcount');
+  const source=(window.__TAKU_STAX_DATA__||{}).communityTools;
+  COMMUNITY_TOOLS=Array.isArray(source)?source.map(tool=>({...tool})):[];
+  if(!panel||!list)return;
+  panel.hidden=!COMMUNITY_TOOLS.length;
+  list.replaceChildren(...COMMUNITY_TOOLS.map(tool=>{
+    const label=document.createElement('label');
+    label.className='communitytool'+(tool.supported?'':' is-disabled');
+    const input=document.createElement('input');
+    input.type='checkbox';
+    input.checked=Boolean(tool.selected&&tool.supported);
+    input.disabled=!tool.supported;
+    input.dataset.communityToolId=String(tool.id||'');
+    const copy=document.createElement('span');copy.className='communitytoolcopy';
+    const title=document.createElement('strong');title.textContent=String(tool.name||'Untitled');
+    const meta=document.createElement('small');meta.textContent=String(tool.type||'tool').toUpperCase()+' · '+String(tool.reason||'');
+    copy.append(title,meta);label.append(input,copy);return label;
+  }));
+  const updateCount=()=>{const value=selectedCommunityToolCount();if(count)count.textContent=String(value)+' SELECTED';refreshPublishButtonLabel();};
+  list.querySelectorAll('[data-community-tool-id]').forEach(input=>input.addEventListener('change',async()=>{
+    const id=String(input.dataset.communityToolId||'');
+    const tool=COMMUNITY_TOOLS.find(entry=>String(entry.id||'')===id);
+    if(input.checked){
+      COMMUNITY_TOOLS.forEach(entry=>{if(String(entry.id||'')!==id)entry.selected=false;});
+      list.querySelectorAll('[data-community-tool-id]').forEach(node=>{if(node!==input)node.checked=false;});
+    }
+    if(tool)tool.selected=input.checked;
+    updateCount();
+    const inputs=Array.from(list.querySelectorAll('[data-community-tool-id]'));
+    inputs.forEach(node=>{node.disabled=true;});
+    try{
+      const creatorToolIds=COMMUNITY_TOOLS.filter(entry=>entry.supported&&entry.selected).map(entry=>entry.id);
+      const response=await fetch('/api/creator-tools',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({creatorToolIds})});
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok||result.ok===false)throw new Error(result.error||'COMMUNITY SELECTION FAILED');
+      const accepted=new Set(Array.isArray(result.creatorToolIds)?result.creatorToolIds:creatorToolIds);
+      COMMUNITY_TOOLS.forEach(entry=>{entry.selected=entry.supported&&accepted.has(entry.id);});
+      inputs.forEach(node=>{const entry=COMMUNITY_TOOLS.find(item=>String(item.id||'')===String(node.dataset.communityToolId||''));node.checked=Boolean(entry&&entry.selected);});
+      updateCount();toast(accepted.size?'COMMUNITY SELECTION SAVED':'PROFILE ONLY · NO COMMUNITY TOOLS');
+    }catch(error){
+      if(tool)tool.selected=!input.checked;input.checked=!input.checked;updateCount();toast(error&&error.message?error.message:'COMMUNITY SELECTION FAILED');
+    }finally{inputs.forEach(node=>{const entry=COMMUNITY_TOOLS.find(item=>String(item.id||'')===String(node.dataset.communityToolId||''));node.disabled=!entry||!entry.supported;});}
+  }));
+  updateCount();
+}
 document.getElementById('bpub').addEventListener('click',()=>{
   if(!placedP.some(p=>p.key==='hero')){toast('NEED YOUR HERO BLOCK FIRST');return;}
   const P=PERSONAS[CURP];
@@ -2319,6 +2390,7 @@ document.getElementById('bpub').addEventListener('click',()=>{
   pv.style.transform='scale('+s+')';
   pvbox.style.width=(940*s)+'px'; pvbox.style.height=(796*s)+'px';
   pv.innerHTML='';pv.appendChild(clone);
+  renderCommunityPicker();
   modal.classList.add('on');
 });
 document.getElementById('mclose').addEventListener('click',()=>modal.classList.remove('on'));
@@ -2337,8 +2409,7 @@ function setStaxPublication(next){
   if(next&&typeof next==='object')STAX_PUBLICATION={...STAX_PUBLICATION,...next};
   const profileUrl=profilePublicUrl(),staxUrl=staxPublicUrl();
   STAX_PUBLICATION.published=Boolean(STAX_PUBLICATION.published&&(profileUrl||staxUrl));
-  const primary=document.getElementById('mpost');
-  if(primary){primary.textContent=STAX_PUBLICATION.published?'REPUBLISH STAX':'PUBLISH STAX';primary.dataset.mode='publish';}
+  refreshPublishButtonLabel();
   const profileCopy=document.getElementById('mprofile');
   if(profileCopy)profileCopy.hidden=!profileUrl;
   const staxCopy=document.getElementById('mlink');
@@ -2507,6 +2578,75 @@ document.getElementById('mlink').addEventListener('click',copyStaxLink);
 setStaxPublication(STAX_PUBLICATION);
 refreshStaxPublication();
 /* __TAKU_PUBLICATION_CODE_END__ */
+let ceremonyTimer=null;
+function ceremonyBlocks(P){
+  const dataBlocks=window.__TAKU_STAX_DATA__&&Array.isArray(window.__TAKU_STAX_DATA__.blocks)?window.__TAKU_STAX_DATA__.blocks:[];
+  const blocks=Array.isArray(P&&P.blocks)&&P.blocks.length?P.blocks:dataBlocks;
+  return blocks.filter((block)=>{
+    if(!block||block.key==='badges'||String(block.status||'supported').toLowerCase()==='unsupported')return false;
+    const rk=RK[block.key]||block.key;
+    return Boolean(SIZES[block.key]&&typeof R[rk]==='function');
+  });
+}
+function ceremony(id){
+  const P=PERSONAS[id]||PERSONAS.mason,pd=P.pd;
+  const rv=document.getElementById('revealov');
+  const blocks=ceremonyBlocks(P);
+  const slides=[{kind:'archetype'},...blocks.map((block)=>({kind:'block',block}))];
+  const dots=document.getElementById('cdots');
+  const host=document.getElementById('cslide');
+  let index=0,done=false;
+  clearTimeout(ceremonyTimer);
+  document.getElementById('revglow').style.setProperty('--rg',pd.fam+'59');
+  dots.innerHTML=slides.map(()=>'<i></i>').join('');
+  const finish=()=>{
+    if(done)return;
+    done=true;
+    clearTimeout(ceremonyTimer);
+    rv.classList.remove('on');
+    shuffleBuild(true);
+  };
+  const show=(next)=>{
+    if(done)return;
+    if(next>=slides.length){finish();return;}
+    index=next;
+    clearTimeout(ceremonyTimer);
+    [...dots.children].forEach((dot,i)=>dot.classList.toggle('on',i<=next));
+    dots.children[next]?.scrollIntoView({block:'nearest',inline:'center'});
+    const slide=slides[next];
+    if(slide.kind==='archetype'){
+      const letters=String(pd.type||'').split('').slice(0,4);
+      const colors=[C.violet,C.teal,C.lime,C.yellow];
+      const signature=safeText(pd.signature||'');
+      host.innerHTML=`<div class="ceye">ONE OF 16 ARCHETYPES · ${safeText(pd.family)}</div>
+        <img class="cfig" src="${ART[pd.art]||''}" alt="">
+        <div class="ctitle">THE ${safeText(pd.n1)} <em>${safeText(pd.n2)}</em></div>
+        ${signature?`<div class="ctag">${signature}</div>`:''}
+        <div class="cletters">${letters.map((letter,i)=>`<b style="background:${colors[i]};color:#16130a;animation-delay:${.15+i*.14}s">${safeText(letter)}</b>`).join('')}</div>`;
+      ceremonyTimer=setTimeout(()=>show(next+1),4200);
+      return;
+    }
+    const block=slide.block;
+    const status=guideStatusLabel(block);
+    const description=GUIDE_DESCRIPTIONS[block.key]||guideSourceDetail(block.source,block);
+    const source=guideSourceLabel(block.source);
+    const quality=block.qualityLabel||(block.estimated?'estimated':'direct');
+    const position=next;
+    const total=blocks.length;
+    const last=next===slides.length-1;
+    host.innerHTML=`<div class="ceye">UNLOCKED · ${String(position).padStart(2,'0')} / ${String(total).padStart(2,'0')} · ${safeText(status)}</div>
+      <div class="ctitle" style="font-size:32px">${safeText(block.label||block.key.toUpperCase())}</div>
+      <div class="cblock">${guidePreviewFor(block)}</div>
+      <div class="cmeaning">${safeText(description)}</div>
+      <div class="csource">${safeText(source)} · ${safeText(status)} · ${safeText(quality)}</div>
+      <div class="ccount">${last?'CLICK TO ENTER STUDIO':'CLICK TO CONTINUE'}</div>`;
+    ceremonyTimer=setTimeout(()=>show(next+1),3600);
+  };
+  host.onclick=()=>show(index+1);
+  document.getElementById('cskip').onclick=(event)=>{event.stopPropagation();finish();};
+  rv.classList.add('on');
+  show(0);
+}
 function playIntro(id){
   const P=PERSONAS[id], pd=P.pd;
   const ov=document.getElementById('scanov'), rv=document.getElementById('revealov');
@@ -2664,12 +2804,7 @@ function playIntro(id){
   const toReveal=()=>{
     if(dead)return;dead=true;
     ov.classList.add('off');
-    document.getElementById('revglow').style.setProperty('--rg',pd.fam+'59');
-    const hw=408,hh=200,sc=1.35;
-    document.getElementById('revhero').innerHTML=
-      `<div style="position:relative;width:${hw*sc}px;height:${hh*sc}px"><div class="pb" style="position:relative;left:0;top:0;width:${hw}px;height:${hh}px;transform:scale(${sc});transform-origin:0 0;cursor:default">${R.hero(hw,hh)}</div></div>`;
-    document.getElementById('revser').textContent=P.ser+' · '+pd.family;
-    rv.classList.add('on');
+    ceremony(id);
   };
   document.getElementById('authlogin').onclick=(event)=>{
     event.stopPropagation();
@@ -2695,11 +2830,7 @@ function playIntro(id){
   if(hasAuthReturn())completeTakuAuthReturn();
   else step();
 }
-document.getElementById('renter').addEventListener('click',()=>{
-  document.getElementById('revealov').classList.remove('on');
-  shuffleBuild(true);
-});
-document.getElementById('bintro').addEventListener('click',openGuide);
+document.getElementById('bintro').addEventListener('click',()=>ceremony(CURP));
 document.getElementById('guideback').addEventListener('click',closeGuide);
 document.getElementById('guideclose').addEventListener('click',closeGuide);
 document.addEventListener('keydown',(event)=>{

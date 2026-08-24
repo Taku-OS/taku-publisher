@@ -62,6 +62,9 @@ import { fetchTakuCreatorProfile } from './creator-profile.mjs';
 import { publishDraftToTaku } from './publish-flow.mjs';
 import { createEditorCommandResult } from './host-output.mjs';
 import { buildStaxCardPageUrl, buildStaxProfilePageUrl } from './stax-url.mjs';
+import {
+  preflightInlineSkillPackage,
+} from './skill-package.mjs';
 
 const EDITOR_COOKIE_NAME = 'taku_creator_editor';
 const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
@@ -337,6 +340,37 @@ export async function startEditorServer(parsed, draftResult) {
     }
     const publishStatus = createCurrentPublishStatus();
     const privateState = await readPrivateState(state.draftPath);
+    const currentPublishToken = String(state.publishToken || '');
+    const iconToken = state.iconAuthToken
+      || (!currentPublishToken.startsWith('taku_pub_') ? currentPublishToken : '');
+    try {
+      state.draft = await prepareCommunitySkillsForPublish({
+        draft: state.draft,
+        toolChoices: state.toolChoices,
+        privateInventory: privateState?.privateInventory,
+        workerUrl: publishStatus.workerUrl,
+        iconToken,
+      });
+      for (const tool of getDraftSectionItemsByCanonicalId(state.draft, 'creator-tools')) {
+        const listingDraft = state.draft.listingDrafts?.[tool?.id];
+        if (tool?.id && listingDraft) {
+          await saveListingDraftToStore(parsed, tool.id, listingDraft);
+        }
+      }
+      await writeJson(state.draftPath, state.draft);
+      await writeEditorState(state.draftPath, {
+        previewPath: state.previewPath,
+        toolChoices: state.toolChoices,
+        creationChoices: state.creationChoices,
+      });
+    } catch (error) {
+      return {
+        ok: false,
+        status: 409,
+        code: 'community_skill_preflight_failed',
+        error: communitySkillPublishError(error),
+      };
+    }
     const result = await publishDraftToTaku({
       draft: state.draft,
       privateInventory: privateState?.privateInventory,
@@ -750,10 +784,48 @@ export async function startEditorServer(parsed, draftResult) {
 
       if (request.method === 'POST' && requestUrl.pathname === '/api/creator-tools') {
         const body = await readRequestJson(request);
-        const creatorToolIds = Array.isArray(body.creatorToolIds)
+        const requestedCreatorToolIds = Array.isArray(body.creatorToolIds)
           ? body.creatorToolIds.filter((id) => typeof id === 'string')
           : [];
+        const creatorToolIds = requestedCreatorToolIds.filter((id) =>
+          isCommunityPublishCandidate(findToolChoiceById(state.toolChoices, id))
+        ).slice(0, 1);
+        const privateState = await readPrivateState(state.draftPath);
+        try {
+          for (const toolId of creatorToolIds) {
+            const sourceTool = findToolChoiceById(state.toolChoices, toolId);
+            await preflightInlineSkillPackage(sourceTool, privateState?.privateInventory);
+          }
+        } catch (error) {
+          sendJsonResponse(response, {
+            ok: false,
+            code: 'community_skill_preflight_failed',
+            error: communitySkillPublishError(error),
+          }, 409);
+          return;
+        }
         state.draft = applyCreatorToolChoicesToDraft(state.draft, state.toolChoices, creatorToolIds);
+        const nextListingDrafts = {
+          ...(isRecord(state.draft.listingDrafts) ? state.draft.listingDrafts : {}),
+        };
+        for (const toolId of creatorToolIds) {
+          if (nextListingDrafts[toolId]) continue;
+          const sourceTool = findToolChoiceById(state.toolChoices, toolId);
+          if (!sourceTool) continue;
+          const listingDraft = createInitialLocalListingDraft(sourceTool);
+          nextListingDrafts[toolId] = listingDraft;
+          await saveListingDraftToStore(parsed, toolId, listingDraft);
+        }
+        state.draft = {
+          ...state.draft,
+          listingDrafts: nextListingDrafts,
+          stats: {
+            ...(state.draft.stats || {}),
+            communityPublishToolCount: creatorToolIds.length,
+            listingDraftCount: Object.keys(nextListingDrafts).length,
+            listingReadyCount: Object.values(nextListingDrafts).filter((entry) => entry?.status === 'ready').length,
+          },
+        };
         await writeJson(state.draftPath, state.draft);
         await writeEditorState(state.draftPath, {
           previewPath: state.previewPath,
@@ -921,7 +993,9 @@ export async function startEditorServer(parsed, draftResult) {
         }
         const listing = normalizeListingDraft(body.listing || {});
         const sourceTool = findToolChoiceById(state.toolChoices, toolId);
-        const status = isListingReady(listing, { requireIcon: isEditorAddedLocalTool(sourceTool) }) ? 'ready' : 'draft';
+        const status = isListingReady(listing, {
+          requireIcon: isSelectedCommunityTool(state.draft, toolId),
+        }) ? 'ready' : 'draft';
         state.draft = {
           ...state.draft,
           listingDrafts: {
@@ -1612,7 +1686,10 @@ function inferMarketplaceCategory(tool) {
 
 function createInitialLocalListingDraft(tool) {
   const title = cleanPublicDraftText(tool?.name || tool?.title, 120);
-  const description = cleanPublicDraftText(tool?.description || tool?.detectedFrom, 220);
+  const description = cleanPublicDraftText(
+    tool?.description || tool?.detectedFrom || (title ? `Reusable AI Skill: ${title}.` : ''),
+    220,
+  );
   return {
     schemaVersion: 'taku.creator.tool-listing-draft.v1',
     sourceItemId: tool?.id || '',
@@ -1646,21 +1723,111 @@ function isListingReady(listing, options = {}) {
   );
 }
 
+function isSelectedCommunityTool(draft, toolId) {
+  return getDraftSectionItemsByCanonicalId(draft, 'creator-tools')
+    .some((tool) => tool?.id === toolId);
+}
+
+export function communitySkillPublishError(error) {
+  const message = error instanceof Error ? error.message : String(error || '');
+  if (/no readable local SKILL\.md package was found/i.test(message)) {
+    return 'This Skill has no readable local package, so publishing was stopped. It will remain visible on your Profile.';
+  }
+  if (/may contain private data/i.test(message)) {
+    const file = message.match(/:\s+([^:]+?) may contain private data/i)?.[1] || 'a file';
+    return `The file ${file} in this Skill may contain a local path or private data. Publishing was stopped. Remove the sensitive data and try again.`;
+  }
+  return message || 'This Skill did not pass the publishing preflight checks, so publishing was stopped.';
+}
+
+export async function prepareCommunitySkillsForPublish({
+  draft,
+  toolChoices,
+  privateInventory,
+  workerUrl,
+  iconToken,
+  generateIcon = fetchListingIconGenerate,
+}) {
+  const selectedTools = getDraftSectionItemsByCanonicalId(draft, 'creator-tools');
+  if (!selectedTools.length) return draft;
+
+  const nextDraft = structuredClone(draft);
+  const nextListingDrafts = {
+    ...(isRecord(nextDraft.listingDrafts) ? nextDraft.listingDrafts : {}),
+  };
+
+  for (const selectedTool of selectedTools) {
+    const toolId = typeof selectedTool?.id === 'string' ? selectedTool.id.trim() : '';
+    if (!toolId) throw new Error('Selected Community Skill is missing an ID.');
+    const sourceTool = findToolChoiceById(toolChoices, toolId) || selectedTool;
+    await preflightInlineSkillPackage(sourceTool, privateInventory);
+
+    const existingDraft = nextListingDrafts[toolId] || createInitialLocalListingDraft(sourceTool);
+    let listing = normalizeListingDraft(existingDraft.listing || {});
+    if (!isListingReady(listing, { requireIcon: false })) {
+      throw new Error(`“${sourceTool.name || sourceTool.title || toolId}” is missing a title, description, or category and cannot be published.`);
+    }
+
+    if (!listing.coverImageUrl) {
+      if (!iconToken) {
+        throw new Error('Sign in to Taku before generating an icon for the selected Community Skill.');
+      }
+      const result = await generateIcon({
+        workerUrl,
+        token: iconToken,
+        payload: buildListingIconGeneratePayload({
+          draft: nextDraft,
+          tool: sourceTool,
+          toolId,
+          listing,
+        }),
+      });
+      if (!result?.response?.ok) {
+        throw new Error(workerJsonError(result) || 'Taku could not generate an icon. Try again.');
+      }
+      const icon = normalizeGeneratedIconPayload(result.data);
+      if (!/^https:\/\//i.test(icon.imageUrl)) {
+        throw new Error('The generated Taku icon is not available at a public HTTPS URL, so publishing was stopped.');
+      }
+      listing = {
+        ...listing,
+        coverImageUrl: icon.imageUrl,
+      };
+    }
+
+    nextListingDrafts[toolId] = {
+      ...existingDraft,
+      schemaVersion: 'taku.creator.tool-listing-draft.v1',
+      sourceItemId: toolId,
+      updatedAt: new Date().toISOString(),
+      status: 'ready',
+      listing,
+    };
+  }
+
+  nextDraft.listingDrafts = nextListingDrafts;
+  nextDraft.stats = {
+    ...(nextDraft.stats || {}),
+    communityPublishToolCount: selectedTools.length,
+    listingDraftCount: Object.keys(nextListingDrafts).length,
+    listingReadyCount: Object.values(nextListingDrafts)
+      .filter((entry) => entry?.status === 'ready').length,
+  };
+  return nextDraft;
+}
+
 export function pendingLocalToolListingReviews(state) {
-  const candidates = [
-    ...(state.toolChoices?.displayedTools || []),
-    ...getDraftSectionItemsByCanonicalId(state.draft, 'creator-tools'),
-    ...getDraftSectionItemsByCanonicalId(state.draft, 'using-tools'),
-  ];
+  const candidates = getDraftSectionItemsByCanonicalId(state.draft, 'creator-tools');
   const reviews = [];
   const seen = new Set();
   for (const tool of candidates) {
-    if (!isEditorAddedLocalTool(tool)) continue;
     const id = typeof tool?.id === 'string' ? tool.id.trim() : '';
     if (!id || seen.has(id)) continue;
     seen.add(id);
     const listingDraft = state.draft?.listingDrafts?.[id];
-    if (listingDraft?.status === 'ready' && isListingReady(listingDraft.listing, { requireIcon: true })) continue;
+    // Icons are generated automatically after Taku authorization. Only fields
+    // that cannot be safely inferred should block before the publish attempt.
+    if (isListingReady(listingDraft?.listing, { requireIcon: false })) continue;
     reviews.push({
       id,
       name: tool?.name || tool?.title || id,
@@ -1669,7 +1836,6 @@ export function pendingLocalToolListingReviews(state) {
         !listingDraft?.listing?.title && 'title',
         !listingDraft?.listing?.shortDescription && 'shortDescription',
         !listingDraft?.listing?.category && 'category',
-        !listingDraft?.listing?.coverImageUrl && 'coverImageUrl',
       ].filter(Boolean),
     });
     if (reviews.length >= 3) break;
@@ -2072,6 +2238,12 @@ function findToolChoiceById(toolChoices, toolId) {
     if (found) return found;
   }
   return null;
+}
+
+function isCommunityPublishCandidate(tool) {
+  if (!isRecord(tool) || tool.publishable === false) return false;
+  const type = String(tool.type || tool.kind || '').trim().toLowerCase();
+  return type === 'skill' || type === 'skills';
 }
 
 function normalizeListingDraft(value) {

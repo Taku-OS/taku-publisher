@@ -693,6 +693,37 @@ function collectFeaturedTools(draft = {}) {
   return featured;
 }
 
+function collectCommunityToolCandidates(draft = {}) {
+  const candidates = [
+    ...(draft.__toolChoices?.displayedTools || []),
+    ...(draft.__toolChoices?.hiddenTools || []),
+  ];
+  const selectedIds = new Set(
+    Array.isArray(draft.stats?.creatorToolIds) ? draft.stats.creatorToolIds : []
+  );
+  const tools = [];
+  const seen = new Set();
+  for (const item of candidates) {
+    const id = cleanDisplayText(item?.id, '', 160);
+    const name = cleanDisplayText(item?.name || item?.title, '', 80);
+    if (!id || !name || seen.has(id)) continue;
+    const type = cleanDisplayText(item?.type || item?.kind, 'tool', 40).toLowerCase();
+    if (type !== 'skill' || item?.publishable === false) continue;
+    seen.add(id);
+    tools.push({
+      id,
+      name,
+      type,
+      source: cleanDisplayText(item?.source, '', 80),
+      selected: selectedIds.has(id),
+      supported: true,
+      reason: '可发布',
+    });
+    if (tools.length >= 24) break;
+  }
+  return tools;
+}
+
 function collectSectionItems(draft = {}, sectionId) {
   const sections = Array.isArray(draft.sections) ? draft.sections : [];
   const section = sections.find((item) => item?.id === sectionId);
@@ -3063,6 +3094,7 @@ function buildStaxAppModel(draft = {}, options = {}) {
     blocks: publicBlocks,
     selectedKeys: [...selectedKeys, ...fallbackKeys].slice(0, 14),
     canPublish: Boolean(options.editor?.enabled),
+    communityTools: collectCommunityToolCandidates(draft),
     publishedStax,
     readonly: Boolean(options.readonlyPreview),
   };

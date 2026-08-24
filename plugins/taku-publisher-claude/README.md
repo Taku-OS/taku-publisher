@@ -1,8 +1,7 @@
 # Taku Publisher
 
-Taku Publisher is a Claude Code plugin for converting existing repositories
-into local Taku SubApps, and for finding, installing, managing, and publishing
-Taku AI tools.
+Taku Publisher is a Claude Code plugin for finding, installing, managing, and
+publishing Taku AI tools.
 
 ## Install
 
@@ -34,7 +33,7 @@ Use Taku Publisher to generate an editable Creator Profile preview.
 Other useful prompts:
 
 ```text
-Convert this repository into a Taku SubApp and install it locally.
+Find my recent Codex and Claude Code projects and help me import one into Taku.
 Show my Taku Creator Center.
 Find a tool in the Taku community.
 Publish the tool in this workspace to Taku.
@@ -42,15 +41,17 @@ Publish the tool in this workspace to Taku.
 
 ## What To Expect
 
+- Project import first lists recent workspaces from local session metadata. It
+  inspects source only after you choose one exact project, then routes it to
+  SubApp conversion, existing Skill publishing, or bounded Skill generation.
 - Creator Profile requests create a local editable preview page.
-- SubApp conversion assesses the selected source, prepares an isolated
-  candidate, validates it in a trusted runtime, and packages it before asking
-  Taku Desktop to install. Nothing is publicly published by this local flow.
 - Creator Center requests may ask you to sign in to Taku.
 - Publishing requests scan and package the selected workspace before opening
   the Taku review flow.
 - Marketplace search covers Apps, Skills, Tools, and Bundles. Search and details
   work in Claude Code, while Codex Skill installation remains Codex-only.
+- In terminal sessions, App searches show a numbered list without raw Taku
+  protocol links. Choose one item and the plugin will open it in Taku Desktop.
 
 The agent reads `skills/taku-publisher/SKILL.md` for detailed workflow rules.
 You usually do not need to run the bundled CLI commands yourself.
