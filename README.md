@@ -34,6 +34,18 @@ This creates a local Stax Card draft/editor and reports recent local project
 metadata, current Taku sign-in state, and the Stax Card / Creator Profile entry
 points. It does not upload, convert, or publish project source code.
 
+After the creator selects one or more projects and chooses Skill or SubApp for
+each, create a persistent publish plan:
+
+```bash
+node scripts/taku-publisher.mjs creator-plan \
+  --select project_abc=skill,project_def=subapp
+```
+
+The plan keeps Stax Card review first and processes projects one at a time, so a
+long SubApp conversion does not delay the card. Selection is not eligibility or
+publication: each Skill/SubApp still passes its existing checks and confirmations.
+
 The legacy `python3 scripts/taku_publisher.py` entrypoint remains available in
 the source repository during the compatibility window, but generated user
 plugins contain no Python files and never invoke Python.

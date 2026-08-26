@@ -32,6 +32,17 @@ test('creator-init returns projects and login guidance without requiring a Web s
   assert.equal('session_path' in result.auth, false);
   assert.equal(result.projectCount, 1);
   assert.deepEqual(result.projects, projects);
+  assert.deepEqual(result.projectChoices, [{
+    id: 'project_1',
+    name: 'Pomodoro Timer',
+    routeHint: 'subapp-candidate',
+    recommendedTarget: 'subapp',
+    targetOptions: ['skill', 'subapp'],
+    eligibilityValidatedAfterSelection: true,
+  }]);
+  assert.equal(result.publishPlan.multipleSelection, true);
+  assert.equal(result.publishPlan.staxCardPolicy, 'publish_first');
+  assert.equal(result.publishPlan.subAppsDoNotBlockStaxCard, true);
   assert.equal(result.staxCard.editorUrl, 'http://127.0.0.1:7331/?token=<local-editor-token>');
   assert.equal(result.staxCard.editorReady, true);
   assert.equal(result.staxCard.webEditorUrl, 'https://taku.example.test/profile?source=taku_creator&intent=publish_stax_card');

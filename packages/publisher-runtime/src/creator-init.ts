@@ -11,6 +11,7 @@ import {
   type DiscoveredProject,
   type ProjectHostFilter,
 } from './project-discovery.js';
+import { creatorProjectChoice } from './creator-plan.js';
 import type { JsonObject, JsonValue } from './types.js';
 import { isRecord } from './util.js';
 
@@ -106,8 +107,17 @@ export async function initializeCreator(
       warning: profileWarning,
     },
     projects: projects as unknown as JsonValue,
+    projectChoices: projects.map(creatorProjectChoice) as unknown as JsonValue,
     projectCount: projects.length,
-    selectionRule: 'Select exactly one local project before starting conversion.',
+    selectionRule: 'Select one or more local projects and choose skill or subapp for each. Eligibility is validated before conversion.',
+    publishPlan: {
+      multipleSelection: true,
+      targetTypes: ['skill', 'subapp'],
+      staxCardPolicy: 'publish_first',
+      projectExecution: 'sequential_queue',
+      subAppsDoNotBlockStaxCard: true,
+      publicReleaseIsAutomatic: false,
+    },
     privacy: {
       localOnlyProjectDiscovery: true,
       uploads: false,

@@ -7,7 +7,9 @@ description: Generate a Taku Stax Card or AI Builder Profile, assess and convert
 
 Run every command from this skill directory with `node scripts/taku-publisher.mjs`. Treat CLI JSON as the workflow authority. Parse `ok`, `status`, `requires_action`, and `action_type` before responding.
 
-When the user asks generally to use or open Taku Publisher without already choosing a specific project or workflow, start with `creator-init`. It returns the signed-in state, Stax Card and Creator Profile entry points, and recent local project metadata in one response. Ask the user to select a project before starting conversion; do not auto-convert every discovered project.
+When the user asks generally to use or open Taku Publisher without already choosing a specific project or workflow, start with `creator-init`. It returns the signed-in state, Stax Card and Creator Profile entry points, and recent local project metadata in one response. Present the projects as a numbered multi-select list with the recommended `skill` or `subapp` target, then ask the creator which projects to process and whether to accept or change each recommendation. Do not auto-convert every discovered project.
+
+After the creator selects projects, create one persistent plan with `creator-plan --select <project-id=skill|subapp,...>`. The plan publishes/reviews the Stax Card first, then processes selected projects as a sequential queue. A plan may contain multiple projects, but each Skill publishing workflow and each SubApp conversion still handles exactly one project at a time. Never make the Stax Card wait for SubApp migration, runtime validation, packaging, or registration. After each completed project receives its authoritative Taku item identity, offer to sync that work into the Stax Card; do not expose selected local projects publicly before that point.
 
 In Claude Code or Codex shell calls, always change into the directory that contains this `SKILL.md` in the same command before invoking the CLI, for example `cd <this-skill-directory> && node scripts/taku-publisher.mjs ...`. Never run `node scripts/taku-publisher.mjs ...` from the user's project or workspace directory.
 
@@ -46,8 +48,10 @@ Field translation:
 
 | Internal field / command | Say to the creator |
 |---|---|
-| `creator-init` / `creator_ready` | "Your creator workspace is ready; choose a local project or open your Stax Card/Profile." |
+| `creator-init` / `creator_ready` | "Your creator workspace is ready; choose one or more local projects and confirm Skill/SubApp for each." |
 | `creator-init` / `login_required` | "I found your local projects; log in to Taku to connect your Creator Profile." |
+| `creator-plan` / `creator_publish_plan_ready` | "Your publishing plan is ready. Review/publish the Stax Card first; selected projects will continue one at a time." |
+| `creator-plan-next` | "Here is the next Stax Card, Skill, or SubApp step in your publishing plan." |
 | `discover` / `needs_selection` | "I found publishable items; choose which one to publish." |
 | `init` / `draft_id` | "I created a local publishing draft." |
 | `stage` | "I prepared the files that will be reviewed." |
@@ -348,6 +352,10 @@ Use these commands when the creator asks to generate a Stax Card, AI Builder Pro
 
 ```bash
 node scripts/taku-publisher.mjs creator-init [--host codex|claude-code|all] [--max-projects <n>]
+node scripts/taku-publisher.mjs creator-plan --select <project-id=skill|subapp,...> [--host codex|claude-code|all]
+node scripts/taku-publisher.mjs creator-plan-show --plan-id <plan-id>
+node scripts/taku-publisher.mjs creator-plan-next --plan-id <plan-id>
+node scripts/taku-publisher.mjs creator-plan-update --plan-id <plan-id> [--card-status <ready_for_review|published|skipped>] [--project-id <id> --project-status <queued|in_progress|completed|blocked>] [--remote-item-id <id>]
 node scripts/taku-publisher.mjs creator-doctor --json
 node scripts/taku-publisher.mjs creator-scan --json --compact [--workspace <workspace>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal] [--max-usage-files <n>] [--include-creation-candidates] [--include-github-metrics] [--include-prompt-style]
 node scripts/taku-publisher.mjs creator-draft --json --editor [--workspace <workspace>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal] [--include-creation-candidates] [--worker-url <url>] [--site-url <url>]
@@ -355,7 +363,15 @@ node scripts/taku-publisher.mjs creator-editor --json --draft <draft.json> [--wo
 node scripts/taku-publisher.mjs creator-publish --json --draft <draft.json> [--worker-url <url>] [--site-url <url>]
 ```
 
-Use `creator-init` for the first response when the request also needs local project choices, account state, or both Profile and Stax Card links. It creates the local Stax Card draft/editor while project discovery inspects bounded session and project-root metadata; it does not upload, convert, or publish a project. Continue with `creator-draft --json --editor` directly only when the creator asks to regenerate or edit the card/profile without the initialization summary.
+Use `creator-init` for the first response when the request also needs local project choices, account state, or both Profile and Stax Card links. It creates the local Stax Card draft/editor while project discovery inspects bounded session and project-root metadata; it does not upload, convert, or publish a project. Show a compact numbered list containing each project name, recommended target, and a note that eligibility is checked after selection. Accept natural-language replies such as "1 and 3 as Skill, 2 as SubApp; publish my Stax Card first", map the chosen numbers to the returned project IDs, and create the persistent plan. Continue with `creator-draft --json --editor` directly only when the creator asks to regenerate or edit the card/profile without the initialization summary.
+
+For a creator publish plan:
+
+- Treat `projectChoices.recommendedTarget` as a recommendation, not proof of eligibility. Skill selection must still discover one publishable Skill, and SubApp selection must still pass source assessment.
+- Lead with the Stax Card editor/review action. Once the creator publishes or explicitly skips it, record that card status and request `creator-plan-next`.
+- Mark only the current project `in_progress`. Run the existing single-project Skill or SubApp flow, then mark it `completed` only after authoritative success; use `blocked` when validation or review stops it.
+- Continue to the next queued project without making already-published Stax Card/Profile content wait for a long SubApp conversion.
+- Never describe the plan itself as publication. Final Skill release, SubApp registration, and Stax Card sync retain their existing confirmations and authoritative status checks.
 
 Default to `creator-draft --json --editor` for any creator-facing generation request, including "make my Stax Card", "generate persona labels", "generate Creator Profile", "summarize my builder persona", "generate a Creator Profile summary", or similar. The CLI's default usage window is the recent 90-day local scan; pass `--usage-period thisMonth` only when the creator explicitly asks for this-month stats. The editor is the only normal user-facing review surface; do not present raw JSON paths, local HTML paths, command names, or `previewPath` / `previewUrl` as the main call to action unless the creator asks for debugging details.
 

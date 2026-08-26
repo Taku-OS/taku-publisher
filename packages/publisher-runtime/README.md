@@ -31,6 +31,18 @@ Creator Profile/login link in one JSON response. Recent-project discovery reads
 bounded session metadata and project-root manifests only; it does not inspect
 source content, upload, convert, or publish projects.
 
+The response includes multi-select project choices with recommended Skill or
+SubApp targets. Persist the creator's selection as a sequential plan:
+
+```sh
+taku-publisher creator-plan --select project_abc=skill,project_def=subapp
+taku-publisher creator-plan-next --plan-id creator_plan_...
+```
+
+The Stax Card is reviewed first and never waits for queued SubApp conversion.
+Each queued project is still validated and published independently, and plan
+state must not be treated as authoritative proof of publication.
+
 ## SubApp assessment and candidate preparation
 
 `subapp-assess` is the read-only Publisher boundary for an existing application

@@ -25,6 +25,16 @@ import { buildBundle, verifyLocalBundle } from './bundle.js';
 import { DEFAULT_SITE_URL, loginWithBrowser } from './browser-auth.js';
 import { initializeCreator } from './creator-init.js';
 import {
+  createCreatorPublishPlan,
+  creatorProjectChoice,
+  loadCreatorPublishPlan,
+  nextCreatorPlanAction,
+  parseCreatorSelections,
+  updateCreatorPublishPlan,
+  type CreatorPlanCardStatus,
+  type CreatorPlanProjectStatus,
+} from './creator-plan.js';
+import {
   DEFAULT_WORKER_URL,
   SUPPORTED_TYPES,
   UNAVAILABLE_PUBLISH_TYPES,
@@ -169,9 +179,67 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
     return jsonOutput(authenticated ? 'creator_ready' : 'login_required', result, {
       requiresAction: true,
       actionType: authenticated
-        ? projectCount > 0 ? 'select_one_local_project' : 'choose_an_explicit_project_directory'
+        ? projectCount > 0 ? 'select_local_projects_and_targets' : 'choose_an_explicit_project_directory'
         : 'sign_in_to_taku',
     });
+  }
+  if (args.command === 'creator-plan') {
+    const projects = await discoverRecentProjects({
+      host: stringFlag(args, 'host', 'all') as 'all' | 'codex' | 'claude-code',
+      maxProjects: numberFlag(args, 'max-projects', 20),
+      maxSessionFiles: numberFlag(args, 'max-session-files', 200),
+    });
+    const plan = await createCreatorPublishPlan(
+      projects,
+      parseCreatorSelections(requiredFlag(args, 'select')),
+    );
+    const nextAction = nextCreatorPlanAction(plan);
+    return jsonOutput('creator_publish_plan_ready', {
+      plan: plan as unknown as JsonValue,
+      next_action: nextAction,
+    }, {
+      requiresAction: true,
+      actionType: String(nextAction.action),
+    });
+  }
+  if (args.command === 'creator-plan-show' || args.command === 'creator-plan-next') {
+    const plan = await loadCreatorPublishPlan(requiredFlag(args, 'plan-id'));
+    const nextAction = nextCreatorPlanAction(plan);
+    return jsonOutput(
+      nextAction.action === 'complete' ? 'creator_publish_plan_complete' : 'creator_publish_plan_active',
+      { plan: plan as unknown as JsonValue, next_action: nextAction },
+      {
+        requiresAction: nextAction.action !== 'complete',
+        actionType: nextAction.action === 'complete' ? null : String(nextAction.action),
+      },
+    );
+  }
+  if (args.command === 'creator-plan-update') {
+    const cardStatusValue = optionalFlag(args, 'card-status');
+    const projectStatusValue = optionalFlag(args, 'project-status');
+    const cardStatuses = new Set<CreatorPlanCardStatus>(['ready_for_review', 'published', 'skipped']);
+    const projectStatuses = new Set<CreatorPlanProjectStatus>(['queued', 'in_progress', 'completed', 'blocked']);
+    if (cardStatusValue && !cardStatuses.has(cardStatusValue as CreatorPlanCardStatus)) {
+      throw new PublisherError('Card status must be ready_for_review, published, or skipped.', 'invalid_creator_plan_card_status');
+    }
+    if (projectStatusValue && !projectStatuses.has(projectStatusValue as CreatorPlanProjectStatus)) {
+      throw new PublisherError('Project status must be queued, in_progress, completed, or blocked.', 'invalid_creator_plan_project_status');
+    }
+    const plan = await updateCreatorPublishPlan(requiredFlag(args, 'plan-id'), {
+      cardStatus: cardStatusValue as CreatorPlanCardStatus | undefined,
+      projectId: optionalFlag(args, 'project-id'),
+      projectStatus: projectStatusValue as CreatorPlanProjectStatus | undefined,
+      remoteItemId: optionalFlag(args, 'remote-item-id'),
+    });
+    const nextAction = nextCreatorPlanAction(plan);
+    return jsonOutput(
+      nextAction.action === 'complete' ? 'creator_publish_plan_complete' : 'creator_publish_plan_updated',
+      { plan: plan as unknown as JsonValue, next_action: nextAction },
+      {
+        requiresAction: nextAction.action !== 'complete',
+        actionType: nextAction.action === 'complete' ? null : String(nextAction.action),
+      },
+    );
   }
   if (args.command === 'auth-status' || args.command === 'auth-refresh') {
     const status = await authStatus({ tokenEnv: stringFlag(args, 'token-env', 'TAKU_BEARER_TOKEN'), refresh: args.command === 'auth-refresh' });
@@ -270,6 +338,7 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
     });
     return jsonOutput(projects.length ? 'project_selection_required' : 'no_projects_found', {
       projects: projects as unknown as JsonValue,
+      project_choices: projects.map(creatorProjectChoice) as unknown as JsonValue,
       project_count: projects.length,
       privacy: {
         local_only: true,
@@ -278,10 +347,10 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
         project_root_metadata_inspected: true,
         source_code_scanned: false,
       },
-      selection_rule: 'Select exactly one project before source assessment begins.',
+      selection_rule: 'Select one or more projects and choose skill or subapp for each before validation begins.',
     }, {
       requiresAction: true,
-      actionType: projects.length ? 'select_one_local_project' : 'choose_an_explicit_project_directory',
+      actionType: projects.length ? 'select_local_projects_and_targets' : 'choose_an_explicit_project_directory',
     });
   }
   if (args.command === 'subapp-assess') {
@@ -1261,7 +1330,7 @@ export function extractAssetIdentity(response: JsonObject): JsonObject | null {
 
 function parseArguments(argv: string[]): ParsedArguments {
   const [command = '', ...rest] = argv;
-  if (command.startsWith('creator-')) return { command, flags: new Map(), rest };
+  if (CREATOR_COMMANDS.has(command)) return { command, flags: new Map(), rest };
   const flags = new Map<string, string | boolean>();
   const positional: string[] = [];
   for (let index = 0; index < rest.length; index += 1) {
@@ -1473,6 +1542,10 @@ Publishing availability: Skill only. Action, Agent, and Plugin are not available
 Commands:
   discover, init, stage, scan, apply-review, package, status
   creator-init [--host codex|claude-code|all] [--max-projects <n>]
+  creator-plan --select <project-id=skill|subapp,...> [--host codex|claude-code|all]
+  creator-plan-show --plan-id <creator-plan-id>
+  creator-plan-next --plan-id <creator-plan-id>
+  creator-plan-update --plan-id <creator-plan-id> [--card-status <ready_for_review|published|skipped>] [--project-id <id> --project-status <queued|in_progress|completed|blocked>] [--remote-item-id <id>]
   project-discover [--host codex|claude-code|all] [--max-projects <n>]
   remote-create, remote-get, remote-patch, remote-scan, remote-upload, remote-status
   auth-status, auth-refresh, auth-login, auth-logout

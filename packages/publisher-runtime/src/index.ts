@@ -7,6 +7,7 @@ export * from './constants.js';
 export * from './contract.js';
 export * from './core.js';
 export * from './creator-init.js';
+export * from './creator-plan.js';
 export * from './discovery.js';
 export * from './file-upload.js';
 export * from './marketplace.js';
