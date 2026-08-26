@@ -1,13 +1,13 @@
 {
   "name": "taku-publisher",
-  "version": "0.3.7",
-  "description": "Discover Codex and Claude Code projects, convert them into Taku SubApps or Skills, and safely publish tools.",
+  "version": "0.3.8",
+  "description": "Generate a Stax Card, select recent Codex and Claude Code projects, and publish them through a safe Skill/SubApp queue.",
   "author": {
     "name": "Taku",
     "url": "https://taku.ai/"
   },
   "homepage": "https://taku.ai/",
-  "repository": "https://github.com/Taku-OS/taku-passport",
+  "repository": "https://github.com/Taku-OS/taku-publisher",
   "keywords": [
     "taku",
     "marketplace",
@@ -19,8 +19,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Taku Publisher",
-    "shortDescription": "Import AI coding projects into Taku.",
-    "longDescription": "Discover recent Codex and Claude Code workspaces from local metadata, route one selected project to verified SubApp conversion or bounded Skill generation, install SubApps locally, publish Skills, search community tools, and manage creator works.",
+    "shortDescription": "Create a Stax Card and import AI coding projects.",
+    "longDescription": "Generate an editable Stax Card, discover recent Codex and Claude Code workspaces from local metadata, let creators select Skill or SubApp targets, and process each project safely without delaying the card.",
     "developerName": "Taku",
     "category": "Productivity",
     "websiteURL": "https://taku.ai/",
@@ -39,9 +39,9 @@
       "Creator Center management"
     ],
     "defaultPrompt": [
+      "打开 Taku Publisher 创作者工作台，生成我的 Stax Card，并让我选择要发布的本地项目。",
       "Find my recent Codex and Claude Code projects and import one into Taku.",
-      "Publish the tool in this workspace to Taku.",
-      "Show my Taku Creator Center."
+      "Publish the tool in this workspace to Taku."
     ]
   }
 }

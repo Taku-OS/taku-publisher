@@ -1,13 +1,13 @@
 {
   "name": "taku-publisher",
-  "version": "0.3.7",
-  "description": "Discover Codex and Claude Code projects, convert them into Taku SubApps or Skills, and safely publish tools.",
+  "version": "0.3.8",
+  "description": "Generate a Stax Card, select recent Codex and Claude Code projects, and publish them through a safe Skill/SubApp queue.",
   "author": {
     "name": "Taku",
     "url": "https://taku.ai/"
   },
   "homepage": "https://taku.ai/",
-  "repository": "https://github.com/Taku-OS/taku-passport",
+  "repository": "https://github.com/Taku-OS/taku-publisher",
   "skills": [
     "./skills/taku-publisher"
   ]

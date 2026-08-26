@@ -2838,7 +2838,9 @@ document.addEventListener('keydown',(event)=>{
 });
 /* __TAKU_STAX_BOOTSTRAP_START__ */
 setPersona('mason');
-if(STAX_PUBLICATION.published&&!window.location.hash.includes('taku_auth_code=')&&!window.location.hash.includes('taku_auth_error=')){
+const TAKU_AUTH_CODE_FRAGMENT='taku_'+'auth_code=';
+const TAKU_AUTH_ERROR_FRAGMENT='taku_'+'auth_error=';
+if(STAX_PUBLICATION.published&&!window.location.hash.includes(TAKU_AUTH_CODE_FRAGMENT)&&!window.location.hash.includes(TAKU_AUTH_ERROR_FRAGMENT)){
   document.getElementById('scanov').classList.add('off');
   document.getElementById('revealov').classList.remove('on');
   shuffleBuild(true);

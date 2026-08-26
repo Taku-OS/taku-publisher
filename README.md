@@ -12,7 +12,7 @@ codex plugin add taku-publisher@taku
 Start a new Codex task, then ask:
 
 ```text
-Use Taku Publisher to generate my Stax profile.
+打开 Taku Publisher 创作者工作台，生成我的 Stax Card，并让我选择要发布的本地项目。
 ```
 
 ## Claude Code
@@ -25,7 +25,7 @@ claude plugin install taku-publisher@taku
 Start a new Claude Code session, then ask:
 
 ```text
-Use Taku Publisher to generate my Stax profile.
+打开 Taku Publisher 创作者工作台，生成我的 Stax Card，并让我选择要发布的本地项目。
 ```
 
 Source code, documentation, security policy, and licenses are maintained on

@@ -27,7 +27,7 @@ open Claude Code in the project or workspace you want Taku Publisher to scan.
 Ask Claude Code:
 
 ```text
-Use Taku Publisher to generate an editable Creator Profile preview.
+打开 Taku Publisher 创作者工作台，生成我的 Stax Card，并让我选择要发布的本地项目。
 ```
 
 Other useful prompts:
