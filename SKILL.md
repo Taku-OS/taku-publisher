@@ -7,6 +7,8 @@ description: Generate a Taku Stax Card or AI Builder Profile, assess and convert
 
 Run every command from this skill directory with `node scripts/taku-publisher.mjs`. Treat CLI JSON as the workflow authority. Parse `ok`, `status`, `requires_action`, and `action_type` before responding.
 
+When the user asks generally to use or open Taku Publisher without already choosing a specific project or workflow, start with `creator-init`. It returns the signed-in state, Stax Card and Creator Profile entry points, and recent local project metadata in one response. Ask the user to select a project before starting conversion; do not auto-convert every discovered project.
+
 In Claude Code or Codex shell calls, always change into the directory that contains this `SKILL.md` in the same command before invoking the CLI, for example `cd <this-skill-directory> && node scripts/taku-publisher.mjs ...`. Never run `node scripts/taku-publisher.mjs ...` from the user's project or workspace directory.
 
 This skill has five product surfaces:
@@ -44,6 +46,8 @@ Field translation:
 
 | Internal field / command | Say to the creator |
 |---|---|
+| `creator-init` / `creator_ready` | "Your creator workspace is ready; choose a local project or open your Stax Card/Profile." |
+| `creator-init` / `login_required` | "I found your local projects; log in to Taku to connect your Creator Profile." |
 | `discover` / `needs_selection` | "I found publishable items; choose which one to publish." |
 | `init` / `draft_id` | "I created a local publishing draft." |
 | `stage` | "I prepared the files that will be reviewed." |
@@ -343,12 +347,15 @@ packaged-client App Store installation remain separate later phases.
 Use these commands when the creator asks to generate a Stax Card, AI Builder Profile, builder persona, public creator page, or scan the tools they use:
 
 ```bash
+node scripts/taku-publisher.mjs creator-init [--host codex|claude-code|all] [--max-projects <n>]
 node scripts/taku-publisher.mjs creator-doctor --json
 node scripts/taku-publisher.mjs creator-scan --json --compact [--workspace <workspace>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal] [--max-usage-files <n>] [--include-creation-candidates] [--include-github-metrics] [--include-prompt-style]
 node scripts/taku-publisher.mjs creator-draft --json --editor [--workspace <workspace>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal] [--include-creation-candidates] [--worker-url <url>] [--site-url <url>]
 node scripts/taku-publisher.mjs creator-editor --json --draft <draft.json> [--worker-url <url>] [--site-url <url>]
 node scripts/taku-publisher.mjs creator-publish --json --draft <draft.json> [--worker-url <url>] [--site-url <url>]
 ```
+
+Use `creator-init` for the first response when the request also needs local project choices, account state, or both Profile and Stax Card links. It creates the local Stax Card draft/editor while project discovery inspects bounded session and project-root metadata; it does not upload, convert, or publish a project. Continue with `creator-draft --json --editor` directly only when the creator asks to regenerate or edit the card/profile without the initialization summary.
 
 Default to `creator-draft --json --editor` for any creator-facing generation request, including "make my Stax Card", "generate persona labels", "generate Creator Profile", "summarize my builder persona", "generate a Creator Profile summary", or similar. The CLI's default usage window is the recent 90-day local scan; pass `--usage-period thisMonth` only when the creator explicitly asks for this-month stats. The editor is the only normal user-facing review surface; do not present raw JSON paths, local HTML paths, command names, or `previewPath` / `previewUrl` as the main call to action unless the creator asks for debugging details.
 

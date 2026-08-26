@@ -17,6 +17,20 @@ Browser, preload, and shared clients that only need Publisher Draft route
 builders should import `@taku/publisher-runtime/contract`. This subpath has no
 Node.js imports and keeps host-provided URL segments encoded consistently.
 
+## Creator initialization
+
+`creator-init` is the unified creator entry point:
+
+```sh
+taku-publisher creator-init [--host codex|claude-code|all] [--max-projects 20]
+```
+
+It creates the local Stax Card draft/editor and returns recent local project
+metadata, Taku authentication state, Stax Card editor/public links, and the
+Creator Profile/login link in one JSON response. Recent-project discovery reads
+bounded session metadata and project-root manifests only; it does not inspect
+source content, upload, convert, or publish projects.
+
 ## SubApp assessment and candidate preparation
 
 `subapp-assess` is the read-only Publisher boundary for an existing application

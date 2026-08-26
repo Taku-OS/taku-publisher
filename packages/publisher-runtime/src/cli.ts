@@ -23,6 +23,7 @@ import {
 } from './auth.js';
 import { buildBundle, verifyLocalBundle } from './bundle.js';
 import { DEFAULT_SITE_URL, loginWithBrowser } from './browser-auth.js';
+import { initializeCreator } from './creator-init.js';
 import {
   DEFAULT_WORKER_URL,
   SUPPORTED_TYPES,
@@ -35,6 +36,7 @@ import {
   marketplaceItem,
   marketplaceItems,
 } from './marketplace.js';
+import { discoverRecentProjects } from './project-discovery.js';
 import {
   applyDeepScanDispositions,
   assertPublicPayload,
@@ -150,6 +152,27 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
   const creatorCommand = CREATOR_COMMANDS.get(args.command);
   if (creatorCommand) return runCreatorCommand(creatorCommand, args.rest);
 
+  if (args.command === 'creator-init') {
+    const result = await initializeCreator({
+      siteUrl: stringFlag(args, 'site-url', DEFAULT_SITE_URL),
+      workerUrl: stringFlag(args, 'worker-url', DEFAULT_WORKER_URL),
+      tokenEnv: stringFlag(args, 'token-env', 'TAKU_BEARER_TOKEN'),
+      host: stringFlag(args, 'host', 'all') as 'all' | 'codex' | 'claude-code',
+      maxProjects: numberFlag(args, 'max-projects', 20),
+      maxSessionFiles: numberFlag(args, 'max-session-files', 200),
+      allowCustomWorkerUrl: booleanFlag(args, 'allow-custom-worker-url'),
+    }, {
+      createEditor: () => createCreatorInitEditor(args),
+    });
+    const authenticated = result.authenticated === true;
+    const projectCount = Number(result.projectCount ?? 0);
+    return jsonOutput(authenticated ? 'creator_ready' : 'login_required', result, {
+      requiresAction: true,
+      actionType: authenticated
+        ? projectCount > 0 ? 'select_one_local_project' : 'choose_an_explicit_project_directory'
+        : 'sign_in_to_taku',
+    });
+  }
   if (args.command === 'auth-status' || args.command === 'auth-refresh') {
     const status = await authStatus({ tokenEnv: stringFlag(args, 'token-env', 'TAKU_BEARER_TOKEN'), refresh: args.command === 'auth-refresh' });
     const authenticated = status.authenticated === true;
@@ -237,6 +260,28 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
     }, {
       requiresAction: true,
       actionType: candidates.length ? 'select_one_publish_unit' : 'choose_an_explicit_source',
+    });
+  }
+  if (args.command === 'project-discover') {
+    const projects = await discoverRecentProjects({
+      host: stringFlag(args, 'host', 'all') as 'all' | 'codex' | 'claude-code',
+      maxProjects: numberFlag(args, 'max-projects', 20),
+      maxSessionFiles: numberFlag(args, 'max-session-files', 200),
+    });
+    return jsonOutput(projects.length ? 'project_selection_required' : 'no_projects_found', {
+      projects: projects as unknown as JsonValue,
+      project_count: projects.length,
+      privacy: {
+        local_only: true,
+        uploads: false,
+        prompt_content_analyzed: false,
+        project_root_metadata_inspected: true,
+        source_code_scanned: false,
+      },
+      selection_rule: 'Select exactly one project before source assessment begins.',
+    }, {
+      requiresAction: true,
+      actionType: projects.length ? 'select_one_local_project' : 'choose_an_explicit_project_directory',
     });
   }
   if (args.command === 'subapp-assess') {
@@ -965,6 +1010,58 @@ async function runCreatorCommand(command: string, creatorArgs: string[]): Promis
   return payload;
 }
 
+async function createCreatorInitEditor(args: ParsedArguments): Promise<JsonObject> {
+  const script = locateCreatorScript();
+  const creatorArgs = ['draft', '--json', '--editor'];
+  const forwarded = new Set([
+    'workspace',
+    'usage-period',
+    'max-usage-files',
+    'max-usage-bytes',
+    'max-usage-file-bytes',
+    'usage-scan-timeout-ms',
+    'persona-tone',
+    'persona-rules',
+    'creator-metrics',
+    'fetch-creator-stats',
+    'include-github-metrics',
+    'include-prompt-style',
+    'include-creation-candidates',
+    'no-usage',
+    'output',
+    'preview',
+    'site-url',
+    'worker-url',
+    'allow-custom-worker-url',
+  ]);
+  for (const [name, value] of args.flags) {
+    if (!forwarded.has(name)) continue;
+    creatorArgs.push(`--${name}`);
+    if (typeof value === 'string') creatorArgs.push(value);
+  }
+  const env = creatorEnvironment();
+  const auth = await resolveAuth({ tokenEnv: stringFlag(args, 'token-env', 'TAKU_BEARER_TOKEN') });
+  if (auth.token && !env.TAKU_PUBLISH_TOKEN) env.TAKU_PUBLISH_TOKEN = auth.token;
+  const result = await spawnNode(script, creatorArgs, env, false);
+  if (result.stderr) process.stderr.write(result.stderr);
+  let payload: unknown;
+  try {
+    payload = JSON.parse(result.stdout);
+  } catch {
+    throw new PublisherError('Taku Creator returned non-JSON output.', 'creator_invalid_output', {
+      output: result.stdout.slice(0, 1000),
+    });
+  }
+  if (!isRecord(payload)) throw new PublisherError('Taku Creator returned an invalid editor result.', 'creator_invalid_output');
+  if (result.code !== 0 || payload.ok === false) {
+    throw new PublisherError(
+      String(payload.error ?? 'Unable to start the Stax Card editor.'),
+      'creator_editor_failed',
+    );
+  }
+  return payload;
+}
+
 async function marketplaceInstallClient(args: ParsedArguments): Promise<TakuPublisherClient> {
   const tokenEnv = stringFlag(args, 'token-env', 'TAKU_BEARER_TOKEN');
   let auth = await resolveAuth({ tokenEnv });
@@ -1375,6 +1472,8 @@ Publishing availability: Skill only. Action, Agent, and Plugin are not available
 
 Commands:
   discover, init, stage, scan, apply-review, package, status
+  creator-init [--host codex|claude-code|all] [--max-projects <n>]
+  project-discover [--host codex|claude-code|all] [--max-projects <n>]
   remote-create, remote-get, remote-patch, remote-scan, remote-upload, remote-status
   auth-status, auth-refresh, auth-login, auth-logout
   marketplace-search, marketplace-show, marketplace-install

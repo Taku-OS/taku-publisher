@@ -136,6 +136,8 @@ export class TakuPublisherClient {
     return this.json('GET', `/marketplace/items?${query}`, undefined, '', false);
   }
   getMarketplaceItem(id: string): Promise<JsonObject> { return this.json('GET', `/stax/items/${segment(id)}`, undefined, '', false); }
+  getStaxProfile(): Promise<JsonObject> { return this.json('GET', '/stax/profile'); }
+  getOrCreateCreatorProfile(): Promise<JsonObject> { return this.json('GET', '/stax/creators/me'); }
   getMarketplaceInstallPackage(id: string): Promise<JsonObject> { return this.json('GET', `/stax/installs/package/${segment(id)}`); }
   recordMarketplaceInstall(id: string, versionNumber: number): Promise<JsonObject> {
     return this.json('POST', '/stax/installs', { item_id: id, installed_version: versionNumber });

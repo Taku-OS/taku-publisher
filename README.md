@@ -24,6 +24,16 @@ The canonical entrypoint is:
 node scripts/taku-publisher.mjs --help
 ```
 
+Initialize the creator workspace in one response:
+
+```bash
+node scripts/taku-publisher.mjs creator-init
+```
+
+This creates a local Stax Card draft/editor and reports recent local project
+metadata, current Taku sign-in state, and the Stax Card / Creator Profile entry
+points. It does not upload, convert, or publish project source code.
+
 The legacy `python3 scripts/taku_publisher.py` entrypoint remains available in
 the source repository during the compatibility window, but generated user
 plugins contain no Python files and never invoke Python.
