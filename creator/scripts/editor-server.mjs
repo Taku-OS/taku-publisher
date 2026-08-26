@@ -61,13 +61,19 @@ import {
 import { fetchTakuCreatorProfile } from './creator-profile.mjs';
 import { publishDraftToTaku } from './publish-flow.mjs';
 import { createEditorCommandResult } from './host-output.mjs';
+import { buildStaxCardPageUrl, buildStaxProfilePageUrl } from './stax-url.mjs';
+import {
+  preflightInlineSkillPackage,
+} from './skill-package.mjs';
 
 const EDITOR_COOKIE_NAME = 'taku_creator_editor';
 const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
+const PUBLISH_REQUEST_BODY_BYTES = 6 * 1024 * 1024;
 const EXPORT_PNG_MAX_REQUEST_BODY_BYTES = 24 * 1024 * 1024;
-const EXPORT_PNG_TIMEOUT_MS = 20000;
+const EXPORT_PNG_TIMEOUT_MS = 90000;
 const ICON_GENERATE_TIMEOUT_MS = 60000;
 export const LISTING_ICON_GENERATE_PATH = '/marketplace/icons/generate';
+export const LOCAL_AUTH_REDEEM_PATH = '/marketplace/local-auth/redeem';
 
 function base64Url(buffer) {
   return Buffer.from(buffer)
@@ -304,7 +310,7 @@ export async function startEditorServer(parsed, draftResult) {
     return result;
   };
   const rememberPublishedStaxFromResult = async (result) => {
-    const publishedStax = normalizePublishedStaxResult(result);
+    const publishedStax = normalizePublishedStaxResult(result, resolveSiteUrl(parsed));
     if (!publishedStax.published) return publishedStax;
     state.draft = {
       ...state.draft,
@@ -334,6 +340,37 @@ export async function startEditorServer(parsed, draftResult) {
     }
     const publishStatus = createCurrentPublishStatus();
     const privateState = await readPrivateState(state.draftPath);
+    const currentPublishToken = String(state.publishToken || '');
+    const iconToken = state.iconAuthToken
+      || (!currentPublishToken.startsWith('taku_pub_') ? currentPublishToken : '');
+    try {
+      state.draft = await prepareCommunitySkillsForPublish({
+        draft: state.draft,
+        toolChoices: state.toolChoices,
+        privateInventory: privateState?.privateInventory,
+        workerUrl: publishStatus.workerUrl,
+        iconToken,
+      });
+      for (const tool of getDraftSectionItemsByCanonicalId(state.draft, 'creator-tools')) {
+        const listingDraft = state.draft.listingDrafts?.[tool?.id];
+        if (tool?.id && listingDraft) {
+          await saveListingDraftToStore(parsed, tool.id, listingDraft);
+        }
+      }
+      await writeJson(state.draftPath, state.draft);
+      await writeEditorState(state.draftPath, {
+        previewPath: state.previewPath,
+        toolChoices: state.toolChoices,
+        creationChoices: state.creationChoices,
+      });
+    } catch (error) {
+      return {
+        ok: false,
+        status: 409,
+        code: 'community_skill_preflight_failed',
+        error: communitySkillPublishError(error),
+      };
+    }
     const result = await publishDraftToTaku({
       draft: state.draft,
       privateInventory: privateState?.privateInventory,
@@ -350,13 +387,16 @@ export async function startEditorServer(parsed, draftResult) {
     };
   };
   const getCurrentStaxPublication = async ({ refresh = false } = {}) => {
-    const cached = normalizePublishedStaxResult(state.draft.publishedStax || state.draft.stats?.publishedStax);
+    const cached = normalizePublishedStaxResult(state.draft.publishedStax || state.draft.stats?.publishedStax, resolveSiteUrl(parsed));
     const publishStatus = createCurrentPublishStatus();
     const base = {
       ok: true,
       published: cached.published,
       publicUrl: cached.publicUrl,
+      profilePageUrl: cached.profilePageUrl,
       creatorPageUrl: cached.creatorPageUrl,
+      staxCardPageUrl: cached.staxCardPageUrl,
+      staxCardShareUrl: cached.staxCardShareUrl,
       staxCardImageUrl: cached.staxCardImageUrl,
       cardId: cached.cardId,
       username: cached.username,
@@ -371,13 +411,16 @@ export async function startEditorServer(parsed, draftResult) {
         token: state.publishToken,
       });
       const remote = await client.getMyCard();
-      const publishedStax = normalizePublishedStaxResult(remote);
+      const publishedStax = normalizePublishedStaxResult(remote, resolveSiteUrl(parsed));
       if (!publishedStax.published) {
         return {
           ...base,
           published: false,
           publicUrl: '',
+          profilePageUrl: '',
           creatorPageUrl: '',
+          staxCardPageUrl: '',
+          staxCardShareUrl: '',
           staxCardImageUrl: '',
           cardId: '',
           username: '',
@@ -474,7 +517,7 @@ export async function startEditorServer(parsed, draftResult) {
       }
 
       if (request.method === 'POST' && requestUrl.pathname === '/api/stax/share') {
-        const body = await readRequestJson(request);
+        const body = await readRequestJson(request, PUBLISH_REQUEST_BODY_BYTES);
         const publication = await getCurrentStaxPublication({ refresh: false });
         if (!publication.cardId) {
           sendJsonResponse(response, { ok: false, error: 'Publish Stax before sharing.' }, 409);
@@ -741,10 +784,48 @@ export async function startEditorServer(parsed, draftResult) {
 
       if (request.method === 'POST' && requestUrl.pathname === '/api/creator-tools') {
         const body = await readRequestJson(request);
-        const creatorToolIds = Array.isArray(body.creatorToolIds)
+        const requestedCreatorToolIds = Array.isArray(body.creatorToolIds)
           ? body.creatorToolIds.filter((id) => typeof id === 'string')
           : [];
+        const creatorToolIds = requestedCreatorToolIds.filter((id) =>
+          isCommunityPublishCandidate(findToolChoiceById(state.toolChoices, id))
+        ).slice(0, 1);
+        const privateState = await readPrivateState(state.draftPath);
+        try {
+          for (const toolId of creatorToolIds) {
+            const sourceTool = findToolChoiceById(state.toolChoices, toolId);
+            await preflightInlineSkillPackage(sourceTool, privateState?.privateInventory);
+          }
+        } catch (error) {
+          sendJsonResponse(response, {
+            ok: false,
+            code: 'community_skill_preflight_failed',
+            error: communitySkillPublishError(error),
+          }, 409);
+          return;
+        }
         state.draft = applyCreatorToolChoicesToDraft(state.draft, state.toolChoices, creatorToolIds);
+        const nextListingDrafts = {
+          ...(isRecord(state.draft.listingDrafts) ? state.draft.listingDrafts : {}),
+        };
+        for (const toolId of creatorToolIds) {
+          if (nextListingDrafts[toolId]) continue;
+          const sourceTool = findToolChoiceById(state.toolChoices, toolId);
+          if (!sourceTool) continue;
+          const listingDraft = createInitialLocalListingDraft(sourceTool);
+          nextListingDrafts[toolId] = listingDraft;
+          await saveListingDraftToStore(parsed, toolId, listingDraft);
+        }
+        state.draft = {
+          ...state.draft,
+          listingDrafts: nextListingDrafts,
+          stats: {
+            ...(state.draft.stats || {}),
+            communityPublishToolCount: creatorToolIds.length,
+            listingDraftCount: Object.keys(nextListingDrafts).length,
+            listingReadyCount: Object.values(nextListingDrafts).filter((entry) => entry?.status === 'ready').length,
+          },
+        };
         await writeJson(state.draftPath, state.draft);
         await writeEditorState(state.draftPath, {
           previewPath: state.previewPath,
@@ -912,7 +993,9 @@ export async function startEditorServer(parsed, draftResult) {
         }
         const listing = normalizeListingDraft(body.listing || {});
         const sourceTool = findToolChoiceById(state.toolChoices, toolId);
-        const status = isListingReady(listing, { requireIcon: isEditorAddedLocalTool(sourceTool) }) ? 'ready' : 'draft';
+        const status = isListingReady(listing, {
+          requireIcon: isSelectedCommunityTool(state.draft, toolId),
+        }) ? 'ready' : 'draft';
         state.draft = {
           ...state.draft,
           listingDrafts: {
@@ -1136,6 +1219,17 @@ export async function startEditorServer(parsed, draftResult) {
       }
 
       if (request.method === 'POST' && requestUrl.pathname === '/api/publish') {
+        const body = await readRequestJson(request);
+        const staxCardSnapshot = sanitizeStaxCardSnapshot(body.staxCardSnapshot || body.stax_card_snapshot);
+        if (staxCardSnapshot) {
+          state.draft = applyStaxCardSnapshotToDraft(state.draft, staxCardSnapshot);
+          await writeJson(state.draftPath, state.draft);
+          await writeEditorState(state.draftPath, {
+            previewPath: state.previewPath,
+            toolChoices: state.toolChoices,
+            creationChoices: state.creationChoices,
+          });
+        }
         const pendingReviews = pendingLocalToolListingReviews(state);
         if (pendingReviews.length) {
           state.publishAfterAuth = false;
@@ -1592,7 +1686,10 @@ function inferMarketplaceCategory(tool) {
 
 function createInitialLocalListingDraft(tool) {
   const title = cleanPublicDraftText(tool?.name || tool?.title, 120);
-  const description = cleanPublicDraftText(tool?.description || tool?.detectedFrom, 220);
+  const description = cleanPublicDraftText(
+    tool?.description || tool?.detectedFrom || (title ? `Reusable AI Skill: ${title}.` : ''),
+    220,
+  );
   return {
     schemaVersion: 'taku.creator.tool-listing-draft.v1',
     sourceItemId: tool?.id || '',
@@ -1626,21 +1723,111 @@ function isListingReady(listing, options = {}) {
   );
 }
 
+function isSelectedCommunityTool(draft, toolId) {
+  return getDraftSectionItemsByCanonicalId(draft, 'creator-tools')
+    .some((tool) => tool?.id === toolId);
+}
+
+export function communitySkillPublishError(error) {
+  const message = error instanceof Error ? error.message : String(error || '');
+  if (/no readable local SKILL\.md package was found/i.test(message)) {
+    return 'This Skill has no readable local package, so publishing was stopped. It will remain visible on your Profile.';
+  }
+  if (/may contain private data/i.test(message)) {
+    const file = message.match(/:\s+([^:]+?) may contain private data/i)?.[1] || 'a file';
+    return `The file ${file} in this Skill may contain a local path or private data. Publishing was stopped. Remove the sensitive data and try again.`;
+  }
+  return message || 'This Skill did not pass the publishing preflight checks, so publishing was stopped.';
+}
+
+export async function prepareCommunitySkillsForPublish({
+  draft,
+  toolChoices,
+  privateInventory,
+  workerUrl,
+  iconToken,
+  generateIcon = fetchListingIconGenerate,
+}) {
+  const selectedTools = getDraftSectionItemsByCanonicalId(draft, 'creator-tools');
+  if (!selectedTools.length) return draft;
+
+  const nextDraft = structuredClone(draft);
+  const nextListingDrafts = {
+    ...(isRecord(nextDraft.listingDrafts) ? nextDraft.listingDrafts : {}),
+  };
+
+  for (const selectedTool of selectedTools) {
+    const toolId = typeof selectedTool?.id === 'string' ? selectedTool.id.trim() : '';
+    if (!toolId) throw new Error('Selected Community Skill is missing an ID.');
+    const sourceTool = findToolChoiceById(toolChoices, toolId) || selectedTool;
+    await preflightInlineSkillPackage(sourceTool, privateInventory);
+
+    const existingDraft = nextListingDrafts[toolId] || createInitialLocalListingDraft(sourceTool);
+    let listing = normalizeListingDraft(existingDraft.listing || {});
+    if (!isListingReady(listing, { requireIcon: false })) {
+      throw new Error(`“${sourceTool.name || sourceTool.title || toolId}” is missing a title, description, or category and cannot be published.`);
+    }
+
+    if (!listing.coverImageUrl) {
+      if (!iconToken) {
+        throw new Error('Sign in to Taku before generating an icon for the selected Community Skill.');
+      }
+      const result = await generateIcon({
+        workerUrl,
+        token: iconToken,
+        payload: buildListingIconGeneratePayload({
+          draft: nextDraft,
+          tool: sourceTool,
+          toolId,
+          listing,
+        }),
+      });
+      if (!result?.response?.ok) {
+        throw new Error(workerJsonError(result) || 'Taku could not generate an icon. Try again.');
+      }
+      const icon = normalizeGeneratedIconPayload(result.data);
+      if (!/^https:\/\//i.test(icon.imageUrl)) {
+        throw new Error('The generated Taku icon is not available at a public HTTPS URL, so publishing was stopped.');
+      }
+      listing = {
+        ...listing,
+        coverImageUrl: icon.imageUrl,
+      };
+    }
+
+    nextListingDrafts[toolId] = {
+      ...existingDraft,
+      schemaVersion: 'taku.creator.tool-listing-draft.v1',
+      sourceItemId: toolId,
+      updatedAt: new Date().toISOString(),
+      status: 'ready',
+      listing,
+    };
+  }
+
+  nextDraft.listingDrafts = nextListingDrafts;
+  nextDraft.stats = {
+    ...(nextDraft.stats || {}),
+    communityPublishToolCount: selectedTools.length,
+    listingDraftCount: Object.keys(nextListingDrafts).length,
+    listingReadyCount: Object.values(nextListingDrafts)
+      .filter((entry) => entry?.status === 'ready').length,
+  };
+  return nextDraft;
+}
+
 export function pendingLocalToolListingReviews(state) {
-  const candidates = [
-    ...(state.toolChoices?.displayedTools || []),
-    ...getDraftSectionItemsByCanonicalId(state.draft, 'creator-tools'),
-    ...getDraftSectionItemsByCanonicalId(state.draft, 'using-tools'),
-  ];
+  const candidates = getDraftSectionItemsByCanonicalId(state.draft, 'creator-tools');
   const reviews = [];
   const seen = new Set();
   for (const tool of candidates) {
-    if (!isEditorAddedLocalTool(tool)) continue;
     const id = typeof tool?.id === 'string' ? tool.id.trim() : '';
     if (!id || seen.has(id)) continue;
     seen.add(id);
     const listingDraft = state.draft?.listingDrafts?.[id];
-    if (listingDraft?.status === 'ready' && isListingReady(listingDraft.listing, { requireIcon: true })) continue;
+    // Icons are generated automatically after Taku authorization. Only fields
+    // that cannot be safely inferred should block before the publish attempt.
+    if (isListingReady(listingDraft?.listing, { requireIcon: false })) continue;
     reviews.push({
       id,
       name: tool?.name || tool?.title || id,
@@ -1649,7 +1836,6 @@ export function pendingLocalToolListingReviews(state) {
         !listingDraft?.listing?.title && 'title',
         !listingDraft?.listing?.shortDescription && 'shortDescription',
         !listingDraft?.listing?.category && 'category',
-        !listingDraft?.listing?.coverImageUrl && 'coverImageUrl',
       ].filter(Boolean),
     });
     if (reviews.length >= 3) break;
@@ -1754,6 +1940,66 @@ function clampInteger(value, min, max, fallback) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.min(max, Math.max(min, Math.round(number)));
+}
+
+function sanitizeStaxCardSnapshot(value) {
+  if (!isRecord(value)) return null;
+  if (value.schemaVersion !== 'taku.stax.card-snapshot.v1') return null;
+  const rawCanvas = isRecord(value.canvas) ? value.canvas : {};
+  const canvas = {
+    width: clampInteger(rawCanvas.width, 320, 2000, 940),
+    height: clampInteger(rawCanvas.height, 320, 2000, 796),
+    columns: clampInteger(rawCanvas.columns, 1, 16, 8),
+    rows: clampInteger(rawCanvas.rows, 1, 16, 6),
+    cellSize: clampInteger(rawCanvas.cellSize, 24, 240, 104),
+    gap: clampInteger(rawCanvas.gap, 0, 48, 8),
+  };
+  const blocks = (Array.isArray(value.blocks) ? value.blocks : [])
+    .map((block) => {
+      if (!isRecord(block)) return null;
+      const key = String(block.key || '').trim().toLowerCase();
+      if (!/^[a-z0-9_-]{1,40}$/.test(key)) return null;
+      const cx = clampInteger(block.cx, 0, canvas.columns - 1, 0);
+      const cy = clampInteger(block.cy, 0, canvas.rows - 1, 0);
+      const cw = clampInteger(block.cw, 1, canvas.columns, 1);
+      const ch = clampInteger(block.ch, 1, canvas.rows, 1);
+      if (cx + cw > canvas.columns || cy + ch > canvas.rows) return null;
+      return { key, cx, cy, cw, ch };
+    })
+    .filter(Boolean)
+    .slice(0, 32);
+  if (!blocks.length || !blocks.some((block) => block.key === 'hero')) return null;
+  const imageDataUrl = sanitizePngDataUrl(value.imageDataUrl || value.image_data_url);
+  return {
+    schemaVersion: 'taku.stax.card-snapshot.v1',
+    capturedAt: typeof value.capturedAt === 'string' ? value.capturedAt.slice(0, 80) : new Date().toISOString(),
+    canvas,
+    blocks,
+    ...(imageDataUrl ? { imageDataUrl } : {}),
+  };
+}
+
+function sanitizePngDataUrl(value) {
+  if (typeof value !== 'string') return '';
+  const text = value.trim();
+  if (text.length > 4_000_000) return '';
+  if (!/^data:image\/png;base64,[A-Za-z0-9+/=\r\n]+$/.test(text)) return '';
+  return text.replace(/\s+/g, '');
+}
+
+function applyStaxCardSnapshotToDraft(draft, snapshot) {
+  if (!snapshot) return draft;
+  const builderProfileSnapshot = isRecord(draft.builderProfileSnapshot)
+    ? {
+        ...draft.builderProfileSnapshot,
+        staxCardSnapshot: snapshot,
+      }
+    : draft.builderProfileSnapshot;
+  return {
+    ...draft,
+    staxCardSnapshot: snapshot,
+    ...(builderProfileSnapshot ? { builderProfileSnapshot } : {}),
+  };
 }
 
 function sanitizeDownloadFilename(value) {
@@ -1865,7 +2111,7 @@ async function runChromeScreenshot({ chromePath, htmlPath, pngPath, width, heigh
   });
 }
 
-function normalizePublishedStaxResult(value) {
+function normalizePublishedStaxResult(value, siteUrl = '') {
   const root = isRecord(value) ? value : {};
   const data = isRecord(root.data?.data)
     ? root.data.data
@@ -1874,16 +2120,40 @@ function normalizePublishedStaxResult(value) {
       : root;
   const card = isRecord(data.card) ? data.card : data;
   const links = isRecord(data.links) ? data.links : {};
-  const publicUrl = firstPublicStaxString(
+  const username = cleanPublicDraftText(card.username || data.username || card.handle || data.handle, 120);
+  const explicitStaxCardPageUrl = firstPublicStaxString(
+    data.staxCardPageUrl,
+    data.staxCardShareUrl,
+    links.staxCardPageUrl,
+    links.staxCardShareUrl,
+    card.staxCardPageUrl,
+    card.staxCardShareUrl,
+    root.staxCardPageUrl,
+    root.staxCardShareUrl,
+    isRecord(root.links) ? root.links.staxCardPageUrl : '',
+    isRecord(root.links) ? root.links.staxCardShareUrl : '',
+  );
+  const explicitProfilePageUrl = firstPublicStaxString(
+    data.profilePageUrl,
     data.creatorPageUrl,
     data.publicUrl,
+    links.profilePageUrl,
     links.creatorPageUrl,
+    card.profilePageUrl,
     card.creatorPageUrl,
     card.publicUrl,
+    root.profilePageUrl,
     root.creatorPageUrl,
     root.publicUrl,
+    isRecord(root.links) ? root.links.profilePageUrl : '',
     isRecord(root.links) ? root.links.creatorPageUrl : '',
   );
+  const profilePageUrl = username
+    ? buildStaxProfilePageUrl(siteUrl, username)
+    : explicitProfilePageUrl;
+  const staxCardPageUrl = username
+    ? buildStaxCardPageUrl(siteUrl, username)
+    : explicitStaxCardPageUrl;
   const isPublished = Boolean(
     data.published === true ||
     data.isPublished === true ||
@@ -1891,13 +2161,16 @@ function normalizePublishedStaxResult(value) {
     card.published === true ||
     card.isPublished === true ||
     card.is_published === true ||
-    (root.ok === true && publicUrl),
+    (root.ok === true && (profilePageUrl || staxCardPageUrl)),
   );
-  const published = Boolean(isPublished && publicUrl);
+  const published = Boolean(isPublished && (staxCardPageUrl || profilePageUrl));
   return {
     published,
-    publicUrl: published ? publicUrl : '',
-    creatorPageUrl: published ? publicUrl : '',
+    publicUrl: published ? profilePageUrl : '',
+    profilePageUrl: published ? profilePageUrl : '',
+    creatorPageUrl: published ? profilePageUrl : '',
+    staxCardPageUrl: published ? staxCardPageUrl : '',
+    staxCardShareUrl: published ? staxCardPageUrl : '',
     staxCardImageUrl: published ? firstPublicStaxString(
       data.staxCardImageUrl,
       links.staxCardImageUrl,
@@ -1905,7 +2178,7 @@ function normalizePublishedStaxResult(value) {
       root.staxCardImageUrl,
     ) : '',
     cardId: published ? cleanPublicDraftText(card.id || data.cardId || data.card_id, 120) : '',
-    username: published ? cleanPublicDraftText(card.username || data.username || card.handle || data.handle, 120) : '',
+    username: published ? username : '',
   };
 }
 
@@ -1965,6 +2238,12 @@ function findToolChoiceById(toolChoices, toolId) {
     if (found) return found;
   }
   return null;
+}
+
+function isCommunityPublishCandidate(tool) {
+  if (!isRecord(tool) || tool.publishable === false) return false;
+  const type = String(tool.type || tool.kind || '').trim().toLowerCase();
+  return type === 'skill' || type === 'skills';
 }
 
 function normalizeListingDraft(value) {
@@ -2039,7 +2318,7 @@ async function redeemLocalAuthCode({ workerUrl, code, state, codeVerifier }) {
   };
   const client = createTakuStaxClient({ workerUrl });
   try {
-    return await client.fetchJson('/community/local-auth/redeem', request, {
+    return await client.fetchJson(LOCAL_AUTH_REDEEM_PATH, request, {
       timeoutMs: ICON_GENERATE_TIMEOUT_MS,
       token: null,
     });
@@ -2049,7 +2328,7 @@ async function redeemLocalAuthCode({ workerUrl, code, state, codeVerifier }) {
       workerUrl,
       fetchImpl: fetch,
     });
-    return await directClient.fetchJson('/community/local-auth/redeem', request, {
+    return await directClient.fetchJson(LOCAL_AUTH_REDEEM_PATH, request, {
       timeoutMs: ICON_GENERATE_TIMEOUT_MS,
       token: null,
     });

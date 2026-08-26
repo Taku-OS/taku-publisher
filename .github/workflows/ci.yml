@@ -1,4 +1,4 @@
-name: Publisher baseline
+name: Passport baseline
 
 on:
   pull_request:

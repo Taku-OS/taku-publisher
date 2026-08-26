@@ -117,8 +117,12 @@ export function buildDraft(scanResult, toolSelection, creationSelection) {
         ...(publisherDisplayName ? { displayName: publisherDisplayName } : {}),
       },
     } : {}),
-    card: createDefaultCardSettings({ avatarUrl: creatorAvatarUrl }),
+    card: createDefaultCardSettings({
+      avatarUrl: creatorAvatarUrl,
+      primaryAi: scanResult.aiIdentity?.defaultClient,
+    }),
     sections,
+    ...(isRecord(scanResult.aiIdentity) ? { aiIdentity: scanResult.aiIdentity } : {}),
     stats: {
       ...scanResult.summary,
       ownedCreationCandidateCount: scanResult.ownedCreations.length,
@@ -859,6 +863,7 @@ export function buildBuilderProfileSnapshot(draft) {
     card: {
       displayName: card.name || '',
       avatarUrl: card.avatarUrl,
+      qrTarget: card.qrTarget,
       showPersonaCode: card.showPersonaCode,
       showUsage: card.showUsage,
       showCreatorPageLink: card.showCreatorPageLink,
@@ -898,6 +903,7 @@ export function buildBuilderProfileSnapshot(draft) {
     },
     badges: personaIdentity.badges,
     featuredHidden: personaIdentity.hidden.featured,
+    ...(draft?.staxCardSnapshot ? { staxCardSnapshot: draft.staxCardSnapshot } : {}),
     behavior: {
       period: {
         id: cleanText(behavior.period?.id || usage.periodId, 80) || 'thisMonth',
@@ -1061,14 +1067,21 @@ function normalizeDraftEstimatedCost(value) {
       modelId: cleanText(row?.modelId, 160),
       provider: cleanText(row?.provider, 80),
       pricingModel: cleanText(row?.pricingModel, 120),
+      priceSource: cleanText(row?.priceSource, 40),
       totalUsd: round(Number(row?.totalUsd) || 0, 6),
     })).filter((row) => row.modelId && row.totalUsd > 0).slice(0, 4)
     : [];
   return {
     ...empty,
+    actualSpend: false,
+    pricingBasis: cleanText(raw.pricingBasis, 100) || empty.pricingBasis,
+    priceTableUpdatedAt: cleanText(raw.priceTableUpdatedAt, 40) || empty.priceTableUpdatedAt,
     totalUsd: round(Number(raw.totalUsd) || 0, 6),
+    totalObservedTokenCount: Math.max(0, Math.floor(Number(raw.totalObservedTokenCount) || 0)),
     pricedTokenCount: Math.max(0, Math.floor(Number(raw.pricedTokenCount) || 0)),
     unpricedTokenCount: Math.max(0, Math.floor(Number(raw.unpricedTokenCount) || 0)),
+    coverageRatio: Math.max(0, Math.min(1, Number(raw.coverageRatio) || 0)),
+    partial: raw.partial === true,
     pricedModelCount: Math.max(0, Math.floor(Number(raw.pricedModelCount) || 0)),
     unpricedModelCount: Math.max(0, Math.floor(Number(raw.unpricedModelCount) || 0)),
     topModels,
@@ -1309,9 +1322,17 @@ function normalizeCardVisibility(value, fallback = 'draft') {
   return 'draft';
 }
 
+function normalizeQrTarget(value, fallback = 'stax') {
+  const normalized = normalizeChoiceToken(value || fallback);
+  return normalized === 'profile' ? 'profile' : 'stax';
+}
+
 function createDefaultCardSettings(input = {}) {
+  const primaryAi = normalizePrimaryAiClient(input.primaryAi);
   return {
     avatarUrl: publicHttpUrl(input.avatarUrl || process.env.TAKU_CREATOR_AVATAR_URL),
+    ...(primaryAi ? { primaryAi } : {}),
+    qrTarget: normalizeQrTarget(input.qrTarget),
     showPersonaCode: true,
     showUsage: true,
     showCreatorPageLink: true,
@@ -1323,9 +1344,12 @@ export function cardSettingsForDraft(draft) {
   const creator = isRecord(draft?.creator) ? draft.creator : {};
   const card = isRecord(draft?.card) ? draft.card : {};
   const name = cleanText(card.name || creator.name || creator.displayName, 120);
+  const primaryAi = normalizePrimaryAiClient(card.primaryAi);
   return {
     ...(name ? { name } : {}),
     avatarUrl: publicHttpUrl(card.avatarUrl || creator.avatarUrl),
+    ...(primaryAi ? { primaryAi } : {}),
+    qrTarget: normalizeQrTarget(card.qrTarget),
     showPersonaCode: normalizeBooleanOption(card.showPersonaCode, true),
     showUsage: normalizeBooleanOption(card.showUsage, true),
     showCreatorPageLink: normalizeBooleanOption(card.showCreatorPageLink, true),
@@ -1345,8 +1369,15 @@ export function applyCardSettingsToDraft(draft, input = {}) {
   const avatarUrl = Object.prototype.hasOwnProperty.call(incoming, 'avatarUrl')
     ? publicHttpUrl(incoming.avatarUrl)
     : current.avatarUrl;
+  const primaryAi = normalizePrimaryAiSelection(
+    incoming.primaryAi,
+    nextDraft.aiIdentity,
+    current.primaryAi,
+  );
   const settings = {
     ...(avatarUrl ? { avatarUrl } : {}),
+    ...(primaryAi ? { primaryAi } : {}),
+    qrTarget: normalizeQrTarget(incoming.qrTarget, current.qrTarget),
     showPersonaCode: normalizeBooleanOption(incoming.showPersonaCode, current.showPersonaCode),
     showUsage: normalizeBooleanOption(incoming.showUsage, current.showUsage),
     showCreatorPageLink: normalizeBooleanOption(incoming.showCreatorPageLink, current.showCreatorPageLink),
@@ -1358,6 +1389,26 @@ export function applyCardSettingsToDraft(draft, input = {}) {
   };
   nextDraft.card = settings;
   return refreshBuilderProfileSnapshot(nextDraft);
+}
+
+function normalizePrimaryAiClient(value) {
+  const normalized = normalizeChoiceToken(value);
+  if (normalized === 'codex') return 'codex';
+  if (['claude', 'claude-code', 'cc'].includes(normalized)) return 'claude-code';
+  if (normalized === 'cursor') return 'cursor';
+  if (normalized === 'gemini') return 'gemini';
+  return '';
+}
+
+function normalizePrimaryAiSelection(value, aiIdentity, fallback = '') {
+  const normalized = normalizePrimaryAiClient(value);
+  const available = new Set(
+    (Array.isArray(aiIdentity?.options) ? aiIdentity.options : [])
+      .map((item) => normalizePrimaryAiClient(item?.id))
+      .filter(Boolean),
+  );
+  if (normalized && (!available.size || available.has(normalized))) return normalized;
+  return normalizePrimaryAiClient(fallback);
 }
 
 export function fallbackToolChoicesFromDraft(draft) {

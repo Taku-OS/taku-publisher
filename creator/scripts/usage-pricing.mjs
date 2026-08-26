@@ -1,6 +1,11 @@
 export const ESTIMATED_COST_SCHEMA = 'taku.creator.estimated-cost.v1';
-export const PRICE_TABLE_UPDATED_AT = '2026-07-01';
+export const PRICE_TABLE_UPDATED_AT = '2026-07-30';
+export const ESTIMATED_COST_BASIS = 'monthly-market-api-price-equivalent';
 const TOKENS_PER_MILLION = 1_000_000;
+
+let remotePriceRules = new Map();
+let remotePriceAliases = new Map();
+let activePriceTableUpdatedAt = PRICE_TABLE_UPDATED_AT;
 
 const PRICE_RULES = [
   // Cursor-specific pools must match before generic provider model rules.
@@ -10,7 +15,12 @@ const PRICE_RULES = [
   { id: 'cursor-composer-1.5', provider: 'Cursor', model: 'composer-1.5', patterns: [/composer[\s._-]*1\.?5/i], input: 3.5, cacheWrite: 3.5, cacheRead: 0.35, output: 17.5 },
   { id: 'cursor-composer-1', provider: 'Cursor', model: 'composer-1', patterns: [/composer[\s._-]*1(?!\.?5)/i], input: 1.25, cacheWrite: 1.25, cacheRead: 0.125, output: 10 },
 
-  { id: 'openai-gpt-5.5', provider: 'OpenAI', model: 'gpt-5.5', patterns: [/gpt[-_.\s]*5\.?5/i], input: 5, cacheRead: 0.5, output: 30 },
+  // OpenAI standard API list prices. These are replacement-cost equivalents for
+  // local client usage, not Codex subscription charges or an official bill.
+  { id: 'openai-gpt-5.6-sol', provider: 'OpenAI', model: 'gpt-5.6-sol', patterns: [/^(?:openai[-_:/\s]*)?gpt[-_.\s]*5\.?6[-_.\s]*sol(?:[-_.\s]*\d{4}[-_.]\d{2}[-_.]\d{2})?$/i], input: 5, cacheWrite: 6.25, cacheRead: 0.5, output: 30 },
+  { id: 'openai-gpt-5.6-terra', provider: 'OpenAI', model: 'gpt-5.6-terra', patterns: [/^(?:openai[-_:/\s]*)?gpt[-_.\s]*5\.?6[-_.\s]*terra(?:[-_.\s]*\d{4}[-_.]\d{2}[-_.]\d{2})?$/i], input: 2, cacheWrite: 2.5, cacheRead: 0.2, output: 12 },
+  { id: 'openai-gpt-5.6-luna', provider: 'OpenAI', model: 'gpt-5.6-luna', patterns: [/^(?:openai[-_:/\s]*)?gpt[-_.\s]*5\.?6[-_.\s]*luna(?:[-_.\s]*\d{4}[-_.]\d{2}[-_.]\d{2})?$/i], input: 0.2, cacheWrite: 0.25, cacheRead: 0.02, output: 1.2 },
+  { id: 'openai-gpt-5.5', provider: 'OpenAI', model: 'gpt-5.5', patterns: [/^(?:openai[-_:/\s]*)?gpt[-_.\s]*5\.?5(?:[-_.\s]*\d{4}[-_.]\d{2}[-_.]\d{2})?$/i], input: 5, cacheRead: 0.5, output: 30 },
   { id: 'openai-gpt-5.4-mini', provider: 'OpenAI', model: 'gpt-5.4-mini', patterns: [/gpt[-_.\s]*5\.?4[-_.\s]*mini/i], input: 0.75, cacheRead: 0.075, output: 4.5 },
   { id: 'openai-gpt-5.4-nano', provider: 'OpenAI', model: 'gpt-5.4-nano', patterns: [/gpt[-_.\s]*5\.?4[-_.\s]*nano/i], input: 0.2, cacheRead: 0.02, output: 1.25 },
   { id: 'openai-gpt-5.4', provider: 'OpenAI', model: 'gpt-5.4', patterns: [/gpt[-_.\s]*5\.?4/i], input: 2.5, cacheRead: 0.25, output: 15 },
@@ -22,7 +32,7 @@ const PRICE_RULES = [
   { id: 'openai-gpt-5-codex', provider: 'OpenAI', model: 'gpt-5-codex', patterns: [/gpt[-_.\s]*5[-_.\s]*codex/i], input: 1.25, cacheRead: 0.125, output: 10 },
   { id: 'openai-gpt-5-mini', provider: 'OpenAI', model: 'gpt-5-mini', patterns: [/gpt[-_.\s]*5[-_.\s]*mini/i], input: 0.25, cacheRead: 0.025, output: 2 },
   { id: 'openai-gpt-5-fast', provider: 'OpenAI', model: 'gpt-5-fast', patterns: [/gpt[-_.\s]*5.*fast/i], input: 2.5, cacheRead: 0.25, output: 20 },
-  { id: 'openai-gpt-5', provider: 'OpenAI', model: 'gpt-5', patterns: [/gpt[-_.\s]*5/i], input: 1.25, cacheRead: 0.125, output: 10 },
+  { id: 'openai-gpt-5', provider: 'OpenAI', model: 'gpt-5', patterns: [/^(?:openai[-_:/\s]*)?gpt[-_.\s]*5(?:[-_.\s]*\d{4}[-_.]\d{2}[-_.]\d{2})?$/i], input: 1.25, cacheRead: 0.125, output: 10 },
   { id: 'openai-gpt-4.1-mini', provider: 'OpenAI', model: 'gpt-4.1-mini', patterns: [/gpt[-_.\s]*4\.?1[-_.\s]*mini/i], input: 0.4, cacheRead: 0.1, output: 1.6 },
   { id: 'openai-gpt-4.1-nano', provider: 'OpenAI', model: 'gpt-4.1-nano', patterns: [/gpt[-_.\s]*4\.?1[-_.\s]*nano/i], input: 0.1, cacheRead: 0.025, output: 0.4 },
   { id: 'openai-gpt-4.1', provider: 'OpenAI', model: 'gpt-4.1', patterns: [/gpt[-_.\s]*4\.?1/i], input: 2, cacheRead: 0.5, output: 8 },
@@ -59,10 +69,15 @@ export function createEmptyEstimatedCostSummary() {
     schemaVersion: ESTIMATED_COST_SCHEMA,
     currency: 'USD',
     estimated: true,
-    priceTableUpdatedAt: PRICE_TABLE_UPDATED_AT,
+    actualSpend: false,
+    pricingBasis: ESTIMATED_COST_BASIS,
+    priceTableUpdatedAt: activePriceTableUpdatedAt,
     totalUsd: 0,
+    totalObservedTokenCount: 0,
     pricedTokenCount: 0,
     unpricedTokenCount: 0,
+    coverageRatio: 0,
+    partial: false,
     pricedModelCount: 0,
     unpricedModelCount: 0,
     topModels: [],
@@ -84,11 +99,14 @@ export function estimateUsageCostForModel(modelId, numbers = {}) {
     schemaVersion: ESTIMATED_COST_SCHEMA,
     currency: 'USD',
     estimated: true,
-    priceTableUpdatedAt: PRICE_TABLE_UPDATED_AT,
+    actualSpend: false,
+    pricingBasis: ESTIMATED_COST_BASIS,
+    priceTableUpdatedAt: price?.updatedAt || activePriceTableUpdatedAt,
     modelId: sanitizeModelId(modelId),
     priceMatched: false,
     provider: '',
     pricingModel: '',
+    priceSource: '',
     totalUsd: 0,
     inputUsd: 0,
     outputUsd: 0,
@@ -117,6 +135,7 @@ export function estimateUsageCostForModel(modelId, numbers = {}) {
     priceMatched: true,
     provider: price.provider,
     pricingModel: price.model,
+    priceSource: price.source || 'bundled',
     totalUsd: roundMoney(totalUsd),
     inputUsd: roundMoney(inputUsd),
     outputUsd: roundMoney(outputUsd),
@@ -134,17 +153,29 @@ export function estimateUsageCostForModel(modelId, numbers = {}) {
   };
 }
 
-export function summarizeEstimatedCost(modelRows) {
+export function summarizeEstimatedCost(modelRows, totalObservedTokens) {
   const summary = createEmptyEstimatedCostSummary();
   const rows = Array.isArray(modelRows) ? modelRows : [];
+  let pricedObservedTokenCount = 0;
+  let attributedTokenCount = 0;
   for (const row of rows) {
     const cost = row?.estimatedCost || estimateUsageCostForModel(row?.modelId || row?.name, row);
     summary.totalUsd += Number(cost.totalUsd) || 0;
-    summary.pricedTokenCount += nonNegativeInteger(cost.pricedTokenCount);
-    summary.unpricedTokenCount += nonNegativeInteger(cost.unpricedTokenCount);
-    if (cost.priceMatched) summary.pricedModelCount += 1;
+    const observedTokenCount = nonNegativeInteger(row?.totalTokens) || nonNegativeInteger(cost.pricedTokenCount);
+    attributedTokenCount += observedTokenCount;
+    if (cost.priceMatched) {
+      summary.pricedModelCount += 1;
+      pricedObservedTokenCount += observedTokenCount;
+    }
     else if (nonNegativeInteger(row?.totalTokens) > 0) summary.unpricedModelCount += 1;
   }
+  summary.totalObservedTokenCount = Math.max(nonNegativeInteger(totalObservedTokens), attributedTokenCount);
+  summary.pricedTokenCount = pricedObservedTokenCount;
+  summary.unpricedTokenCount = Math.max(0, summary.totalObservedTokenCount - pricedObservedTokenCount);
+  summary.coverageRatio = summary.totalObservedTokenCount > 0
+    ? roundRatio(pricedObservedTokenCount / summary.totalObservedTokenCount)
+    : 0;
+  summary.partial = summary.unpricedTokenCount > 0;
   summary.totalUsd = roundMoney(summary.totalUsd);
   summary.topModels = rows
     .map((row) => row?.estimatedCost || estimateUsageCostForModel(row?.modelId || row?.name, row))
@@ -155,10 +186,11 @@ export function summarizeEstimatedCost(modelRows) {
       modelId: cost.modelId,
       provider: cost.provider,
       pricingModel: cost.pricingModel,
+      priceSource: cost.priceSource,
       totalUsd: cost.totalUsd,
     }));
   if (summary.unpricedTokenCount > 0) {
-    summary.warnings.push(`${summary.unpricedTokenCount} token(s) could not be priced because the model id was missing, unrecognized, or not broken down by token type.`);
+    summary.warnings.push(`${summary.unpricedTokenCount} observed token(s) could not be priced because the model id was missing, unrecognized, or not attributable to a priced model.`);
   }
   return summary;
 }
@@ -182,7 +214,60 @@ export function sanitizeModelId(value) {
 export function findModelPrice(modelId) {
   const text = sanitizeModelId(modelId);
   if (!text) return undefined;
+  const normalized = normalizeRemoteModelId(text);
+  const remote = remotePriceRules.get(normalized) || remotePriceAliases.get(normalized);
+  if (remote) return remote;
   return PRICE_RULES.find((rule) => rule.patterns.some((pattern) => pattern.test(text)));
+}
+
+export function installReferencePriceCatalog(catalog) {
+  const rows = Array.isArray(catalog?.prices) ? catalog.prices : [];
+  const exact = new Map();
+  const aliasCandidates = new Map();
+  for (const row of rows) {
+    if (String(row?.billing_mode || '').trim().toLowerCase() !== 'tokens') continue;
+    const model = sanitizeModelId(row?.model_id);
+    const input = finiteNonNegative(row?.input_usd_per_million);
+    const output = finiteNonNegative(row?.output_usd_per_million);
+    if (!model || input === undefined || output === undefined) continue;
+    const normalized = normalizeRemoteModelId(model);
+    const rule = {
+      id: `remote-${normalized}`,
+      provider: providerFromRemoteModel(model),
+      model,
+      source: cleanPriceMetadata(row?.source, 40) || 'proxy-reference',
+      updatedAt: cleanPriceMetadata(catalog?.period || catalog?.generated_at, 40) || PRICE_TABLE_UPDATED_AT,
+      input,
+      output,
+      ...(finiteNonNegative(row?.cache_read_usd_per_million) !== undefined
+        ? { cacheRead: finiteNonNegative(row.cache_read_usd_per_million) }
+        : {}),
+      ...(finiteNonNegative(row?.cache_creation_usd_per_million) !== undefined
+        ? { cacheWrite: finiteNonNegative(row.cache_creation_usd_per_million) }
+        : {}),
+    };
+    exact.set(normalized, rule);
+    const tail = normalized.includes('/') ? normalized.slice(normalized.lastIndexOf('/') + 1) : '';
+    if (tail) {
+      const candidates = aliasCandidates.get(tail) || [];
+      candidates.push(rule);
+      aliasCandidates.set(tail, candidates);
+    }
+  }
+  const aliases = new Map();
+  for (const [alias, candidates] of aliasCandidates) {
+    if (candidates.length === 1 && !exact.has(alias)) aliases.set(alias, candidates[0]);
+  }
+  remotePriceRules = exact;
+  remotePriceAliases = aliases;
+  activePriceTableUpdatedAt = cleanPriceMetadata(catalog?.period || catalog?.generated_at, 40) || PRICE_TABLE_UPDATED_AT;
+  return exact.size;
+}
+
+export function clearReferencePriceCatalog() {
+  remotePriceRules = new Map();
+  remotePriceAliases = new Map();
+  activePriceTableUpdatedAt = PRICE_TABLE_UPDATED_AT;
 }
 
 function billableInputTokenCount(price, inputTokens, cacheReadTokens, cacheCreationTokens) {
@@ -215,6 +300,32 @@ function finiteOrFallback(value, fallback) {
   return Number.isFinite(next) ? next : fallback;
 }
 
+function finiteNonNegative(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : undefined;
+}
+
+function normalizeRemoteModelId(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function providerFromRemoteModel(model) {
+  const normalized = String(model || '').trim().toLowerCase();
+  const prefix = normalized.includes('/') ? normalized.split('/')[0] : '';
+  const candidate = prefix || normalized;
+  if (/^(openai|gpt[-_.]|o[134](?:[-_.]|$))/.test(candidate)) return 'OpenAI';
+  if (/^(anthropic|claude[-_.])/.test(candidate)) return 'Anthropic';
+  if (/^(google|gemini[-_.])/.test(candidate)) return 'Google';
+  if (/^(cursor|composer[-_.])/.test(candidate)) return 'Cursor';
+  if (/^(deepseek)(?:\/|[-_.]|$)/.test(candidate)) return 'DeepSeek';
+  return prefix ? prefix.charAt(0).toUpperCase() + prefix.slice(1) : '';
+}
+
+function cleanPriceMetadata(value, maxLength) {
+  const text = String(value || '').trim();
+  return text ? text.slice(0, maxLength) : '';
+}
+
 function nonNegativeInteger(value) {
   const next = Math.floor(Number(value) || 0);
   return next > 0 ? next : 0;
@@ -223,4 +334,9 @@ function nonNegativeInteger(value) {
 function roundMoney(value) {
   if (!Number.isFinite(value) || value <= 0) return 0;
   return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+function roundRatio(value) {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.round(Math.min(1, value) * 1_000_000) / 1_000_000;
 }

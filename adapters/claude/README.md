@@ -31,12 +31,13 @@ open Claude Code in the project or workspace you want Taku Publisher to scan.
 Ask Claude Code:
 
 ```text
-Use Taku Publisher to generate an editable Creator Profile preview.
+打开 Taku Publisher 创作者工作台，生成我的 Stax Card，并让我选择要发布的本地项目。
 ```
 
 Other useful prompts:
 
 ```text
+Find my recent Codex and Claude Code projects and help me import one into Taku.
 Show my Taku Creator Center.
 Find a tool in the Taku community.
 Publish the tool in this workspace to Taku.
@@ -44,9 +45,11 @@ Publish the tool in this workspace to Taku.
 
 ## What It Does
 
-Taku Publisher lets Claude Code search the full Taku community catalog, inspect
-community tools, scan local creator activity, generate an editable Creator Profile,
-manage your Creator Center, and publish a workspace tool to Taku.
+Taku Publisher lets Claude Code discover recent Codex/Claude Code workspaces
+from local metadata, route one selected project to SubApp or Skill conversion,
+search the full Taku community catalog, inspect community tools, scan local
+creator activity, generate an editable Creator Profile, manage your Creator
+Center, and publish a workspace tool to Taku.
 
 The plugin may open a browser sign-in flow when it needs Taku authorization.
 Do not paste tokens into chat; sign in through the opened Taku page.

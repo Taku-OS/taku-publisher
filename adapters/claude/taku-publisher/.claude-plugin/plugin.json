@@ -1,7 +1,7 @@
 {
   "name": "taku-publisher",
-  "version": "0.3.1",
-  "description": "Search the full Taku community catalog, scan local creator capabilities, manage your Creator Center, and safely publish them without Taku Desktop.",
+  "version": "0.3.8",
+  "description": "Generate a Stax Card, select recent Codex and Claude Code projects, and publish them through a safe Skill/SubApp queue.",
   "author": {
     "name": "Taku",
     "url": "https://taku.ai/"

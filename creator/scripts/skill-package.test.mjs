@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import {
   createInlineSkillPackage,
+  preflightInlineSkillPackage,
   scanInlineSkillPackageSource,
 } from './skill-package.mjs';
 
@@ -30,6 +31,24 @@ test('allows credential parameters populated from environment variables', () => 
   const findings = scanInlineSkillPackageSource(
     'client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)'
   );
+
+  assert.deepEqual(findings, []);
+});
+
+test('allows credential function parameters, type annotations, and runtime forwarding', () => {
+  const findings = scanInlineSkillPackageSource(`
+def call(*, access_token: Optional[str] = None):
+    return request(access_token=access_token)
+`);
+
+  assert.deepEqual(findings, []);
+});
+
+test('allows privacy scanners to declare local-path detection patterns', () => {
+  const findings = scanInlineSkillPackageSource(`
+USER_PATH_PATTERN = re.compile(r"/Users/[^\\s/]+")
+HOME_PATH_PATTERN = re.compile(r"/home/[^\\s/]+")
+`);
 
   assert.deepEqual(findings, []);
 });
@@ -65,4 +84,24 @@ test('normalizes a lowercase skill.md to canonical SKILL.md in the package', asy
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
+});
+
+test('excludes private runtime state under .temp from a Community Skill package', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-skill-package-temp-state-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.writeFile(path.join(root, 'SKILL.md'), '# Safe publisher\n');
+  await fs.mkdir(path.join(root, '.temp'));
+  await fs.writeFile(
+    path.join(root, '.temp', 'publish-work-state.json'),
+    JSON.stringify({ sourcePath: path.join(path.sep, 'Users', 'example', 'private-project') }),
+  );
+  const item = { id: 'safe-publisher', name: 'safe-publisher', type: 'skill' };
+  const privateInventory = { items: [{ id: item.id, localPath: root }] };
+
+  const result = await preflightInlineSkillPackage(item, privateInventory);
+  const pkg = await createInlineSkillPackage(item, privateInventory);
+
+  assert.equal(result.ok, true);
+  assert.ok(pkg.files.includes('SKILL.md'));
+  assert.equal(pkg.files.some((file) => file.startsWith('.temp/')), false);
 });

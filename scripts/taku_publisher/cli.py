@@ -40,6 +40,7 @@ from .marketplace import (
     install_preflight,
     marketplace_item,
     marketplace_items,
+    open_marketplace_item_in_taku,
 )
 from .scanner import (
     apply_deep_scan_dispositions,
@@ -154,6 +155,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _marketplace_public_arguments(marketplace_show)
     marketplace_show.add_argument("--item-id", required=True)
+
+    marketplace_open = subparsers.add_parser(
+        "marketplace-open",
+        help="Open one selected Marketplace App in Taku Desktop.",
+    )
+    _marketplace_public_arguments(marketplace_open)
+    marketplace_open.add_argument("--item-id", required=True)
 
     marketplace_install = subparsers.add_parser(
         "marketplace-install",
@@ -304,6 +312,18 @@ def _dispatch(args: argparse.Namespace) -> dict[str, Any]:
             status="marketplace_item",
             requires_action=False,
             item=marketplace_item(response),
+        )
+
+    if args.command == "marketplace-open":
+        response = _marketplace_public_client(args).get_marketplace_item(
+            args.item_id
+        )
+        opened = open_marketplace_item_in_taku(response)
+        return json_output(
+            status="taku_opened",
+            requires_action=True,
+            action_type="confirm_in_taku_desktop",
+            **opened,
         )
 
     if args.command == "marketplace-install":

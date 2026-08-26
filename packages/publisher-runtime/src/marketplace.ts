@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
@@ -21,10 +22,7 @@ export function marketplaceItems(response: JsonObject): JsonObject[] {
 }
 
 export function marketplaceItem(response: JsonObject): JsonObject {
-  for (const candidate of responseCandidates(response)) {
-    if (firstString(candidate, 'id', 'itemId', 'item_id')) return normalizeMarketplaceItem(candidate);
-  }
-  throw new PublisherError('Marketplace response does not contain an item.', 'invalid_marketplace_response');
+  return normalizeMarketplaceItem(rawMarketplaceItem(response));
 }
 
 export function normalizeMarketplaceItem(item: JsonObject): JsonObject {
@@ -38,6 +36,9 @@ export function normalizeMarketplaceItem(item: JsonObject): JsonObject {
     || type;
   const installability = firstString(item, 'installability')
     || firstString(offer, 'installability');
+  const codexInstallSupported = type === 'skill' && displayKind === 'skill';
+  const takuDesktopOpenSupported = !codexInstallSupported
+    && isTakuDeepLink(firstString(offer, 'deepLink', 'deep_link'));
   return {
     item_id: firstString(item, 'id', 'itemId', 'item_id'),
     name: firstString(item, 'name', 'title'),
@@ -55,11 +56,56 @@ export function normalizeMarketplaceItem(item: JsonObject): JsonObject {
     installability,
     display_kind: displayKind,
     cta: firstString(offer, 'cta'),
-    deep_link: firstString(offer, 'deepLink', 'deep_link'),
     external_url: firstString(item, 'externalUrl', 'external_url')
       || firstString(offer, 'externalUrl', 'external_url'),
-    codex_install_supported: type === 'skill' && displayKind === 'skill',
+    codex_install_supported: codexInstallSupported,
+    taku_desktop_open_supported: takuDesktopOpenSupported,
+    recommended_action: codexInstallSupported
+      ? 'install_in_codex'
+      : takuDesktopOpenSupported
+        ? 'open_in_taku_desktop'
+        : 'view_details',
     configuration_requirements: requirementsFromSources(latest, publisher, metadata),
+  };
+}
+
+export async function openMarketplaceItemInTaku(
+  response: JsonObject,
+  options: {
+    openExternal?: (url: string) => Promise<boolean> | boolean;
+    platform?: NodeJS.Platform;
+  } = {},
+): Promise<JsonObject> {
+  const raw = rawMarketplaceItem(response);
+  const item = normalizeMarketplaceItem(raw);
+  if (item.status !== 'published') {
+    throw new PublisherError(
+      'Only published Marketplace items can be opened in Taku Desktop.',
+      'marketplace_item_not_published',
+    );
+  }
+  if (item.codex_install_supported === true) {
+    throw new PublisherError(
+      'This item is a Codex Skill. Use the confirmed Codex installation flow instead.',
+      'marketplace_skill_uses_codex_install',
+    );
+  }
+  const offer = marketplaceOffer(raw);
+  const deepLink = validatedTakuDeepLink(firstString(offer, 'deepLink', 'deep_link'));
+  const opened = await (options.openExternal ?? ((url: string) => openTakuDeepLink(
+    url,
+    options.platform ?? process.platform,
+  )))(deepLink);
+  if (!opened) {
+    throw new PublisherError(
+      'Taku Desktop could not be opened from this terminal. Use a desktop session with Taku installed.',
+      'taku_desktop_open_failed',
+      { external_url: item.external_url || null },
+    );
+  }
+  return {
+    item,
+    next_action: 'confirm_in_taku_desktop',
   };
 }
 
@@ -185,6 +231,68 @@ function validateEntries(entries: ZipEntry[]): ZipEntry[] {
 function installContract(response: JsonObject): JsonObject {
   if (isRecord(response.data)) return response.data;
   throw new PublisherError('Marketplace install response is invalid.', 'invalid_marketplace_response');
+}
+
+function rawMarketplaceItem(response: JsonObject): JsonObject {
+  for (const candidate of responseCandidates(response)) {
+    if (firstString(candidate, 'id', 'itemId', 'item_id')) return candidate;
+  }
+  throw new PublisherError('Marketplace response does not contain an item.', 'invalid_marketplace_response');
+}
+
+function marketplaceOffer(item: JsonObject): JsonObject {
+  const metadata = record(item.metadata);
+  return record(item.installOffer ?? item.install_offer ?? metadata.taku_install_offer);
+}
+
+function isTakuDeepLink(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return value.length <= 2_048
+      && !/[\u0000-\u001f\u007f]/u.test(value)
+      && parsed.protocol === 'taku:'
+      && !parsed.username
+      && !parsed.password;
+  } catch {
+    return false;
+  }
+}
+
+function validatedTakuDeepLink(value: string): string {
+  if (!isTakuDeepLink(value)) {
+    throw new PublisherError(
+      'This Marketplace item does not provide a valid Taku Desktop action.',
+      'marketplace_taku_open_unavailable',
+    );
+  }
+  return value;
+}
+
+async function openTakuDeepLink(url: string, platform: NodeJS.Platform): Promise<boolean> {
+  const command = platform === 'darwin'
+    ? { file: 'open', args: [url] }
+    : platform === 'win32'
+      ? { file: 'explorer.exe', args: [url] }
+      : { file: 'xdg-open', args: [url] };
+  return await new Promise(resolve => {
+    let settled = false;
+    const child = spawn(command.file, command.args, {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    const finish = (opened: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(opened);
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      finish(false);
+    }, 15_000);
+    child.once('error', () => finish(false));
+    child.once('close', code => finish(code === 0));
+  });
 }
 
 function requirementsFromSources(latest: JsonObject, publisher: JsonObject, metadata: JsonObject): JsonObject[] {

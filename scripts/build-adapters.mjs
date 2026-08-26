@@ -8,14 +8,27 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const outputRoot = path.join(repositoryRoot, 'dist', 'plugins');
 const marketplaceOutputRoot = path.join(repositoryRoot, 'dist', 'marketplaces');
 const pluginName = 'taku-publisher';
+const templateBuildArtifactNames = new Set([
+  '.biome',
+  '.next',
+  '.next-edit',
+  '.next-preview',
+  '.taku',
+  '.vercel',
+  'build',
+  'coverage',
+  'out',
+]);
 
 const adapterSpecs = [
   {
     host: 'codex',
+    creatorHost: 'codex',
     manifestDir: '.codex-plugin',
   },
   {
     host: 'claude',
+    creatorHost: 'claude-code',
     manifestDir: '.claude-plugin',
   },
 ];
@@ -118,6 +131,9 @@ async function buildAdapter(spec) {
   await copyTypeScriptRuntime(
     path.join(skillRoot, 'node_modules', 'typescript'),
   );
+  await copyQrCodeRuntime(
+    path.join(skillRoot, 'node_modules', 'qrcode-generator'),
+  );
   await fs.writeFile(
     path.join(skillRoot, 'package.json'),
     `${JSON.stringify({
@@ -130,6 +146,13 @@ async function buildAdapter(spec) {
         '#taku-passport-core/privacy': '@taku/passport-core/privacy',
         '#taku-publisher-runtime': '@taku/publisher-runtime',
       },
+    }, null, 2)}\n`,
+  );
+  await fs.writeFile(
+    path.join(skillRoot, 'host-adapter.json'),
+    `${JSON.stringify({
+      schemaVersion: 'taku.host-adapter.v1',
+      host: spec.creatorHost,
     }, null, 2)}\n`,
   );
   return targetRoot;
@@ -163,7 +186,9 @@ async function copyConverterRuntime(target) {
   await copyTree(path.join(source, 'dist'), path.join(target, 'dist'), {
     runtimeOnly: true,
   });
-  await copyTree(path.join(source, 'template'), path.join(target, 'template'));
+  await copyTree(path.join(source, 'template'), path.join(target, 'template'), {
+    excludeTemplateBuildArtifacts: true,
+  });
   await fs.copyFile(
     path.join(source, 'template-provenance.json'),
     path.join(target, 'template-provenance.json'),
@@ -193,6 +218,29 @@ async function copyTypeScriptRuntime(target) {
     'LICENSE.txt',
     'ThirdPartyNoticeText.txt',
   ]) {
+    await fs.copyFile(path.join(source, relativeFile), path.join(target, relativeFile));
+  }
+}
+
+async function copyQrCodeRuntime(target) {
+  const source = path.join(repositoryRoot, 'node_modules', 'qrcode-generator');
+  const sourceManifest = JSON.parse(
+    await fs.readFile(path.join(source, 'package.json'), 'utf8'),
+  );
+  delete sourceManifest.scripts;
+  delete sourceManifest.devDependencies;
+  delete sourceManifest.types;
+  sourceManifest.exports = {
+    require: './dist/qrcode.js',
+    import: './dist/qrcode.mjs',
+  };
+  await fs.mkdir(path.join(target, 'dist'), { recursive: true });
+  await fs.writeFile(
+    path.join(target, 'package.json'),
+    `${JSON.stringify(sourceManifest, null, 2)}\n`,
+  );
+  await fs.copyFile(path.join(source, 'README.md'), path.join(target, 'README.md'));
+  for (const relativeFile of ['dist/qrcode.js', 'dist/qrcode.mjs']) {
     await fs.copyFile(path.join(source, relativeFile), path.join(target, relativeFile));
   }
 }
@@ -330,6 +378,7 @@ function shouldSkip(name, options = {}) {
   return name === '__pycache__'
     || name === '.pytest_cache'
     || (!options.includeNodeModules && name === 'node_modules')
+    || (options.excludeTemplateBuildArtifacts && templateBuildArtifactNames.has(name))
     || name === 'build-adapters.mjs'
     || name.endsWith('.test.mjs')
     || (options.runtimeOnly && (

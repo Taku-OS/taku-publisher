@@ -46,6 +46,15 @@ Generated Codex and Claude Code plugins include a minimal TypeScript runtime.
 Its `LICENSE.txt` and `ThirdPartyNoticeText.txt` files are copied alongside the
 runtime in `node_modules/typescript/`.
 
+## QR Code Generator
+
+Generated Codex and Claude Code plugins include `qrcode-generator` 2.0.4 by
+Kazuhiko Arase under the MIT License. The upstream copyright and license notice
+is retained in `node_modules/qrcode-generator/dist/qrcode.mjs` and recorded in
+this notice.
+
+Upstream: <https://github.com/kazuhikoarase/qrcode-generator>
+
 ## Product logos and Taku artwork
 
 The bundled product logos and Taku character artwork are not open-source font

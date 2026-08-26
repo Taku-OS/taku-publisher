@@ -8,6 +8,30 @@ The runtime preserves the `taku.publisher.v1` JSON command contract. The legacy
 Python entrypoint remains a compatibility shim during migration and is not
 included in generated user plugins.
 
+## Unified creator initialization
+
+`creator-init` returns login state, an editable Stax Card, Creator Profile
+links, and recent Codex/Claude Code projects in one response. Multi-project
+selection is persisted with `creator-plan --select
+<project-id=skill|subapp,...>`. The plan reviews the Stax Card first, then routes
+projects through the existing single-project flows sequentially, so SubApp
+conversion never delays the card.
+
+## Codex and Claude Code project import
+
+`project-discover` reads bounded local session metadata to recover recent
+workspace paths, deduplicates them, and returns lightweight root signals without
+analyzing prompt bodies or recursively scanning source code. The creator must
+select one project before `project-assess` routes it to `existing-skill`,
+`subapp-migration`, `skill-generation`, or `reference-only`.
+
+An eligible `skill-generation` route uses `skill-prepare`, `skill-convert`, and
+`skill-conversion-check`. Preparation writes only an isolated candidate;
+conversion is performed by the current Codex or Claude Agent under the returned
+editable/read-only contract; and static validation executes no source or
+candidate scripts. The generated candidate must still pass the normal Skill
+staging, deterministic scan, semantic review, and package workflow.
+
 Host applications that only need deterministic packaging should import
 `@taku/publisher-runtime/core`. That subpath excludes CLI, browser authorization,
 and host orchestration APIs while providing canonical archive path checks,
@@ -16,32 +40,6 @@ stable ZIP ordering, file modes, per-file digests, and artifact SHA-256.
 Browser, preload, and shared clients that only need Publisher Draft route
 builders should import `@taku/publisher-runtime/contract`. This subpath has no
 Node.js imports and keeps host-provided URL segments encoded consistently.
-
-## Creator initialization
-
-`creator-init` is the unified creator entry point:
-
-```sh
-taku-publisher creator-init [--host codex|claude-code|all] [--max-projects 20]
-```
-
-It creates the local Stax Card draft/editor and returns recent local project
-metadata, Taku authentication state, Stax Card editor/public links, and the
-Creator Profile/login link in one JSON response. Recent-project discovery reads
-bounded session metadata and project-root manifests only; it does not inspect
-source content, upload, convert, or publish projects.
-
-The response includes multi-select project choices with recommended Skill or
-SubApp targets. Persist the creator's selection as a sequential plan:
-
-```sh
-taku-publisher creator-plan --select project_abc=skill,project_def=subapp
-taku-publisher creator-plan-next --plan-id creator_plan_...
-```
-
-The Stax Card is reviewed first and never waits for queued SubApp conversion.
-Each queued project is still validated and published independently, and plan
-state must not be treated as authoritative proof of publication.
 
 ## SubApp assessment and candidate preparation
 

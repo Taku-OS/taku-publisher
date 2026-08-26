@@ -42,6 +42,9 @@
     "test:node": "npm run test:converter && npm run build:runtime && node --test creator/scripts/*.test.mjs packages/capability-contract/test/*.test.mjs packages/subapp-contract/test/*.test.mjs packages/creator-core/test/*.test.mjs packages/passport-core/test/*.test.mjs packages/publisher-runtime/test/*.test.mjs",
     "test:python": "python3 -m unittest discover -s tests"
   },
+  "dependencies": {
+    "qrcode-generator": "2.0.4"
+  },
   "devDependencies": {
     "@types/node": "24.10.1",
     "typescript": "5.9.3"

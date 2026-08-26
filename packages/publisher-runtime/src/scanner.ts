@@ -420,7 +420,10 @@ function looksLikeLiteralSecret(raw: string): boolean {
   if (/^(?:new\s+|String\s*\(|Number\s*\(|Boolean\s*\()/.test(value)) return false;
   const quoted = /^[furbFURB]*(["'])(.*?)\1/.exec(value);
   let candidate: string;
-  if (quoted) candidate = String(quoted[2] ?? '').trim();
+  if (quoted) {
+    candidate = String(quoted[2] ?? '').trim();
+    if (candidate.startsWith('/') && !/\s|:\/\//.test(candidate)) return false;
+  }
   else {
     if (/[().,[\]{}+*/?:|&<>]/.test(value)) return false;
     candidate = (value.split(/\s+/)[0] ?? '').replace(/^["'`{[]|["'`}[\]]$/g, '');

@@ -166,7 +166,10 @@ export async function publishDraftToTaku({
     error,
     data,
     links,
+    profilePageUrl: links.profilePageUrl,
     creatorPageUrl: links.creatorPageUrl,
+    staxCardPageUrl: links.staxCardPageUrl,
+    staxCardShareUrl: links.staxCardShareUrl,
     staxCardImageUrl: links.staxCardImageUrl,
     publishedInventory: {
       usingToolCount: publishPayload.sections.usingTools.length,

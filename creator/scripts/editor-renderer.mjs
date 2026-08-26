@@ -27,6 +27,8 @@ import {
   cardSettingsForDraft,
 } from './draft.mjs';
 import { STAX_BLOCK_KEYS } from './stax-blocks.mjs';
+import { buildStaxCardPageUrl, buildStaxProfilePageUrl } from './stax-url.mjs';
+import { createQrMatrix } from './qr-code.mjs';
 
 const MARKETPLACE_CATEGORIES = [
   { value: 'development', label: 'Development' },
@@ -53,8 +55,10 @@ const STAX_BLOCK_SIZES = {
   aura: [1, 1],
   basic: [1, 1],
   seal: [2, 2],
+  qr: [2, 2],
   bars90: [2, 1],
   pie: [2, 2],
+  modelcost: [2, 2],
   cgauge: [2, 2],
   rings: [2, 2],
   ctxring: [1, 1],
@@ -81,14 +85,16 @@ const STAX_BLOCK_SIZES = {
 
 const STAX_BLOCK_LABELS = {
   hero: 'Identity',
-  team: 'AI Team',
+  team: 'Primary AI',
   type: 'Persona Type',
   tier1: 'Rank Tier',
   aura: 'Aura',
   basic: 'Basic Stats',
   seal: 'Serial Seal',
+  qr: 'QR Code',
   bars90: '90-Day Bars',
   pie: 'Model Mix',
+  modelcost: 'Model Cost',
   cgauge: 'Quota Gauge',
   rings: 'Activity Rings',
   ctxring: 'Context Load',
@@ -107,14 +113,14 @@ const STAX_BLOCK_LABELS = {
   tools: 'Tool Shelf',
   stadium: 'Token Stadium',
   knock: 'Local Events',
-  bracket: 'Spend Estimate',
+  bracket: 'API Equivalent',
   tier4: 'Top Tier',
   node: 'Tool Nodes',
   splitring: 'Session Mix',
 };
 
-const STAX_DEFAULT_BLOCKS = ['hero', 'team', 'type', 'basic', 'seal', 'bars90', 'pie', 'cgauge', 'ctxring', 'clock', 'heat', 'trend', 'tools'];
-const STAX_INLINE_BLOCK_KEYS = new Set(['badges']);
+const STAX_DEFAULT_BLOCKS = ['hero', 'team', 'type', 'basic', 'seal', 'bars90', 'pie', 'modelcost', 'cgauge', 'ctxring', 'clock', 'heat', 'trend', 'tools'];
+const STAX_INLINE_BLOCK_KEYS = new Set(['badges', 'qr']);
 const STAX_APP_TEMPLATE_URL = new URL('../templates/stax-app.html', import.meta.url);
 const COMMUNITY_RANK_LOCK_LABEL = 'GROW ON TAKU';
 const COMMUNITY_RANK_LOCK_REASON = 'Publish a tool or gain subscribers on Taku to unlock community rank.';
@@ -132,9 +138,14 @@ const STAX_FONT_ASSETS = Object.freeze([
   { family: 'Pixelify Sans', style: 'normal', weight: 700, file: 'pixelify-sans-bold-latin.ttf', mime: 'font/ttf', format: 'truetype' },
 ]);
 const STAX_ART_ASSETS = Object.freeze([
+  { key: 'logo_mark', file: 'taku-mark.svg', mime: 'image/svg+xml' },
   { key: 'ic_codex', file: 'codex-color.svg', mime: 'image/svg+xml' },
   { key: 'ic_claude', file: 'claude-color.svg', mime: 'image/svg+xml' },
   { key: 'ic_cursor', file: 'cursor-color.svg', mime: 'image/svg+xml' },
+  { key: 'ic_gemini', file: 'gemini-color.svg', mime: 'image/svg+xml' },
+  { key: 'ic_deepseek', file: 'deepseek-color.svg', mime: 'image/svg+xml' },
+  { key: 'ic_grok', file: 'grok-color.svg', mime: 'image/svg+xml' },
+  { key: 'ic_llama', file: 'llama-color.svg', mime: 'image/svg+xml' },
 ]);
 const STAX_FAMILY_META = Object.freeze({
   architect: { label: 'ARCHITECTS', color: '#8A5CFF' },
@@ -269,6 +280,28 @@ function teamIdentityForStax(teamBlock) {
     label,
     icon: teamIconName(iconCandidate || label),
   };
+}
+
+function teamOptionsForStax(teamBlock, activeIdentity) {
+  const value = recordValue(teamBlock?.value);
+  const options = arrayValue(value.options);
+  const result = [];
+  const seen = new Set();
+  for (const option of options) {
+    const label = teamDisplayName(option?.label || option?.id);
+    const icon = teamIconName(option?.icon || option?.id || label);
+    const id = cleanDisplayText(option?.id, '', 40).toLowerCase()
+      || (icon === 'claude' ? 'claude-code' : icon);
+    if (!id || !label || seen.has(id)) continue;
+    seen.add(id);
+    result.push({ id, label, icon });
+  }
+  const activeId = activeIdentity.icon === 'claude' ? 'claude-code' : activeIdentity.icon;
+  if (!result.length) result.push({ id: activeId, label: activeIdentity.label, icon: activeIdentity.icon });
+  return result.map((option) => ({
+    ...option,
+    selected: option.id === activeId || option.label === activeIdentity.label,
+  }));
 }
 
 function canonicalPersonaCode(value) {
@@ -660,6 +693,37 @@ function collectFeaturedTools(draft = {}) {
   return featured;
 }
 
+function collectCommunityToolCandidates(draft = {}) {
+  const candidates = [
+    ...(draft.__toolChoices?.displayedTools || []),
+    ...(draft.__toolChoices?.hiddenTools || []),
+  ];
+  const selectedIds = new Set(
+    Array.isArray(draft.stats?.creatorToolIds) ? draft.stats.creatorToolIds : []
+  );
+  const tools = [];
+  const seen = new Set();
+  for (const item of candidates) {
+    const id = cleanDisplayText(item?.id, '', 160);
+    const name = cleanDisplayText(item?.name || item?.title, '', 80);
+    if (!id || !name || seen.has(id)) continue;
+    const type = cleanDisplayText(item?.type || item?.kind, 'tool', 40).toLowerCase();
+    if (type !== 'skill' || item?.publishable === false) continue;
+    seen.add(id);
+    tools.push({
+      id,
+      name,
+      type,
+      source: cleanDisplayText(item?.source, '', 80),
+      selected: selectedIds.has(id),
+      supported: true,
+      reason: '可发布',
+    });
+    if (tools.length >= 24) break;
+  }
+  return tools;
+}
+
 function collectSectionItems(draft = {}, sectionId) {
   const sections = Array.isArray(draft.sections) ? draft.sections : [];
   const section = sections.find((item) => item?.id === sectionId);
@@ -761,7 +825,7 @@ function buildPersonaEditorModel(draft, options = {}) {
         : codeActivity.commitCount > 0
           ? `${formatCompactMetric(codeActivity.commitCount)} commits`
           : 'git activity',
-      spend: formatEstimatedUsd(usage.estimatedCost?.totalUsd || usage.modelUsage?.estimatedCost?.totalUsd || 0),
+      apiListEquivalent: formatUsableApiListEquivalent(usage),
       calls: formatCompactMetric(usage.eventCount || usage.modelUsage?.observedEventCount || 0),
       period: cleanDisplayText(usage.label || usage.periodLabel, 'This Month', 40),
       aiTools: buildAiToolShares(usage),
@@ -1998,7 +2062,7 @@ export function renderLabStylePreview(draft, options = {}) {
 
       <section class="metric-tile usage-tile" aria-label="${escapeHtml(model.usage.period)} 使用数据">
         <div class="usage-stat"><strong>${escapeHtml(model.usage.tokens)}</strong><span>tokens</span></div>
-        <div class="usage-stat"><strong>${escapeHtml(model.usage.spend)}</strong><span>spend</span></div>
+        <div class="usage-stat"><strong>${escapeHtml(model.usage.apiListEquivalent)}</strong><span>API equivalent</span></div>
         <div class="usage-stat"><strong>${escapeHtml(model.usage.calls)}</strong><span>calls</span></div>
       </section>
 
@@ -2394,7 +2458,7 @@ export function renderLabStylePreview(draft, options = {}) {
             }
             throw new Error(result.error || result.message || '发布失败');
           }
-          const url = result.creatorPageUrl || result.publicUrl || result.links?.creatorPageUrl || '';
+          const url = result.profilePageUrl || result.creatorPageUrl || result.publicUrl || result.links?.profilePageUrl || result.links?.creatorPageUrl || '';
           setActionStatus(url ? '已发布：' + url : '已发布 Creator Profile。');
           if (url) window.open(url, '_blank', 'noopener,noreferrer');
         } catch (error) {
@@ -2413,6 +2477,15 @@ export function renderLabStylePreview(draft, options = {}) {
 
 function recordValue(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function formatUsableApiListEquivalent(usage) {
+  const cost = recordValue(usage?.estimatedCost || usage?.modelUsage?.estimatedCost);
+  const amount = Number(cost.totalUsd);
+  if (!Number.isFinite(amount) || amount <= 0) return 'n/a';
+  const coverage = Number(cost.coverageRatio);
+  if (Number.isFinite(coverage) && coverage < 0.95) return 'n/a';
+  return formatEstimatedUsd(amount);
 }
 
 function firstNonEmptyRecord(...values) {
@@ -2593,7 +2666,7 @@ function collectDataOnlyRows(draft = {}) {
       ['tool calls', displayMetric(localActivity.toolCallCount || usage.eventCount || modelUsage.observedEventCount)],
       ['model mix', modelRows.length ? modelRows.map((row) => cleanDisplayText(row.modelId || row.name, 'model', 60)).join(', ') : 'n/a'],
       ['tokens', displayMetric(usage.totalTokens || modelUsage.totalTokens)],
-      ['estimated spend', formatEstimatedUsd(usage.estimatedCost?.totalUsd || modelUsage.estimatedCost?.totalUsd || 0)],
+      ['API-equivalent market estimate', formatUsableApiListEquivalent(usage)],
       ['trend chart', trendBuckets.length ? `${trendBuckets.length} buckets` : 'n/a'],
       ['30-day delta', formatDeltaMetric(localActivity.delta30d)],
       ['Marketplace installs', displayMetric(taku.skillInstallCount)],
@@ -2730,6 +2803,18 @@ function normalizeStaxAppBlock(rawBlock, key) {
   };
 }
 
+function qrOptionForStax(id, label, url) {
+  const qr = createQrMatrix(url, { errorCorrectionLevel: 'M' });
+  return {
+    id,
+    label,
+    url,
+    size: qr.size,
+    matrix: qr.matrix,
+    errorCorrectionLevel: qr.errorCorrectionLevel,
+  };
+}
+
 function buildStaxAppModel(draft = {}, options = {}) {
   const snapshot = getBuilderProfileSnapshotForDisplay(draft);
   const card = cardSettingsForDraft(draft);
@@ -2832,6 +2917,7 @@ function buildStaxAppModel(draft = {}, options = {}) {
   const unavailableCount = blocks.filter((block) => block.status === 'unsupported' && !TAKU_AUTH_BLOCK_KEYS.has(block.key)).length;
   const teamIdentity = teamIdentityForStax(teamBlock);
   const teamLabel = teamIdentity.label;
+  const teamOptions = teamOptionsForStax(teamBlock, teamIdentity);
   const tokenLabel = formatCompactMetric(usage.totalTokens || usage.modelUsage?.totalTokens || 0);
   const rankTopPercent = isTakuAuthorized ? metricValue(
     staxRank.topPercent,
@@ -2846,14 +2932,45 @@ function buildStaxAppModel(draft = {}, options = {}) {
     ? publicHandle
     : (isTakuAuthorized ? (connectedDisplayName || 'SIGNED IN DRAFT') : 'LOCAL DRAFT');
   const cardDisplaySerial = hasTrustedTakuIdentity ? serial : 'UNMINTED';
+  const publishedProfilePageUrl = publishedStaxUsername
+    ? buildStaxProfilePageUrl(options.editor?.publish?.siteUrl, publishedStaxUsername)
+    : cleanDisplayText(publishedStaxSource.profilePageUrl || publishedStaxSource.creatorPageUrl || publishedStaxSource.publicUrl, '', 800);
+  const publishedCardPageUrl = publishedStaxUsername
+    ? buildStaxCardPageUrl(options.editor?.publish?.siteUrl, publishedStaxUsername)
+    : cleanDisplayText(publishedStaxSource.staxCardPageUrl || publishedStaxSource.staxCardShareUrl, '', 800);
   const publishedStax = {
-    published: publishedStaxSource.published === true && Boolean(publishedStaxSource.publicUrl || publishedStaxSource.creatorPageUrl),
-    publicUrl: cleanDisplayText(publishedStaxSource.publicUrl || publishedStaxSource.creatorPageUrl, '', 800),
-    creatorPageUrl: cleanDisplayText(publishedStaxSource.creatorPageUrl || publishedStaxSource.publicUrl, '', 800),
+    published: publishedStaxSource.published === true && Boolean(publishedProfilePageUrl || publishedCardPageUrl),
+    publicUrl: publishedProfilePageUrl,
+    profilePageUrl: publishedProfilePageUrl,
+    creatorPageUrl: publishedProfilePageUrl,
+    staxCardPageUrl: publishedCardPageUrl,
+    staxCardShareUrl: publishedCardPageUrl,
     staxCardImageUrl: cleanDisplayText(publishedStaxSource.staxCardImageUrl, '', 800),
     cardId: cleanDisplayText(publishedStaxSource.cardId, '', 120),
     username: cleanDisplayText(publishedStaxSource.username, '', 120),
   };
+  const qrBlock = blocks.find((block) => block.key === 'qr');
+  const qrUsername = cleanDisplayText(
+    publishedStaxUsername || trustedHandle || qrBlock?.value?.username || draft.creator?.username || draft.creator?.handle,
+    '',
+    120,
+  ).replace(/^@+/, '');
+  const qrOptions = qrUsername
+    ? [
+        qrOptionForStax('profile', 'Profile', buildStaxProfilePageUrl(options.editor?.publish?.siteUrl, qrUsername)),
+        qrOptionForStax('stax', 'Stax Card', buildStaxCardPageUrl(options.editor?.publish?.siteUrl, qrUsername)),
+      ]
+    : [];
+  const qrTarget = card.qrTarget === 'profile' ? 'profile' : 'stax';
+  const activeQrOption = qrOptions.find((option) => option.id === qrTarget) || qrOptions[0];
+  if (qrBlock && qrBlock.status !== 'unsupported' && activeQrOption) {
+    qrBlock.value = {
+      ...recordValue(qrBlock.value),
+      ...activeQrOption,
+      target: activeQrOption.id,
+      username: qrUsername,
+    };
+  }
   const publicBlocks = blocks.map((block) => {
     const unlockKind = block.status === 'unsupported'
       ? (TAKU_AUTH_BLOCK_KEYS.has(block.key) ? 'taku-auth' : 'unavailable')
@@ -2920,6 +3037,9 @@ function buildStaxAppModel(draft = {}, options = {}) {
     artDataUrl,
     team: teamLabel,
     teamIcon: teamIdentity.icon,
+    teamOptions,
+    qrOptions,
+    qrTarget: activeQrOption?.id || qrTarget,
     axes: Array.isArray(persona.axes)
       ? persona.axes.slice(0, 4).map((axis, index) => staxAxisForDisplay(axis, index))
       : [],
@@ -2954,7 +3074,7 @@ function buildStaxAppModel(draft = {}, options = {}) {
     rankTopPercent,
     rankTopPercentLabel: rankTopPercent > 0 ? displayPercent(rankTopPercent) : '',
     tokenLabel,
-    spendLabel: formatEstimatedUsd(usage.estimatedCost?.totalUsd || usage.modelUsage?.estimatedCost?.totalUsd || 0),
+    apiListEquivalentLabel: formatUsableApiListEquivalent(usage),
     basicValue: formatCompactMetric(usage.sessionCount || usage.eventCount || 0),
     rhythm: Number.isInteger(Number(workPattern.peakHour)) ? `PEAK ${String(workPattern.peakHour).padStart(2, '0')}:00` : '',
     scanLabel: cleanDisplayText(workPattern.timezone, 'LOCAL SCAN', 40),
@@ -2974,6 +3094,7 @@ function buildStaxAppModel(draft = {}, options = {}) {
     blocks: publicBlocks,
     selectedKeys: [...selectedKeys, ...fallbackKeys].slice(0, 14),
     canPublish: Boolean(options.editor?.enabled),
+    communityTools: collectCommunityToolCandidates(draft),
     publishedStax,
     readonly: Boolean(options.readonlyPreview),
   };
@@ -2985,19 +3106,27 @@ function renderStaxAppPreview(draft, options = {}) {
   let template = readFileSync(STAX_APP_TEMPLATE_URL, 'utf8')
     .replace('<style>', `<style>\n${staxLocalFontCss()}`)
     .replace('const ART = window.__ART__ || {};', `const ART = window.__ART__ || {};\nObject.assign(ART, ${jsonForScript(staxArtAssets())});`)
-    .replace('<title>Taku · Stax — build & ship</title>', '<title>' + escapeHtml(model.displayName) + ' · Stax</title>')
-    .replace('setPersona(\'mason\');\nplayIntro(\'mason\');', bootstrap + '\nwindow.__TAKU_STAX_BOOTSTRAP__();');
+    .replace('<title>Taku · Stax — build & ship</title>', '<title>' + escapeHtml(model.displayName) + ' · Stax</title>');
+  template = template.includes('/* __TAKU_STAX_BOOTSTRAP_START__ */')
+    ? template.replace(
+        /\/\* __TAKU_STAX_BOOTSTRAP_START__ \*\/[\s\S]*?\/\* __TAKU_STAX_BOOTSTRAP_END__ \*\//,
+        bootstrap + '\nwindow.__TAKU_STAX_BOOTSTRAP__();',
+      )
+    : template.replace('setPersona(\'mason\');\nplayIntro(\'mason\');', bootstrap + '\nwindow.__TAKU_STAX_BOOTSTRAP__();');
   if (options.readonlyPreview) {
     template = template.replace(
       /\/\* __TAKU_PUBLICATION_CODE_START__ \*\/[\s\S]*?\/\* __TAKU_PUBLICATION_CODE_END__ \*\//,
       [
-        'let STAX_PUBLICATION={published:false,publicUrl:"",creatorPageUrl:""};',
-        'function staxPublicUrl(){return STAX_PUBLICATION.creatorPageUrl||STAX_PUBLICATION.publicUrl||"";}',
+        'let STAX_PUBLICATION={published:false,publicUrl:"",profilePageUrl:"",creatorPageUrl:"",staxCardPageUrl:""};',
+        'function profilePublicUrl(){return STAX_PUBLICATION.profilePageUrl||STAX_PUBLICATION.creatorPageUrl||STAX_PUBLICATION.publicUrl||"";}',
+        'function staxPublicUrl(){return STAX_PUBLICATION.staxCardPageUrl||"";}',
         'function setStaxPublication(){}',
+        'function copyProfileLink(){toast("READ ONLY PREVIEW");}',
         'function copyStaxLink(){toast("READ ONLY PREVIEW");}',
         'function openShare(){toast("READ ONLY PREVIEW");}',
         'document.getElementById("mpost")?.addEventListener("click",()=>toast("READ ONLY PREVIEW"));',
         'document.getElementById("mpng")?.addEventListener("click",()=>toast("READ ONLY PREVIEW"));',
+        'document.getElementById("mprofile")?.addEventListener("click",copyProfileLink);',
         'document.getElementById("mlink")?.addEventListener("click",copyStaxLink);',
       ].join('\n'),
     );
@@ -3011,8 +3140,8 @@ function renderStaxAppBootstrapScript(model) {
     'window.__TAKU_STAX_BOOTSTRAP__ = function(){',
     '  const data = window.__TAKU_STAX_DATA__ || {};',
     '  const blocks = Array.isArray(data.blocks) ? data.blocks : [];',
-    '  const fallbackLogo = "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27320%27 height=%2781%27 viewBox=%270 0 320 81%27%3E%3Crect width=%2781%27 height=%2781%27 rx=%2716%27 fill=%27%23F4F0E6%27/%3E%3Cpath d=%27M20 49 55 22v19L20 68Z%27 fill=%27%2317171E%27/%3E%3Ccircle cx=%2763%27 cy=%2750%27 r=%2712%27 fill=%27%23FF5A1F%27/%3E%3Ctext x=%2798%27 y=%2759%27 font-family=%27Arial Black, Arial, sans-serif%27 font-size=%2757%27 font-weight=%27900%27 fill=%27%23F4F0E6%27%3Etaku%3C/text%3E%3C/svg%3E";',
-    '  ART.logo_lockup = fallbackLogo;',
+    '  const fallbackLogo = ART.logo_mark || FALLBACK_LOGO;',
+    '  ART.logo_mark = fallbackLogo;',
     '  if (data.art && data.artDataUrl) ART[data.art] = data.artDataUrl;',
     '  document.querySelectorAll(".scanlogo,.shlogo,[data-logo],#lockup").forEach((img) => {',
     '    if (!img) return;',
@@ -3034,6 +3163,7 @@ function renderStaxAppBootstrapScript(model) {
     '  const value = (key) => byKey.get(key)?.value || {};',
     '  const text = (input, fallback) => String(input || fallback || "").trim();',
     '  const teamValue = value("team");',
+    '  const qrValue = value("qr");',
     '  const clockValue = value("clock");',
     '  const basicValue = value("basic");',
     '  const heroValue = value("hero");',
@@ -3041,6 +3171,7 @@ function renderStaxAppBootstrapScript(model) {
     '  const badgesValue = value("badges");',
     '  const bars90Value = value("bars90");',
     '  const pieValue = value("pie");',
+    '  const modelcostValue = value("modelcost");',
     '  const cgaugeValue = value("cgauge");',
     '  const ringsValue = value("rings");',
     '  const ctxringValue = value("ctxring");',
@@ -3077,6 +3208,7 @@ function renderStaxAppBootstrapScript(model) {
     '    team: [text(data.team || teamValue.team, "CODEX").toUpperCase(), text(data.teamIcon || teamValue.teamIcon, "codex")],',
     '    type: text(typeValue.type || heroValue.type, data.code || "AI"),',
     '    seal: { serial: text(sealValue.serial, data.cardSerial || data.serial || "UNMINTED") },',
+    '    qr: { target: text(qrValue.target, data.qrTarget || "stax"), url: text(qrValue.url, ""), username: text(qrValue.username, ""), size: Math.max(0, Math.floor(Number(qrValue.size) || 0)), matrix: text(qrValue.matrix, ""), errorCorrectionLevel: text(qrValue.errorCorrectionLevel, "M") },',
     '    axes: Array.isArray(typeValue.axes) && typeValue.axes.length ? typeValue.axes : (Array.isArray(data.axes) && data.axes.length ? data.axes : MASON.axes),',
     '    basicVal: text(basicValue.basicVal, data.basicValue || data.tokenLabel || "0"),',
     '    band: Array.isArray(clockValue.band) ? clockValue.band : MASON.band,',
@@ -3097,6 +3229,17 @@ function renderStaxAppBootstrapScript(model) {
     '    pie: {',
     '      modelMix: Array.isArray(pieValue.modelMix) ? pieValue.modelMix : [],',
     '      periodLabel: text(bars90Value.dayCount ? bars90Value.dayCount + " DAYS" : "", data.usageLabel || bars90Value.periodLabel || "LOCAL"),',
+    '    },',
+    '    modelcost: {',
+    '      models: Array.isArray(modelcostValue.models) ? modelcostValue.models.slice(0, 3).map((model) => ({ modelId: text(model?.modelId, ""), name: text(model?.name, model?.modelId || "MODEL"), provider: text(model?.provider, ""), pricingModel: text(model?.pricingModel, ""), priceSource: text(model?.priceSource, ""), totalUsd: Math.max(0, Number(model?.totalUsd) || 0) })) : [],',
+    '      totalUsd: Math.max(0, Number(modelcostValue.totalUsd) || 0),',
+    '      coverageRatio: Math.max(0, Math.min(1, Number(modelcostValue.coverageRatio) || 0)),',
+    '      partial: Boolean(modelcostValue.partial),',
+    '      unpricedModelCount: Math.max(0, Math.floor(Number(modelcostValue.unpricedModelCount) || 0)),',
+    '      unpricedTokenCount: Math.max(0, Math.floor(Number(modelcostValue.unpricedTokenCount) || 0)),',
+    '      periodId: text(modelcostValue.periodId, data.usagePeriodId || "thisMonth"),',
+    '      periodLabel: text(modelcostValue.periodLabel, data.usageLabel || "This Month"),',
+    '      priceTableUpdatedAt: text(modelcostValue.priceTableUpdatedAt, ""),',
     '    },',
     '    cgauge: {',
     '      usedPercent: Number.isFinite(Number(cgaugeValue.usedPercent)) ? Number(cgaugeValue.usedPercent) : null,',
@@ -3212,7 +3355,7 @@ function renderStaxAppBootstrapScript(model) {
     '      value: text(knockValue.value, "0"),',
     '    },',
     '    bracket: {',
-    '      label: text(bracketValue.label, bracketValue.estimated ? "EST. SPEND" : "TOKENS"),',
+    '      label: text(bracketValue.label, bracketValue.estimated ? "API EQUIV." : "TOKENS"),',
     '      value: text(bracketValue.value, "0"),',
     '      estimated: Boolean(bracketValue.estimated || byKey.get("bracket")?.estimated),',
     '      periodId: text(bracketValue.periodId, data.usagePeriodId || "thisMonth"),',
@@ -3269,9 +3412,77 @@ function renderStaxAppBootstrapScript(model) {
     '    sw.appendChild(avatar);',
     '  }',
     '  setPersona("publisher");',
+    '  const teamSelect = document.getElementById("teamselect");',
+    '  const teamOptions = Array.isArray(data.teamOptions) ? data.teamOptions : [];',
+    '  if (teamSelect && teamOptions.length) {',
+    '    teamSelect.replaceChildren(...teamOptions.map((option) => new Option(text(option.label, option.id).toUpperCase(), text(option.id, option.icon))));',
+    '    const activeTeam = teamOptions.find((option) => option.selected) || teamOptions[0];',
+    '    teamSelect.value = text(activeTeam.id, activeTeam.icon);',
+    '    teamSelect.disabled = Boolean(data.readonly) || teamOptions.length < 2;',
+    '    teamSelect.closest(".teamswitch")?.classList.remove("is-hidden");',
+    '    teamSelect.addEventListener("change", async () => {',
+    '      const selectedTeam = teamOptions.find((option) => text(option.id, option.icon) === teamSelect.value);',
+    '      if (!selectedTeam) return;',
+    '      persona.team = [text(selectedTeam.label, "CODEX").toUpperCase(), text(selectedTeam.icon, "codex")];',
+    '      const teamBlock = byKey.get("team");',
+    '      if (teamBlock) teamBlock.value = { ...(teamBlock.value || {}), team: persona.team, teamIcon: persona.team[1], identityBasis: "user-selection" };',
+    '      PERSONAS.publisher.pd = persona;',
+    '      PD = persona;',
+    '      for (const placed of placedP.filter((item) => item.key === "team")) {',
+    '        placed.el.innerHTML = R.team(placed.cw * U - GAP, placed.ch * U - GAP);',
+    '      }',
+    '      for (const key in chipRefs) delete chipRefs[key];',
+    '      document.getElementById("dockscroll").innerHTML = "";',
+    '      buildDock();',
+    '      for (const placed of placedP) chipRefs[placed.key]?.classList.add("on");',
+    '      toast("PRIMARY AI · " + persona.team[0]);',
+    '      if (!data.readonly) {',
+    '        try {',
+    '          await fetch("/api/card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ card: { primaryAi: selectedTeam.id } }) });',
+    '        } catch {}',
+    '      }',
+    '    });',
+    '  }',
+    '  const qrSelect = document.getElementById("qrselect");',
+    '  const qrOptions = Array.isArray(data.qrOptions) ? data.qrOptions : [];',
+    '  if (qrSelect && qrOptions.length) {',
+    '    qrSelect.replaceChildren(...qrOptions.map((option) => new Option(text(option.label, option.id).toUpperCase(), text(option.id, "stax"))));',
+    '    const activeQr = qrOptions.find((option) => text(option.id, "stax") === text(data.qrTarget, persona.qr.target)) || qrOptions[0];',
+    '    qrSelect.value = text(activeQr.id, "stax");',
+    '    qrSelect.disabled = Boolean(data.readonly);',
+    '    qrSelect.closest(".qrswitch")?.classList.remove("is-hidden");',
+    '    qrSelect.addEventListener("change", async () => {',
+    '      const selectedQr = qrOptions.find((option) => text(option.id, "stax") === qrSelect.value);',
+    '      if (!selectedQr) return;',
+    '      persona.qr = { target: text(selectedQr.id, "stax"), url: text(selectedQr.url, ""), username: text(selectedQr.username, qrValue.username), size: Math.max(0, Math.floor(Number(selectedQr.size) || 0)), matrix: text(selectedQr.matrix, ""), errorCorrectionLevel: text(selectedQr.errorCorrectionLevel, "M") };',
+    '      const qrBlock = byKey.get("qr");',
+    '      if (qrBlock) qrBlock.value = { ...(qrBlock.value || {}), ...persona.qr };',
+    '      PERSONAS.publisher.pd = persona;',
+    '      PD = persona;',
+    '      for (const placed of placedP.filter((item) => item.key === "qr")) {',
+    '        placed.el.innerHTML = R.qr(placed.cw * U - GAP, placed.ch * U - GAP);',
+    '      }',
+    '      for (const key in chipRefs) delete chipRefs[key];',
+    '      document.getElementById("dockscroll").innerHTML = "";',
+    '      buildDock();',
+    '      for (const placed of placedP) chipRefs[placed.key]?.classList.add("on");',
+    '      toast("QR LINK · " + text(selectedQr.label, selectedQr.id).toUpperCase());',
+    '      if (!data.readonly) {',
+    '        try {',
+    '          await fetch("/api/card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ card: { qrTarget: selectedQr.id } }) });',
+    '        } catch {}',
+    '      }',
+    '    });',
+    '  }',
+    '  const hasAuthReturn = window.location.hash.includes("taku_auth_code=") || window.location.hash.includes("taku_auth_error=");',
+    '  const hasPublishedStax = Boolean(data.publishedStax && data.publishedStax.published);',
     '  if (data.readonly) {',
     '    document.getElementById("scanov")?.classList.add("off");',
     '    document.getElementById("revealov")?.classList.remove("on");',
+    '  } else if (hasPublishedStax && !hasAuthReturn) {',
+    '    document.getElementById("scanov")?.classList.add("off");',
+    '    document.getElementById("revealov")?.classList.remove("on");',
+    '    shuffleBuild(true);',
     '  } else {',
     '    playIntro("publisher");',
     '  }',

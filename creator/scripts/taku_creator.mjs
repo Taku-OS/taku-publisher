@@ -62,6 +62,7 @@ import {
   buildDraft,
   fallbackCreationChoicesFromDraft,
   fallbackToolChoicesFromDraft,
+  refreshBuilderProfileSnapshot,
   selectDisplayedCreations,
   selectDisplayedTools,
 } from './draft.mjs';
@@ -80,6 +81,10 @@ import {
   createEmptyUsageSummary,
   scanUsage,
 } from './usage.mjs';
+import {
+  loadReferencePricing,
+  resolveReferencePricingUrl,
+} from './usage-pricing-client.mjs';
 import { buildAiSetupSnapshot } from './ai-setup.mjs';
 import {
   runCreatorCenterList,
@@ -89,6 +94,10 @@ import {
   runCreatorCenterUpdate,
 } from './creator-center.mjs';
 import { compactScanCommandResult } from './host-output.mjs';
+import {
+  detectInvokingAiClient,
+  discoverAiClients,
+} from './host-platform.mjs';
 
 const VERSION = '0.2.4';
 const SCAN_SCHEMA = 'taku.creator.scan.v1';
@@ -118,6 +127,14 @@ async function scan(parsed, options = {}) {
   const usagePeriodId = normalizeUsagePeriodId(getFlag(parsed, 'usage-period'));
   const personaRulesResult = await loadPersonaRules(parsed);
   const localOnly = hasFlag(parsed, 'local-only');
+  const usageDisabled = hasFlag(parsed, 'no-usage');
+  const referencePricingPromise = usageDisabled
+    ? Promise.resolve({ source: 'disabled' })
+    : loadReferencePricing({
+        homeDir: getHomeDir(),
+        localOnly,
+        url: resolveReferencePricingUrl(parsed),
+      });
   const [localCreatorMetrics, workerCreatorMetrics, creatorProfileResult] = await Promise.all([
     loadCreatorMetrics(parsed),
     localOnly ? Promise.resolve(null) : fetchCreatorMetricsFromWorker(parsed),
@@ -132,12 +149,17 @@ async function scan(parsed, options = {}) {
   const includeCreationCandidates = shouldIncludeCreationCandidates(parsed);
   const includeGitHubMetrics = hasFlag(parsed, 'include-github-metrics') || hasFlag(parsed, 'github-metrics');
   const includePromptStyle = shouldIncludePromptStyle(parsed);
-  const used = await scanUsedTools(workspaceRoot);
+  const invokingAiClient = await detectInvokingAiClient({
+    explicitHost: getFlag(parsed, 'ai-host') || getFlag(parsed, 'creator-host'),
+    moduleUrl: import.meta.url,
+  });
+  const used = await scanUsedTools(workspaceRoot, { invokingHost: invokingAiClient });
+  const referencePricing = await referencePricingPromise;
   const [ownedCreations, usage] = await Promise.all([
     includeCreationCandidates
       ? scanOwnedCreations(workspaceRoot, used.tools)
       : Promise.resolve([]),
-    hasFlag(parsed, 'no-usage')
+    usageDisabled
       ? Promise.resolve(createEmptyUsageSummary(usagePeriodId))
       : scanUsage({
           maxFiles: readNumberFlag(parsed, 'max-usage-files', DEFAULT_MAX_USAGE_FILES),
@@ -148,6 +170,9 @@ async function scan(parsed, options = {}) {
           includePromptStyle,
         }),
   ]);
+  if (referencePricing.warning && Array.isArray(usage.warnings)) {
+    usage.warnings.push(referencePricing.warning);
+  }
   const personaSignals = await buildPersonaSignals({
     usage,
     usedTools: used.tools,
@@ -165,6 +190,12 @@ async function scan(parsed, options = {}) {
     warnings: personaRulesResult.warnings,
   });
   const personaIdentity = personaV2.identity || buildPersonaIdentity(personaV2);
+  const aiIdentity = await discoverAiClients({
+    invokingHost: invokingAiClient,
+    homeDir: getHomeDir(),
+    claudeConfigDir: process.env.CLAUDE_CONFIG_DIR,
+    usageSources: usage.sources,
+  });
   const result = {
     schemaVersion: SCAN_SCHEMA,
     generatedAt: new Date().toISOString(),
@@ -186,6 +217,7 @@ async function scan(parsed, options = {}) {
     usedTools: used.tools.map((item) => publicItem(item, 'used')),
     creationCandidates: ownedCreations.map((item) => publicItem(item, 'candidate')),
     ownedCreations: ownedCreations.map((item) => publicItem(item, 'candidate')),
+    aiIdentity,
     usage,
     personaSignals,
     behaviorProfileV1: personaSignals.behaviorProfileV1 || personaSignals.behaviorProfile,
@@ -215,6 +247,8 @@ async function scan(parsed, options = {}) {
       promptStyleEnabled: includePromptStyle,
       creatorProfileSynced: Boolean(creatorProfile),
       creatorProfileWarning: creatorProfileResult?.warning,
+      defaultAiClient: aiIdentity.defaultClient,
+      availableAiClients: aiIdentity.options.map((item) => item.id),
     },
   };
   if (options.includePrivateInventory) {
@@ -394,6 +428,7 @@ async function runEditor(parsed) {
       includeStoredDrafts: hasFlag(parsed, 'reuse-listing-drafts'),
       persist: true,
     }));
+    draft = refreshBuilderProfileSnapshot(draft);
     await writeJson(resolvedDraftPath, draft);
     await writeText(previewPath, renderPreview({ ...draft, __toolChoices: toolChoices, __creationChoices: creationChoices }, READONLY_PREVIEW_OPTIONS));
     return startEditorServer(parsed, {

@@ -551,6 +551,8 @@ def _looks_like_literal_secret(raw: str) -> bool:
     quoted = re.match(r"^[furbFURB]*([\"'])(.*?)\1", value)
     if quoted:
         candidate = quoted.group(2).strip()
+        if candidate.startswith("/") and not re.search(r"\s|://", candidate):
+            return False
     else:
         if re.search(r"[().,\[\]{}+*/?:|&<>]", value):
             return False

@@ -26,7 +26,7 @@ import {
 // when any budget is reached instead of blocking the surrounding workflow.
 export const DEFAULT_MAX_USAGE_FILES = 2500;
 export const DEFAULT_MAX_USAGE_BYTES = 128 * 1024 * 1024;
-export const DEFAULT_MAX_USAGE_FILE_BYTES = 64 * 1024;
+export const DEFAULT_MAX_USAGE_FILE_BYTES = 160 * 1024;
 export const DEFAULT_USAGE_SCAN_TIMEOUT_MS = 15_000;
 export const DEFAULT_USAGE_PERIOD_ID = 'last90Days';
 export const CONTINUOUS_ACTIVITY_IDLE_MINUTES = 30;
@@ -79,8 +79,9 @@ const MODEL_SCAN_SKIP_KEYS = new Set([
 const USAGE_SOURCES = [
   { source: 'codex', label: 'Codex', root: ['.codex', 'sessions'], maxDepth: 5, extensions: ['.jsonl'] },
   { source: 'codex', label: 'Codex', root: ['.codex', 'archived_sessions'], maxDepth: 1, extensions: ['.jsonl'] },
-  { source: 'claude-code', label: 'Claude Code', root: ['.claude', 'projects'], maxDepth: 4, extensions: ['.jsonl'] },
-  { source: 'claude-code', label: 'Claude Code', root: ['.claude', 'history.jsonl'], maxDepth: 0, extensions: ['.jsonl'] },
+  { source: 'claude-code', label: 'Claude Code', base: 'claude-config', root: ['projects'], maxDepth: 4, extensions: ['.jsonl'], usageRole: 'transcript' },
+  { source: 'claude-code', label: 'Claude Code', base: 'claude-config', root: ['history.jsonl'], maxDepth: 0, extensions: ['.jsonl'], usageRole: 'history' },
+  { source: 'claude-code', label: 'Claude Code', base: 'claude-config', root: ['stats-cache.json'], maxDepth: 0, extensions: ['.json'], usageRole: 'aggregate-fallback' },
   { source: 'cursor', label: 'Cursor', root: ['.cursor', 'projects'], maxDepth: 5, extensions: ['.jsonl', '.json'] },
   { source: 'gemini-cli', label: 'Gemini CLI', root: ['.gemini', 'tmp'], maxDepth: 4, extensions: ['.jsonl', '.json'] },
 ];
@@ -178,7 +179,10 @@ export async function scanUsage(options = {}) {
   const candidatesBySource = new Map();
   const seenCandidatePaths = new Set();
 
-  for (const spec of buildUsageSpecs(options.homeDir)) {
+  for (const spec of buildUsageSpecs({
+    homeDir: options.homeDir,
+    claudeConfigDir: options.claudeConfigDir,
+  })) {
     const sourceAvailability = ensureUsageAvailability(availability, spec.source, spec.label);
     const rootExists = await exists(spec.root);
     sourceAvailability.available = sourceAvailability.available || rootExists;
@@ -196,13 +200,23 @@ export async function scanUsage(options = {}) {
     for (const candidate of collected.files) {
       if (seenCandidatePaths.has(candidate.filePath)) continue;
       seenCandidatePaths.add(candidate.filePath);
-      sourceCandidates.push({ ...candidate, source: spec.source, label: spec.label });
+      sourceCandidates.push({
+        ...candidate,
+        source: spec.source,
+        label: spec.label,
+        usageRole: spec.usageRole,
+      });
     }
     candidatesBySource.set(spec.source, sourceCandidates);
   }
 
-  for (const candidates of candidatesBySource.values()) {
+  for (const [source, sourceCandidates] of candidatesBySource.entries()) {
+    const hasDetailedTranscript = sourceCandidates.some((candidate) => candidate.usageRole === 'transcript');
+    const candidates = hasDetailedTranscript
+      ? sourceCandidates.filter((candidate) => candidate.usageRole !== 'aggregate-fallback')
+      : sourceCandidates;
     candidates.sort(compareUsageCandidates);
+    candidatesBySource.set(source, candidates);
     candidateFileCount += candidates.length;
   }
   const candidates = interleaveUsageCandidates(candidatesBySource, maxFiles);
@@ -256,7 +270,7 @@ export async function scanUsage(options = {}) {
     warnings.push(`Stopped usage scan after reaching --max-usage-files ${maxFiles}.`);
   }
   if (sampledFileCount > 0) {
-    warnings.push(`Read recent tails from ${sampledFileCount} oversized JSONL usage log(s).`);
+    warnings.push(`Read bounded heads and recent tails from ${sampledFileCount} oversized JSONL usage log(s).`);
   }
   if (oversizedJsonFileCount > 0) {
     warnings.push(`Skipped ${oversizedJsonFileCount} oversized JSON usage log(s) that cannot be safely tail-sampled.`);
@@ -297,11 +311,16 @@ export async function scanUsage(options = {}) {
   return result;
 }
 
-function buildUsageSpecs(homeDir) {
-  const home = homeDir || getHomeDir();
+function buildUsageSpecs(options = {}) {
+  const home = options.homeDir || getHomeDir();
+  const configuredClaudeRoot = options.claudeConfigDir ||
+    (!options.homeDir ? process.env.CLAUDE_CONFIG_DIR : undefined);
+  const claudeRoot = configuredClaudeRoot
+    ? path.resolve(configuredClaudeRoot)
+    : path.join(home, '.claude');
   return USAGE_SOURCES.map((spec) => ({
     ...spec,
-    root: path.join(home, ...spec.root),
+    root: path.join(spec.base === 'claude-config' ? claudeRoot : home, ...spec.root),
   }));
 }
 
@@ -465,25 +484,32 @@ async function readUsageJsonl(filePath, options = {}) {
   if (fileSize > maxBytes) {
     const handle = await fs.open(filePath, 'r');
     try {
-      const start = Math.max(0, fileSize - maxBytes);
-      const buffer = Buffer.alloc(Math.min(maxBytes, fileSize));
-      const { bytesRead } = await handle.read(buffer, 0, buffer.length, start);
-      let text = buffer.subarray(0, bytesRead).toString('utf8');
-      if (start > 0) {
-        const firstLineBreak = text.indexOf('\n');
-        text = firstLineBreak >= 0 ? text.slice(firstLineBreak + 1) : '';
-      }
-      const records = [];
-      for (const line of text.split(/\r?\n/)) {
-        if (!line.trim()) continue;
-        try {
-          records.push(JSON.parse(line));
-        } catch {
-          // Ignore non-JSON or truncated log lines.
-        }
-      }
+      // Codex writes the selected model near the beginning of a rollout and
+      // cumulative token usage near the end. Sample both within the same
+      // bounded budget so the usage can be attributed without reading the
+      // entire (sometimes multi-megabyte) transcript.
+      const tailBudget = Math.min(32 * 1024, Math.max(1, Math.floor(maxBytes / 3)));
+      const headBudget = Math.max(0, maxBytes - tailBudget);
+      const tailStart = Math.max(0, fileSize - tailBudget);
+      const headLength = Math.min(headBudget, tailStart);
+      const headBuffer = Buffer.alloc(headLength);
+      const tailBuffer = Buffer.alloc(Math.min(tailBudget, fileSize - tailStart));
+      const headRead = headLength > 0
+        ? await handle.read(headBuffer, 0, headBuffer.length, 0)
+        : { bytesRead: 0 };
+      const tailRead = tailBuffer.length > 0
+        ? await handle.read(tailBuffer, 0, tailBuffer.length, tailStart)
+        : { bytesRead: 0 };
+      const records = [
+        ...parseJsonlSample(headBuffer.subarray(0, headRead.bytesRead).toString('utf8'), {
+          discardLastLine: headLength < fileSize,
+        }),
+        ...parseJsonlSample(tailBuffer.subarray(0, tailRead.bytesRead).toString('utf8'), {
+          discardFirstLine: tailStart > 0,
+        }),
+      ];
       return withUsageScanMetadata(summarizeUsageRecords(records, filePath, options), {
-        bytesRead,
+        bytesRead: headRead.bytesRead + tailRead.bytesRead,
         partialSample: true,
       });
     } finally {
@@ -506,6 +532,28 @@ async function readUsageJsonl(filePath, options = {}) {
   return withUsageScanMetadata(summarizeUsageRecords(records, filePath, options), {
     bytesRead: fileSize,
   });
+}
+
+function parseJsonlSample(text, options = {}) {
+  let sample = text;
+  if (options.discardFirstLine) {
+    const firstLineBreak = sample.indexOf('\n');
+    sample = firstLineBreak >= 0 ? sample.slice(firstLineBreak + 1) : '';
+  }
+  if (options.discardLastLine && sample && !sample.endsWith('\n')) {
+    const lastLineBreak = sample.lastIndexOf('\n');
+    sample = lastLineBreak >= 0 ? sample.slice(0, lastLineBreak + 1) : '';
+  }
+  const records = [];
+  for (const line of sample.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      records.push(JSON.parse(line));
+    } catch {
+      // Ignore non-JSON or truncated log lines.
+    }
+  }
+  return records;
 }
 
 function withUsageScanMetadata(result, metadata = {}) {
@@ -557,6 +605,9 @@ function summarizeUsageRecords(records, filePath, options = {}) {
   let currentModelName;
   let workspaceKey = inferWorkspaceKeyFromFilePath(filePath);
   let explicitDurationMs = 0;
+  const observedModelNames = new Set(
+    records.map((record) => extractModelName(record)).filter(Boolean),
+  );
 
   const finishToolRun = () => {
     if (currentToolRunLength <= 0) return;
@@ -630,7 +681,10 @@ function summarizeUsageRecords(records, filePath, options = {}) {
       addModelUsage(modelCounts, candidateModelName, numbers, 1);
     }
   });
-  if (hasCumulativeUsage && modelCounts.size === 0) {
+  if (hasCumulativeUsage && observedModelNames.size === 1) {
+    modelCounts.clear();
+    addModelUsage(modelCounts, observedModelNames.values().next().value, cumulativeBest, 1);
+  } else if (hasCumulativeUsage && modelCounts.size === 0) {
     addModelUsage(modelCounts, cumulativeModelName || currentModelName, cumulativeBest, 1);
   }
   finishToolRun();
@@ -764,7 +818,7 @@ function summarizeUsagePeriod(records, availableSources, period) {
     totalReasoningTokens: total.reasoningTokens,
     totalTokens: total.totalTokens,
     modelUsage: summarizeModelUsage(modelCounts),
-    estimatedCost: summarizeEstimatedCost(Array.from(modelCounts.values())),
+    estimatedCost: summarizeEstimatedCost(Array.from(modelCounts.values()), total.totalTokens),
     sources: Array.from(sourceAccumulators.values()).map(toUsageSourceSummary),
   };
 }
@@ -1884,7 +1938,7 @@ function toUsageSourceSummary(accumulator) {
     totalReasoningTokens: accumulator.reasoningTokens,
     totalTokens: accumulator.totalTokens,
     modelUsage: summarizeModelUsage(accumulator.modelCounts),
-    estimatedCost: summarizeEstimatedCost(Array.from(accumulator.modelCounts.values())),
+    estimatedCost: summarizeEstimatedCost(Array.from(accumulator.modelCounts.values()), accumulator.totalTokens),
   };
 }
 

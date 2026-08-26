@@ -11,6 +11,7 @@ from taku_publisher.marketplace import (
     install_codex_skill,
     install_preflight,
     marketplace_items,
+    open_marketplace_item_in_taku,
 )
 from taku_publisher.util import PublisherError
 
@@ -119,7 +120,34 @@ class MarketplaceInstallTests(unittest.TestCase):
         self.assertEqual("skill", items[0]["display_kind"])
         self.assertEqual("try-on-taku", items[0]["cta"])
         self.assertTrue(items[0]["codex_install_supported"])
+        self.assertNotIn("deep_link", items[0])
+        self.assertFalse(items[0]["taku_desktop_open_supported"])
+        self.assertEqual("install_in_codex", items[0]["recommended_action"])
         self.assertEqual("EXAMPLE_API_KEY", items[0]["configuration_requirements"][0]["name"])
+
+    def test_open_app_keeps_deep_link_internal(self) -> None:
+        opened = []
+        result = open_marketplace_item_in_taku(
+            {
+                "id": "11111111-1111-4111-8111-111111111111",
+                "name": "Community App",
+                "type": "app",
+                "status": "published",
+                "displayKind": "app",
+                "installOffer": {
+                    "deepLink": "taku://stax/install?item=11111111-1111-4111-8111-111111111111",
+                },
+            },
+            opener=lambda url, platform: opened.append((url, platform)) or True,
+            platform="darwin",
+        )
+
+        self.assertEqual(
+            [("taku://stax/install?item=11111111-1111-4111-8111-111111111111", "darwin")],
+            opened,
+        )
+        self.assertEqual("confirm_in_taku_desktop", result["next_action"])
+        self.assertNotIn("deep_link", result["item"])
 
     def test_preflight_requires_published_skill_and_access(self) -> None:
         package = zip_bytes({"SKILL.md": b"---\nname: demo\n---\n"})

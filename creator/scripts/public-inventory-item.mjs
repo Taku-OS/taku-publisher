@@ -76,7 +76,7 @@ export function normalizeStaxDisplayItemType(value, fallback = 'tool') {
   return fallback;
 }
 
-export function toPublicInventoryImportItem(item, role = item?.role) {
+export function toPublicInventoryImportItem(item, role = item?.role, options = {}) {
   const publicRole = normalizePublicInventoryRole(role);
   const rawType = publicText(item?.type, 80) || 'tool';
   const type = normalizeStaxDisplayItemType(rawType);
@@ -173,7 +173,9 @@ export function toPublicInventoryImportItem(item, role = item?.role) {
     relation: publicRole,
     ownership: publicRole === 'using' ? 'others' : 'mine',
     authorshipKind: publicInventoryAuthorshipKind(publicRole),
-    marketplacePublicationIntent: 'publish',
+    ...(options.publishToCommunity === true
+      ? { marketplacePublicationIntent: 'publish' }
+      : {}),
     source_type: sourceType,
     ...(installability ? { installability } : {}),
     ...(sourceKind ? { sourceKind } : {}),

@@ -10,8 +10,9 @@ The repository deliberately separates reusable implementation from host-specific
 - `packages/passport-core`: host-independent TypeScript/ESM core for deterministic Snapshot, inventory and privacy rules.
 - `packages/creator-core`: deprecated compatibility alias for `@taku/passport-core`.
 - `packages/publisher-runtime`: canonical TypeScript/ESM runtime for discovery,
-  staging, scanning, packaging, authorization, Marketplace installation, and
-  Worker orchestration.
+  Codex/Claude Code project import, bounded Skill generation, staging,
+  scanning, packaging, authorization, Marketplace installation, and Worker
+  orchestration.
 - `packages/publisher-cli`: stable Node.js workspace entrypoints for the creator
   and publisher runtimes.
 - `adapters/codex/taku-publisher`: Codex plugin manifest source.
@@ -24,27 +25,27 @@ The canonical entrypoint is:
 node scripts/taku-publisher.mjs --help
 ```
 
-Initialize the creator workspace in one response:
+Open the unified creator workspace with:
 
 ```bash
-node scripts/taku-publisher.mjs creator-init
+node scripts/taku-publisher.mjs creator-init --host all
 ```
 
-This creates a local Stax Card draft/editor and reports recent local project
-metadata, current Taku sign-in state, and the Stax Card / Creator Profile entry
-points. It does not upload, convert, or publish project source code.
+The first response includes Taku login state, an editable Stax Card, Creator
+Profile links, and recent local projects. After the creator chooses one or more
+projects and a `skill` or `subapp` target for each, `creator-plan` persists the
+queue. Stax Card review stays first and does not wait for longer SubApp work.
 
-After the creator selects one or more projects and chooses Skill or SubApp for
-each, create a persistent publish plan:
+Recent local projects can be discovered from Codex/Claude Code session metadata
+and assessed without executing them:
 
 ```bash
-node scripts/taku-publisher.mjs creator-plan \
-  --select project_abc=skill,project_def=subapp
+node scripts/taku-publisher.mjs project-discover --host all
+node scripts/taku-publisher.mjs project-assess --source /absolute/path/to/project
 ```
 
-The plan keeps Stax Card review first and processes projects one at a time, so a
-long SubApp conversion does not delay the card. Selection is not eligibility or
-publication: each Skill/SubApp still passes its existing checks and confirmations.
+The assessment routes one selected project to existing Skill publishing,
+SubApp migration, bounded Skill generation, or reference-only handling.
 
 The legacy `python3 scripts/taku_publisher.py` entrypoint remains available in
 the source repository during the compatibility window, but generated user
@@ -94,7 +95,11 @@ claude plugin install taku-publisher@taku
 ```
 
 Start a new Codex task or Claude Code session after installation so it picks up
-the Taku Publisher skill.
+the Taku Publisher skill. A natural-language starting prompt is:
+
+```text
+打开 Taku Publisher 创作者工作台，生成我的 Stax Card，并让我选择要发布的本地项目。
+```
 
 Creator-facing scans default to a bounded local usage-file budget so large
 session histories remain responsive. Pass `--max-usage-files <n>` only when a
@@ -126,7 +131,7 @@ Generated `dist/` content is never canonical source and must not be committed. S
 
 - Source code is licensed under the [Apache License 2.0](LICENSE), with
   `Copyright 2026 Taku` recorded in [NOTICE](NOTICE).
-- [Third-party notices](THIRD_PARTY_NOTICES.md) cover bundled fonts, Superpowers, TypeScript, and optional network behavior.
+- [Third-party notices](THIRD_PARTY_NOTICES.md) cover bundled fonts, Superpowers, TypeScript, the QR generator, and optional network behavior.
 - [Trademark and visual asset terms](TRADEMARKS.md) cover third-party product logos and Taku persona artwork.
 - The complete [SIL Open Font License 1.1](creator/assets/fonts/OFL-1.1.txt) is distributed with the bundled fonts.
 

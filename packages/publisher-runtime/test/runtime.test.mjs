@@ -15,6 +15,7 @@ import {
   installCodexSkill,
   installPreflight,
   marketplaceItems,
+  openMarketplaceItemInTaku,
   preserveRemoteListing,
   readZip,
   scanStaging,
@@ -117,9 +118,64 @@ test('Marketplace search normalizes full community catalog items without leaking
   assert.equal(items[0].version, 3);
   assert.equal(items[0].install_count, 12);
   assert.equal(items[0].cta, 'open-in-taku');
-  assert.equal(items[0].deep_link, 'taku://apps/community-app');
+  assert.equal('deep_link' in items[0], false);
   assert.equal(items[0].codex_install_supported, false);
+  assert.equal(items[0].taku_desktop_open_supported, true);
+  assert.equal(items[0].recommended_action, 'open_in_taku_desktop');
   assert.equal('metadata' in items[0], false);
+});
+
+test('opens one exact Marketplace App without returning its Taku deep link', async () => {
+  const openedUrls = [];
+  const result = await openMarketplaceItemInTaku({
+    id: '11111111-1111-4111-8111-111111111111',
+    name: 'Community App',
+    type: 'app',
+    status: 'published',
+    displayKind: 'app',
+    installOffer: {
+      displayKind: 'app',
+      deepLink: 'taku://stax/install?item=11111111-1111-4111-8111-111111111111',
+    },
+  }, {
+    openExternal: async (url) => {
+      openedUrls.push(url);
+      return true;
+    },
+  });
+
+  assert.deepEqual(openedUrls, [
+    'taku://stax/install?item=11111111-1111-4111-8111-111111111111',
+  ]);
+  assert.equal(result.next_action, 'confirm_in_taku_desktop');
+  assert.equal(result.item.name, 'Community App');
+  assert.equal('deep_link' in result.item, false);
+});
+
+test('does not open Codex Skills or untrusted protocols through Marketplace App flow', async () => {
+  const baseItem = {
+    id: '11111111-1111-4111-8111-111111111111',
+    name: 'Community Item',
+    status: 'published',
+  };
+  await assert.rejects(
+    openMarketplaceItemInTaku({
+      ...baseItem,
+      type: 'skill',
+      displayKind: 'skill',
+      installOffer: { deepLink: 'taku://skills/community-item' },
+    }, { openExternal: async () => true }),
+    (error) => error?.code === 'marketplace_skill_uses_codex_install',
+  );
+  await assert.rejects(
+    openMarketplaceItemInTaku({
+      ...baseItem,
+      type: 'app',
+      displayKind: 'app',
+      installOffer: { deepLink: 'https://evil.example.test/install' },
+    }, { openExternal: async () => true }),
+    (error) => error?.code === 'marketplace_taku_open_unavailable',
+  );
 });
 
 test('shared Publisher Core builds deterministic host artifacts', () => {

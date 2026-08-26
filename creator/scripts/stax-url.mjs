@@ -19,7 +19,18 @@ export function normalizeStaxPublicSiteOrigin(siteUrl) {
   return trimmed.replace(/\/stax$/i, '');
 }
 
+export function buildStaxProfilePageUrl(siteUrl, username) {
+  const slug = cleanText(username, 160);
+  if (!slug) return '';
+  return `${normalizeStaxPublicSiteOrigin(siteUrl)}/profile/${encodeURIComponent(slug)}`;
+}
+
+// Kept as a compatibility alias for older publisher responses.
 export function buildStaxCreatorPageUrl(siteUrl, username) {
+  return buildStaxProfilePageUrl(siteUrl, username);
+}
+
+export function buildStaxCardPageUrl(siteUrl, username) {
   const slug = cleanText(username, 160);
   if (!slug) return '';
   return `${normalizeStaxPublicSiteOrigin(siteUrl)}/stax/${encodeURIComponent(slug)}`;
@@ -33,15 +44,19 @@ export function buildStaxOgImageUrl(siteUrl, username) {
 
 export function buildStaxPublishedLinks(siteUrl, resultData) {
   const slug = cleanText(resultData?.username || resultData?.card?.username, 160);
-  const creatorPageUrl = slug
-    ? buildStaxCreatorPageUrl(siteUrl, slug)
-    : resultData?.creatorPageUrl || resultData?.publicUrl || resultData?.card?.creatorPageUrl || resultData?.card?.publicUrl;
+  const profilePageUrl = slug
+    ? buildStaxProfilePageUrl(siteUrl, slug)
+    : resultData?.profilePageUrl || resultData?.creatorPageUrl || resultData?.publicUrl || resultData?.card?.profilePageUrl || resultData?.card?.creatorPageUrl || resultData?.card?.publicUrl;
+  const staxCardPageUrl = slug
+    ? buildStaxCardPageUrl(siteUrl, slug)
+    : resultData?.staxCardPageUrl || resultData?.staxCardShareUrl || resultData?.card?.staxCardPageUrl || resultData?.card?.staxCardShareUrl;
   const staxCardImageUrl = slug
     ? buildStaxOgImageUrl(siteUrl, slug)
     : resultData?.staxCardImageUrl || resultData?.card?.staxCardImageUrl;
   return {
     ...(slug ? { slug } : {}),
-    ...(creatorPageUrl ? { creatorPageUrl } : {}),
+    ...(profilePageUrl ? { profilePageUrl, creatorPageUrl: profilePageUrl } : {}),
+    ...(staxCardPageUrl ? { staxCardPageUrl, staxCardShareUrl: staxCardPageUrl } : {}),
     ...(staxCardImageUrl ? { staxCardImageUrl } : {}),
   };
 }

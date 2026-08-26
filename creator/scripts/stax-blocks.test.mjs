@@ -10,6 +10,15 @@ import {
 function fixtureDraft() {
   return {
     creator: { username: 'ldx' },
+    card: { primaryAi: 'codex' },
+    aiIdentity: {
+      schemaVersion: 'taku.creator.ai-clients.v1',
+      defaultClient: 'codex',
+      options: [
+        { id: 'codex', label: 'CODEX', icon: 'codex' },
+        { id: 'claude-code', label: 'CLAUDE', icon: 'claude' },
+      ],
+    },
     personaV2: {
       code: 'AILW',
       archetype: {
@@ -73,7 +82,15 @@ function fixtureDraft() {
           { id: 'allTimeLocal', label: 'All-Time Local', totalTokens: 12400000 },
         ],
         eventCount: 21077,
-        estimatedCost: { totalUsd: 2147.63 },
+        estimatedCost: {
+          totalUsd: 2147.63,
+          coverageRatio: 1,
+          pricedModelCount: 2,
+          topModels: [
+            { modelId: 'gpt-5', provider: 'OpenAI', pricingModel: 'gpt-5', priceSource: 'uniapi', totalUsd: 1500 },
+            { modelId: 'claude-sonnet', provider: 'Anthropic', pricingModel: 'claude-sonnet', priceSource: 'uniapi', totalUsd: 647.63 },
+          ],
+        },
         behaviorProfile: {
           userTurnCount: 137,
         },
@@ -127,6 +144,10 @@ test('maps publisher profile data into the full Stax block contract', () => {
   assert.equal(result.blocks.length, STAX_BLOCK_KEYS.length);
   assert.deepEqual(result.blocks.map((block) => block.key), STAX_BLOCK_KEYS);
   assert.equal(blockByKey(result, 'hero').status, 'supported');
+  assert.equal(blockByKey(result, 'team').source, 'publisher.ai_identity');
+  assert.deepEqual(blockByKey(result, 'team').value.team, ['CODEX', 'codex']);
+  assert.equal(blockByKey(result, 'team').value.identityBasis, 'invoking-host');
+  assert.deepEqual(blockByKey(result, 'team').value.options.map((item) => item.id), ['codex', 'claude-code']);
   assert.equal(blockByKey(result, 'basic').source, 'server.profile');
   assert.equal(blockByKey(result, 'heat').status, 'partial');
   assert.equal(blockByKey(result, 'heat').quality.label, '部分样本');
@@ -155,6 +176,10 @@ test('maps publisher profile data into the full Stax block contract', () => {
   assert.equal(blockByKey(result, 'ctxring').value.estimate, false);
   assert.notEqual(blockByKey(result, 'ctxring').estimated, true);
   assert.equal(blockByKey(result, 'ctxring').quality.label, '本地日志');
+  assert.deepEqual(blockByKey(result, 'qr').value, {
+    target: 'stax',
+    username: 'ldx',
+  });
   assert.equal(blockByKey(result, 'trend').status, 'partial');
   assert.equal(blockByKey(result, 'trend').source, 'publisher.local_activity');
   assert.equal(blockByKey(result, 'trend').value.display, '+167%');
@@ -173,12 +198,36 @@ test('maps publisher profile data into the full Stax block contract', () => {
     { date: '2026-07-21', count: 5 },
     { date: '2026-07-22', count: 7 },
   ]);
-  assert.equal(blockByKey(result, 'bracket').value.label, 'EST. SPEND');
+  assert.equal(blockByKey(result, 'bracket').value.label, 'API EQUIV.');
   assert.equal(blockByKey(result, 'bracket').value.periodId, 'thisMonth');
   assert.equal(blockByKey(result, 'bracket').value.periodLabel, 'This Month');
   assert.equal(blockByKey(result, 'bracket').estimated, true);
   assert.equal(blockByKey(result, 'bracket').quality.label, '估算');
   assert.equal(blockByKey(result, 'pie').quality.label, '本地日志');
+  assert.deepEqual(blockByKey(result, 'pie').value.modelMix.map((row) => row.name), ['GPT-5', 'Claude Sonnet']);
+  assert.equal(blockByKey(result, 'modelcost').status, 'partial');
+  assert.equal(blockByKey(result, 'modelcost').estimated, true);
+  assert.equal(blockByKey(result, 'modelcost').quality.label, '估算');
+  assert.deepEqual(blockByKey(result, 'modelcost').value.models, [
+    {
+      modelId: 'gpt-5',
+      name: 'GPT-5',
+      provider: 'OpenAI',
+      pricingModel: 'gpt-5',
+      priceSource: 'uniapi',
+      totalUsd: 1500,
+    },
+    {
+      modelId: 'claude-sonnet',
+      name: 'Claude Sonnet',
+      provider: 'Anthropic',
+      pricingModel: 'claude-sonnet',
+      priceSource: 'uniapi',
+      totalUsd: 647.63,
+    },
+  ]);
+  assert.equal(blockByKey(result, 'modelcost').value.partial, false);
+  assert.equal(blockByKey(result, 'modelcost').value.coverageRatio, 1);
   assert.equal(blockByKey(result, 'rings').quality.label, '本地推导 + Taku');
   assert.equal(blockByKey(result, 'rings').estimated, true);
   assert.equal(blockByKey(result, 'rings').value.metrics[0].count, 137);
@@ -293,6 +342,34 @@ test('maps publisher profile data into the full Stax block contract', () => {
   });
 });
 
+test('does not present a partial API-list equivalent as total spend', () => {
+  const draft = fixtureDraft();
+  draft.stats.usage.estimatedCost = {
+    totalUsd: 4.07,
+    coverageRatio: 0.005656,
+    pricedTokenCount: 4_193_255,
+    unpricedTokenCount: 737_215_929,
+    pricedModelCount: 1,
+    unpricedModelCount: 2,
+    topModels: [
+      { modelId: 'gpt-5', provider: 'OpenAI', pricingModel: 'gpt-5', priceSource: 'uniapi', totalUsd: 4.07 },
+    ],
+    partial: true,
+  };
+
+  const result = buildStaxBlocks(draft);
+  const bracket = blockByKey(result, 'bracket');
+  const modelcost = blockByKey(result, 'modelcost');
+  assert.equal(bracket.value.label, 'TOKENS');
+  assert.equal(bracket.value.estimated, false);
+  assert.equal(bracket.value.actualSpend, false);
+  assert.equal(modelcost.status, 'partial');
+  assert.equal(modelcost.estimated, true);
+  assert.equal(modelcost.value.partial, true);
+  assert.equal(modelcost.value.coverageRatio, 0.006);
+  assert.deepEqual(modelcost.value.models.map((row) => row.modelId), ['gpt-5']);
+});
+
 test('labels bounded usage as an observed sample instead of a complete total', () => {
   const draft = fixtureDraft();
   draft.stats.usage.periodId = 'last90Days';
@@ -303,6 +380,13 @@ test('labels bounded usage as an observed sample instead of a complete total', (
     { source: 'claude-code', label: 'Claude', totalTokens: 935618, sessionCount: 6 },
     { source: 'codex', label: 'Codex', totalTokens: 13002594454, sessionCount: 1039 },
   ];
+  draft.stats.usage.modelUsage = {
+    totalTokens: 2574342,
+    topModels: [
+      { modelId: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', totalTokens: 1544605, share: 0.6 },
+      { modelId: 'claude-opus-4-6', name: 'Claude Opus 4.6', totalTokens: 1029737, share: 0.4 },
+    ],
+  };
 
   const result = buildStaxBlocks(draft);
   const bars = blockByKey(result, 'bars90');
@@ -315,6 +399,26 @@ test('labels bounded usage as an observed sample instead of a complete total', (
   assert.equal(stadium.value.periodLabel, 'Observed Sample');
   assert.equal(stadium.value.totalTokens, draft.stats.usage.totalTokens);
   assert.equal(blockByKey(result, 'team').value.team[0], 'CODEX');
+  assert.equal(blockByKey(result, 'team').value.identityBasis, 'invoking-host');
+});
+
+test('allows a scanned local client to replace the invoking host default', () => {
+  const draft = fixtureDraft();
+  draft.card.primaryAi = 'claude-code';
+
+  const result = buildStaxBlocks(draft);
+  assert.deepEqual(blockByKey(result, 'team').value.team, ['CLAUDE', 'claude']);
+  assert.equal(blockByKey(result, 'team').value.identityBasis, 'user-selection');
+});
+
+test('keeps model usage as a compatibility fallback for legacy drafts without host identity', () => {
+  const draft = fixtureDraft();
+  delete draft.card;
+  delete draft.aiIdentity;
+
+  const result = buildStaxBlocks(draft);
+  assert.deepEqual(blockByKey(result, 'team').value.team, ['CODEX', 'codex']);
+  assert.equal(blockByKey(result, 'team').value.identityBasis, 'model-usage');
 });
 
 test('keeps community rank and provider quota dimensions unsupported until trusted inputs exist', () => {

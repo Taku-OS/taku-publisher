@@ -26,6 +26,7 @@ test('normalizes Creator Center items without exposing raw metadata', () => {
   assert.equal(item.itemId, 'item-1');
   assert.equal(item.installCount, 42);
   assert.equal(item.updateRequiresPublisher, true);
+  assert.equal(item.creatorPageUrl, 'https://taku.ai/profile/alice');
   assert.equal(item.publicItemUrl, 'https://taku.ai/stax/alice/demo-skill');
   assert.equal(Object.hasOwn(item, 'metadata'), false);
 });
@@ -108,6 +109,7 @@ test('uses the aggregate Stax profile when Creator Center stats are available th
   );
 
   assert.equal(result.account.username, 'alice');
+  assert.equal(result.account.creatorPageUrl, 'https://taku.ai/profile/alice');
   assert.equal(result.items[0].publicItemUrl, 'https://taku.ai/stax/alice/published-skill');
   assert.equal(result.stats.skillInstallCount, 13);
   assert.equal(result.stats.serialNumber, 'TAKU-000417');

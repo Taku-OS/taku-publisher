@@ -6,10 +6,13 @@ import os
 import re
 import shutil
 import stat
+import subprocess
+import sys
 import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
+from urllib.parse import urlparse
 
 from .api import TakuPublisherClient, response_candidates
 from .util import PublisherError
@@ -40,13 +43,7 @@ def marketplace_items(response: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def marketplace_item(response: dict[str, Any]) -> dict[str, Any]:
-    for candidate in response_candidates(response):
-        if _first_string(candidate, "id", "itemId", "item_id"):
-            return normalize_marketplace_item(candidate)
-    raise PublisherError(
-        "Marketplace response does not contain an item.",
-        code="invalid_marketplace_response",
-    )
+    return normalize_marketplace_item(_raw_marketplace_item(response))
 
 
 def normalize_marketplace_item(item: dict[str, Any]) -> dict[str, Any]:
@@ -68,6 +65,11 @@ def normalize_marketplace_item(item: dict[str, Any]) -> dict[str, Any]:
     installability = (
         _first_string(item, "installability")
         or _first_string(offer, "installability")
+    )
+    codex_install_supported = item_type == "skill" and display_kind == "skill"
+    taku_desktop_open_supported = (
+        not codex_install_supported
+        and _is_taku_deep_link(_first_string(offer, "deepLink", "deep_link"))
     )
     return {
         "item_id": _first_string(item, "id", "itemId", "item_id"),
@@ -104,13 +106,55 @@ def normalize_marketplace_item(item: dict[str, Any]) -> dict[str, Any]:
         "installability": installability,
         "display_kind": display_kind,
         "cta": _first_string(offer, "cta"),
-        "deep_link": _first_string(offer, "deepLink", "deep_link"),
         "external_url": (
             _first_string(item, "externalUrl", "external_url")
             or _first_string(offer, "externalUrl", "external_url")
         ),
-        "codex_install_supported": item_type == "skill" and display_kind == "skill",
+        "codex_install_supported": codex_install_supported,
+        "taku_desktop_open_supported": taku_desktop_open_supported,
+        "recommended_action": (
+            "install_in_codex"
+            if codex_install_supported
+            else "open_in_taku_desktop"
+            if taku_desktop_open_supported
+            else "view_details"
+        ),
         "configuration_requirements": requirements,
+    }
+
+
+def open_marketplace_item_in_taku(
+    response: dict[str, Any],
+    *,
+    opener=None,
+    platform: str | None = None,
+) -> dict[str, Any]:
+    raw = _raw_marketplace_item(response)
+    item = normalize_marketplace_item(raw)
+    if item["status"] != "published":
+        raise PublisherError(
+            "Only published Marketplace items can be opened in Taku Desktop.",
+            code="marketplace_item_not_published",
+        )
+    if item["codex_install_supported"]:
+        raise PublisherError(
+            "This item is a Codex Skill. Use the confirmed Codex installation flow instead.",
+            code="marketplace_skill_uses_codex_install",
+        )
+    offer = _marketplace_offer(raw)
+    deep_link = _validated_taku_deep_link(
+        _first_string(offer, "deepLink", "deep_link")
+    )
+    opened = (opener or _open_taku_deep_link)(deep_link, platform or sys.platform)
+    if not opened:
+        raise PublisherError(
+            "Taku Desktop could not be opened from this terminal. Use a desktop session with Taku installed.",
+            code="taku_desktop_open_failed",
+            details={"external_url": item["external_url"] or None},
+        )
+    return {
+        "item": item,
+        "next_action": "confirm_in_taku_desktop",
     }
 
 
@@ -384,6 +428,65 @@ def _install_contract(response: dict[str, Any]) -> dict[str, Any]:
         "Marketplace install response is invalid.",
         code="invalid_marketplace_response",
     )
+
+
+def _raw_marketplace_item(response: dict[str, Any]) -> dict[str, Any]:
+    for candidate in response_candidates(response):
+        if _first_string(candidate, "id", "itemId", "item_id"):
+            return candidate
+    raise PublisherError(
+        "Marketplace response does not contain an item.",
+        code="invalid_marketplace_response",
+    )
+
+
+def _marketplace_offer(item: dict[str, Any]) -> dict[str, Any]:
+    metadata = _record(item.get("metadata"))
+    return _record(
+        item.get("installOffer")
+        or item.get("install_offer")
+        or metadata.get("taku_install_offer")
+    )
+
+
+def _is_taku_deep_link(value: str) -> bool:
+    if not value or len(value) > 2_048 or any(
+        ord(char) < 32 or ord(char) == 127 for char in value
+    ):
+        return False
+    parsed = urlparse(value)
+    return parsed.scheme == "taku" and not parsed.username and not parsed.password
+
+
+def _validated_taku_deep_link(value: str) -> str:
+    if not _is_taku_deep_link(value):
+        raise PublisherError(
+            "This Marketplace item does not provide a valid Taku Desktop action.",
+            code="marketplace_taku_open_unavailable",
+        )
+    return value
+
+
+def _open_taku_deep_link(url: str, platform: str) -> bool:
+    if platform == "darwin":
+        command = ["open", url]
+    elif platform.startswith("win"):
+        command = ["explorer.exe", url]
+    else:
+        command = ["xdg-open", url]
+    try:
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return process.wait(timeout=15) == 0
+    except subprocess.TimeoutExpired:
+        process.kill()
+        return False
+    except OSError:
+        return False
 
 
 def _requirements_from_sources(

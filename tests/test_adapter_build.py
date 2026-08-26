@@ -56,11 +56,16 @@ class AdapterBuildTests(unittest.TestCase):
                 / "taku-publisher.mjs"
             ).is_file(),
         )
-        self.assertFalse(
-            any(
-                plugin_root.rglob("*.py")
-            ),
+        host_adapter = json.loads(
+            (
+                plugin_root
+                / "skills"
+                / "taku-publisher"
+                / "host-adapter.json"
+            ).read_text(encoding="utf-8"),
         )
+        self.assertEqual("codex", host_adapter["host"])
+        self.assertFalse(any(plugin_root.rglob("*.py")))
         self.assertTrue(
             (
                 plugin_root
@@ -73,6 +78,37 @@ class AdapterBuildTests(unittest.TestCase):
                 / "cli.js"
             ).is_file(),
         )
+
+    def test_generated_plugins_exclude_template_build_artifacts_and_local_paths(self) -> None:
+        generated_names = {
+            ".biome",
+            ".next",
+            ".next-edit",
+            ".next-preview",
+            ".taku",
+            ".vercel",
+            "build",
+            "coverage",
+            "out",
+        }
+        local_home = str(Path.home()).encode("utf-8")
+
+        for marketplace_root in (MARKETPLACE_ROOT, CLAUDE_MARKETPLACE_ROOT):
+            plugin_root = marketplace_root / "plugins" / "taku-publisher"
+            self.assertFalse(
+                any(
+                    path.is_dir() and path.name in generated_names
+                    for path in plugin_root.rglob("*")
+                ),
+            )
+            for file_path in plugin_root.rglob("*"):
+                if not file_path.is_file() or file_path.stat().st_size > 2_000_000:
+                    continue
+                self.assertNotIn(
+                    local_home,
+                    file_path.read_bytes(),
+                    f"generated plugin contains a local home path: {file_path}",
+                )
 
     def test_codex_runtime_resolves_embedded_passport_core(self) -> None:
         skill_root = (
@@ -191,7 +227,7 @@ if ('localPath' in publicValue) {
         )
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-        self.assertEqual("0.3.1", manifest["version"])
+        self.assertEqual("0.3.8", manifest["version"])
         self.assertLessEqual(len(manifest["interface"]["defaultPrompt"]), 3)
 
     def test_claude_marketplace_points_to_packaged_plugin(self) -> None:
@@ -217,7 +253,18 @@ if ('localPath' in publicValue) {
             ),
         )
 
-        self.assertEqual("0.3.1", manifest["version"])
+        self.assertEqual("0.3.8", manifest["version"])
+        self.assertTrue(
+            (
+                plugin_root
+                / "skills"
+                / "taku-publisher"
+                / "node_modules"
+                / "qrcode-generator"
+                / "dist"
+                / "qrcode.mjs"
+            ).is_file(),
+        )
         self.assertTrue(
             (
                 plugin_root
@@ -227,6 +274,15 @@ if ('localPath' in publicValue) {
                 / "taku-publisher.mjs"
             ).is_file(),
         )
+        host_adapter = json.loads(
+            (
+                plugin_root
+                / "skills"
+                / "taku-publisher"
+                / "host-adapter.json"
+            ).read_text(encoding="utf-8"),
+        )
+        self.assertEqual("claude-code", host_adapter["host"])
         self.assertFalse(any(plugin_root.rglob("*.py")))
         self.assertTrue(
             (

@@ -10,8 +10,10 @@ export const STAX_BLOCK_KEYS = [
   'aura',
   'basic',
   'seal',
+  'qr',
   'bars90',
   'pie',
+  'modelcost',
   'cgauge',
   'rings',
   'ctxring',
@@ -106,6 +108,12 @@ export function buildStaxBlocks(draft = {}) {
     0,
   );
   const topModels = topModelRows(modelUsage);
+  const primaryAi = primaryAiIdentity({
+    selection: draft.card?.primaryAi,
+    aiIdentity: draft.aiIdentity,
+    models: topModels,
+    sources: usage.sources,
+  });
   const workPattern = record(localActivity.workPattern);
   const hasActiveHourPattern = integer(workPattern.activeHourCount) > 0 || array(workPattern.hourBuckets).some((count) => integer(count) > 0);
   const topPercent = firstPositiveNumber(
@@ -115,6 +123,15 @@ export function buildStaxBlocks(draft = {}) {
     external.rankGrade?.topPercent,
   );
   const totalTokens = integer(usage.totalTokens || modelUsage.totalTokens);
+  const estimatedCost = record(usage.estimatedCost || modelUsage.estimatedCost);
+  const rawCostCoverage = Number(estimatedCost.coverageRatio);
+  const costCoverage = Number.isFinite(rawCostCoverage)
+    ? ratio(rawCostCoverage)
+    : estimatedCost.totalUsd
+      ? 1
+      : 0;
+  const pricedModels = pricedModelRows(estimatedCost, topModels);
+  const hasUsableApiEquivalent = Number(estimatedCost.totalUsd) > 0 && costCoverage >= 0.95;
   const allTimeUsage = usagePeriodById(usage, 'allTimeLocal');
   const allTimeTokens = integer(allTimeUsage.totalTokens || allTimeUsage.modelUsage?.totalTokens);
   const usageScanCoverage = record(usage.scanCoverage);
@@ -141,6 +158,10 @@ export function buildStaxBlocks(draft = {}) {
   const daysOnTaku = integer(staxProfile.daysOnTaku);
   const serial = clean(staxProfile.serial?.display || staxProfile.serial || displaySerial(staxProfile.serialNumber), 80);
   const handle = clean(staxProfile.handle || staxProfile.username || draft.creator?.username || draft.creator?.handle, 80);
+  const qrUsername = handle.replace(/^@+/, '');
+  const qrTarget = String(draft.card?.qrTarget || '').trim().toLowerCase() === 'profile'
+    ? 'profile'
+    : 'stax';
   const family = clean(staxProfile.family || persona.family || familyForPersonaCode(persona.code), 80);
   const tokens90d = tokenBuckets(dailyHeatmap, 12);
   const observedTokenBucketCount = tokens90d.filter((value) => Number(value) > 0.02).length;
@@ -155,13 +176,15 @@ export function buildStaxBlocks(draft = {}) {
       family,
       signature: clean(archetype.signature || persona.signature, 180),
     }, 'persona summary is not available yet'),
-    team: supportedIf(array(usage.sources).length, 'publisher.usage.sources', {
-      team: primaryTeam(usage.sources),
+    team: supportedIf(primaryAi, 'publisher.ai_identity', {
+      team: primaryAi?.team,
+      identityBasis: primaryAi?.basis,
+      options: primaryAi?.options,
       sources: array(usage.sources).slice(0, 4).map((source) => ({
         source: clean(source?.source, 80),
         label: clean(source?.label, 80),
       })),
-    }, 'no Codex or Claude Code usage source was found'),
+    }, 'no recognized AI model or local usage source was found'),
     type: supportedIf(persona.code, 'publisher.persona', {
       type: clean(persona.code, 20),
       axes: array(persona.axes).slice(0, 4),
@@ -181,6 +204,10 @@ export function buildStaxBlocks(draft = {}) {
       serial,
       serialNumber: clean(staxProfile.serialNumber, 80),
     }, 'serial number requires a minted Taku profile')),
+    qr: supportedIf(qrUsername, 'publisher.profile_link', {
+      target: qrTarget,
+      username: qrUsername,
+    }, 'a public Taku username is required to create a QR code'),
     bars90: supportedIf(dailyHeatmap.length || totalTokens > 0, 'publisher.local_usage', {
       tokens90d,
       visualBuckets: visualTokenBuckets(tokens90d, tokenBarsNeedDisplayScaffold),
@@ -208,6 +235,27 @@ export function buildStaxBlocks(draft = {}) {
       'local_log',
       '本地日志',
       'Model mix is computed from scanned local Codex/Claude logs, not provider billing records.',
+    )),
+    modelcost: supportedIf(pricedModels.length, 'publisher.local_usage', {
+      models: pricedModels.slice(0, 3),
+      totalUsd: positiveNumber(estimatedCost.totalUsd),
+      pricedModelCount: integer(estimatedCost.pricedModelCount) || pricedModels.length,
+      unpricedModelCount: integer(estimatedCost.unpricedModelCount),
+      pricedTokenCount: integer(estimatedCost.pricedTokenCount),
+      unpricedTokenCount: integer(estimatedCost.unpricedTokenCount),
+      coverageRatio: costCoverage,
+      partial: estimatedCost.partial === true || costCoverage < 1,
+      periodId: usagePeriodId,
+      periodLabel: usagePeriodLabel,
+      priceTableUpdatedAt: clean(estimatedCost.priceTableUpdatedAt, 40),
+      pricingBasis: clean(estimatedCost.pricingBasis, 100),
+    }, 'no recognized model has a usable API-equivalent price yet', 'partial', qualityMeta(
+      'estimate',
+      '估算',
+      estimatedCost.partial === true || costCoverage < 1
+        ? 'Per-model API-equivalent values cover only the recognized priced models in this local usage sample; unpriced models remain visible as missing coverage, not zero cost.'
+        : 'Per-model API-equivalent values are estimated from local client token logs and the monthly reference price. They are not subscription charges or an official bill.',
+      true,
     )),
     cgauge: quotaBlock(serverBlocks),
     rings: supportedIf(promptCount || buildSessionCount || hasTrustedShipCount, 'publisher.activity_snapshot', {
@@ -388,19 +436,22 @@ export function buildStaxBlocks(draft = {}) {
       '本地日志',
       'Small stat is computed from local event/tool-call counts.',
     )),
-    bracket: supportedIf(usage.estimatedCost?.totalUsd || totalTokens, 'publisher.local_usage', {
-      label: usage.estimatedCost?.totalUsd ? 'EST. SPEND' : 'TOKENS',
-      value: usage.estimatedCost?.totalUsd ? `$${Math.round(Number(usage.estimatedCost.totalUsd))}` : compactNumber(totalTokens),
-      estimated: Boolean(usage.estimatedCost?.totalUsd),
+    bracket: supportedIf(hasUsableApiEquivalent || totalTokens, 'publisher.local_usage', {
+      label: hasUsableApiEquivalent ? 'API EQUIV.' : 'TOKENS',
+      value: hasUsableApiEquivalent ? `$${Math.round(Number(estimatedCost.totalUsd))}` : compactNumber(totalTokens),
+      estimated: hasUsableApiEquivalent,
+      actualSpend: false,
+      pricingBasis: clean(estimatedCost.pricingBasis, 100),
       periodId: usagePeriodId,
       periodLabel: usagePeriodLabel,
-      priceTableUpdatedAt: clean(usage.estimatedCost?.priceTableUpdatedAt, 40),
-      pricedTokenCount: integer(usage.estimatedCost?.pricedTokenCount),
-      unpricedTokenCount: integer(usage.estimatedCost?.unpricedTokenCount),
-    }, 'no small stat is available for this slot', 'partial', usage.estimatedCost?.totalUsd ? qualityMeta(
+      priceTableUpdatedAt: clean(estimatedCost.priceTableUpdatedAt, 40),
+      pricedTokenCount: integer(estimatedCost.pricedTokenCount),
+      unpricedTokenCount: integer(estimatedCost.unpricedTokenCount),
+      coverageRatio: costCoverage,
+    }, 'no small stat is available for this slot', 'partial', hasUsableApiEquivalent ? qualityMeta(
       'estimate',
       '估算',
-      'Spend is estimated from local token counts and the publisher price table; it is not an official bill.',
+      'API-equivalent market value is estimated from local client token logs and the monthly reference price. It is not a subscription charge or an official bill.',
       true,
     ) : qualityMeta(
       'local_log',
@@ -671,6 +722,44 @@ function topModelRows(modelUsage) {
   return rows.filter(isRecord);
 }
 
+function pricedModelRows(estimatedCost, modelRows) {
+  const usageByModel = new Map();
+  for (const row of array(modelRows)) {
+    const modelId = clean(row?.modelId || row?.name, 160);
+    if (!modelId) continue;
+    usageByModel.set(modelId.toLowerCase(), row);
+  }
+  const summaryRows = array(estimatedCost?.topModels);
+  const sourceRows = summaryRows.length
+    ? summaryRows
+    : array(modelRows).map((row) => ({
+        ...record(row?.estimatedCost),
+        modelId: row?.modelId || row?.name,
+      }));
+  return sourceRows
+    .map((cost) => {
+      const modelId = clean(cost?.modelId || cost?.pricingModel, 160);
+      const totalUsd = positiveNumber(cost?.totalUsd);
+      if (!modelId || totalUsd <= 0) return null;
+      const usage = usageByModel.get(modelId.toLowerCase()) || {};
+      return {
+        modelId,
+        name: clean(usage?.name || cost?.pricingModel || modelId, 120),
+        provider: clean(cost?.provider || usage?.estimatedCost?.provider, 80),
+        pricingModel: clean(cost?.pricingModel || usage?.estimatedCost?.pricingModel, 120),
+        priceSource: clean(cost?.priceSource || usage?.estimatedCost?.priceSource, 40),
+        totalUsd,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => right.totalUsd - left.totalUsd || left.modelId.localeCompare(right.modelId));
+}
+
+function positiveNumber(value) {
+  const next = Number(value);
+  return Number.isFinite(next) && next > 0 ? Math.round(next * 1_000_000) / 1_000_000 : 0;
+}
+
 function tokenBuckets(rows, count) {
   const source = array(rows).slice(-90);
   if (!source.length) return [];
@@ -773,18 +862,101 @@ function bestDayValue(rows) {
   };
 }
 
-function primaryTeam(sources) {
-  const first = [...array(sources)]
-    .filter((source) => source?.source || source?.label)
+function primaryAiIdentity({ selection, aiIdentity, models, sources }) {
+  const identity = record(aiIdentity);
+  const configuredOptions = array(identity.options)
+    .map((option) => aiOption(option?.id || option?.label))
+    .filter(Boolean);
+  const uniqueOptions = [];
+  const seenOptions = new Set();
+  for (const option of configuredOptions) {
+    if (seenOptions.has(option.id)) continue;
+    seenOptions.add(option.id);
+    uniqueOptions.push(option);
+  }
+
+  const selectedOption = aiOption(selection);
+  const defaultOption = aiOption(identity.defaultClient);
+  const chosenOption = selectedOption && (!uniqueOptions.length || seenOptions.has(selectedOption.id))
+    ? selectedOption
+    : defaultOption;
+  if (chosenOption) {
+    if (!seenOptions.has(chosenOption.id)) uniqueOptions.unshift(chosenOption);
+    return {
+      team: [chosenOption.label, chosenOption.icon],
+      basis: selectedOption && defaultOption && selectedOption.id !== defaultOption.id
+        ? 'user-selection'
+        : 'invoking-host',
+      options: uniqueOptions,
+    };
+  }
+
+  const modelRows = array(models);
+  const hasTokenWeights = modelRows.some((model) => integer(model?.totalTokens || model?.tokenCount) > 0);
+  const hasShareWeights = modelRows.some((model) => ratio(model?.share) > 0);
+  const familyScores = new Map();
+  for (const [index, model] of modelRows.entries()) {
+    const family = aiFamily(model?.modelId || model?.name || model?.provider);
+    if (!family) continue;
+    const tokenWeight = integer(model?.totalTokens || model?.tokenCount);
+    const shareWeight = Math.round(ratio(model?.share) * 1_000_000_000);
+    const eventWeight = integer(model?.eventCount);
+    const rankWeight = Math.max(1, modelRows.length - index);
+    const weight = hasTokenWeights
+      ? tokenWeight
+      : hasShareWeights
+        ? shareWeight
+        : eventWeight || rankWeight;
+    if (weight <= 0) continue;
+    familyScores.set(family, (familyScores.get(family) || 0) + weight);
+  }
+  const modelFamily = [...familyScores.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0];
+  if (modelFamily) {
+    const option = aiOption(modelFamily);
+    return { team: aiTeam(modelFamily), basis: 'model-usage', options: option ? [option] : [] };
+  }
+
+  const first = array(sources)
+    .map((source) => ({ source, family: aiFamily(source?.source || source?.label) }))
+    .filter((candidate) => candidate.family)
     .sort((left, right) =>
-      integer(right?.totalTokens) - integer(left?.totalTokens) ||
-      integer(right?.sessionCount) - integer(left?.sessionCount)
+      integer(right.source?.totalTokens) - integer(left.source?.totalTokens) ||
+      integer(right.source?.sessionCount) - integer(left.source?.sessionCount)
     )[0];
-  const raw = clean(first?.source || first?.label, 80).toLowerCase();
-  if (raw.includes('claude')) return ['CLAUDE', 'claude'];
-  if (raw.includes('cursor')) return ['CURSOR', 'cursor'];
-  if (raw.includes('gemini')) return ['GEMINI', 'gemini'];
-  return ['CODEX', 'codex'];
+  if (!first) return null;
+  const option = aiOption(first.family);
+  return { team: aiTeam(first.family), basis: 'usage-source', options: option ? [option] : [] };
+}
+
+function aiOption(value) {
+  const family = aiFamily(value);
+  if (!family) return null;
+  return {
+    claude: { id: 'claude-code', label: 'CLAUDE', icon: 'claude' },
+    cursor: { id: 'cursor', label: 'CURSOR', icon: 'cursor' },
+    gemini: { id: 'gemini', label: 'GEMINI', icon: 'gemini' },
+    codex: { id: 'codex', label: 'CODEX', icon: 'codex' },
+  }[family];
+}
+
+function aiFamily(value) {
+  const raw = clean(value, 160).toLowerCase();
+  if (!raw) return '';
+  if (/(claude|sonnet|opus|haiku|anthropic)/.test(raw)) return 'claude';
+  if (/(gemini|google)/.test(raw)) return 'gemini';
+  if (/(cursor|composer)/.test(raw)) return 'cursor';
+  if (/(codex|openai|gpt|\bo[134]\b)/.test(raw)) return 'codex';
+  return '';
+}
+
+function aiTeam(family) {
+  return {
+    claude: ['CLAUDE', 'claude'],
+    cursor: ['CURSOR', 'cursor'],
+    gemini: ['GEMINI', 'gemini'],
+    codex: ['CODEX', 'codex'],
+  }[family];
 }
 
 function birdLabel(workPattern) {

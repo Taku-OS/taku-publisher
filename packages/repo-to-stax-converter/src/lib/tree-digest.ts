@@ -15,6 +15,8 @@ const IGNORED_DIRECTORIES = new Set([
   '__pycache__',
   '.venv',
   'venv',
+  'tmp',
+  'temp',
 ]);
 
 export async function computeTreeDigest(

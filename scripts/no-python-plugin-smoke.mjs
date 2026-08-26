@@ -21,7 +21,9 @@ const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-publisher-no-pyt
 const workspace = path.join(temporary, 'workspace');
 const source = path.join(workspace, 'sample-skill');
 const appSource = path.join(workspace, 'sample-app');
+const workflowSource = path.join(workspace, 'sample-workflow');
 const candidateOutputRoot = path.join(temporary, 'subapp-candidates');
+const skillCandidateOutputRoot = path.join(temporary, 'skill-candidates');
 const publisherHome = path.join(temporary, 'publisher-home');
 const runtimeBin = path.join(temporary, 'runtime-bin');
 const draftId = 'local_no_python_smoke';
@@ -49,8 +51,10 @@ try {
 
   await fs.mkdir(source, { recursive: true });
   await fs.mkdir(path.join(appSource, 'app'), { recursive: true });
+  await fs.mkdir(workflowSource, { recursive: true });
   await fs.mkdir(runtimeBin);
   await fs.mkdir(candidateOutputRoot);
+  await fs.mkdir(skillCandidateOutputRoot);
   await fs.symlink(process.execPath, path.join(runtimeBin, process.platform === 'win32' ? 'node.exe' : 'node'));
   await fs.writeFile(
     path.join(source, 'SKILL.md'),
@@ -69,6 +73,15 @@ try {
     path.join(appSource, 'app', 'page.tsx'),
     'export const calculate = (value) => eval(value);\nexport default function Page() { return <main>Sample</main>; }\n',
   );
+  await fs.writeFile(
+    path.join(workflowSource, 'README.md'),
+    '# Sample Workflow\n\nFormats one local report without network access.\n',
+  );
+  await fs.writeFile(path.join(workflowSource, 'LICENSE'), 'MIT License\n');
+  await fs.writeFile(
+    path.join(workflowSource, 'format_report.py'),
+    'def format_report(value):\n    return "# Report\\n" + str(value)\n',
+  );
   await installFakeGit(runtimeBin);
   const env = {
     ...process.env,
@@ -86,6 +99,43 @@ try {
   ], env);
   run(['stage', '--draft-id', draftId], env);
   run(['scan', '--draft-id', draftId], env);
+  const projectAssessment = run([
+    'project-assess',
+    '--source', workflowSource,
+  ], env);
+  if (
+    projectAssessment.status !== 'project_route_ready' ||
+    projectAssessment.assessment?.route !== 'skill-generation'
+  ) {
+    throw new Error(`Unexpected project import route: ${projectAssessment.status}`);
+  }
+  const skillCandidate = run([
+    'skill-prepare',
+    '--source', workflowSource,
+    '--output-root', skillCandidateOutputRoot,
+    '--confirm-assessment', projectAssessment.assessment.confirmation_token,
+    '--name', 'sample-workflow-skill',
+  ], env);
+  if (skillCandidate.status !== 'skill_candidate_prepared') {
+    throw new Error(`Unexpected Skill candidate status: ${skillCandidate.status}`);
+  }
+  const skillHandoff = run([
+    'skill-convert',
+    '--candidate', skillCandidate.candidate_root,
+  ], env);
+  if (
+    skillHandoff.status !== 'skill_agent_handoff_ready' ||
+    skillHandoff.scripts_executed !== false
+  ) {
+    throw new Error(`Unexpected Skill handoff status: ${skillHandoff.status}`);
+  }
+  const skillCheck = run([
+    'skill-conversion-check',
+    '--candidate', skillCandidate.candidate_root,
+  ], env);
+  if (skillCheck.status !== 'skill_conversion_needs_work') {
+    throw new Error(`Unexpected initial Skill conversion status: ${skillCheck.status}`);
+  }
   const assessment = run([
     'subapp-assess',
     '--source', appSource,
@@ -188,7 +238,7 @@ try {
     ok: true,
     status: 'node_only_plugin_smoke_passed',
     plugin: path.relative(repositoryRoot, path.dirname(skillRoot)),
-    commands: process.platform === 'win32' ? 14 : 16,
+    commands: process.platform === 'win32' ? 18 : 20,
     pythonFiles: 0,
   }, null, 2)}\n`);
 } finally {

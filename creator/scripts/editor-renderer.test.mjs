@@ -251,8 +251,8 @@ test('renders draft Stax block support data before server-only block fallbacks',
   assert.match(html, /Build With Local Blocks/);
   assert.match(html, /id="pboard"/);
   assert.match(html, /id="dockscroll"/);
-  assert.match(html, /const hasHeroType=P\.fullset\.includes\('hero'\)&&P\.fullset\.includes\('type'\)/);
-  assert.match(html, /\['hero',pair\[0\],pair\[1\]\],\['type',pair\[0\]\+4,pair\[1\]\]/);
+  assert.match(html, /function planBuildLayout\(keys,randomize=false\)/);
+  assert.match(html, /const preferred=\['hero','type'\]/);
   assert.match(html, /\.stagev \*,\.dock \*,\.dockdrag\{user-select:none;-webkit-user-select:none\}/);
   assert.match(html, /if\(d\.classList\.contains\('on'\)\)return;/);
   assert.match(html, /data:font\/woff2;base64,/);
@@ -273,7 +273,7 @@ test('renders draft Stax block support data before server-only block fallbacks',
   assert.match(html, /"familyColor":"#2E9BFF"/);
   assert.match(html, /LBL\('left:18px','top:14px','ARCHETYPE',dm,h\*0\.05\)/);
   assert.match(html, /LBL\('right:18px','top:14px',safeText\(PD\.family\),dm,h\*0\.05\)/);
-  assert.match(html, /font-weight:700;font-size:\$\{h\*0\.09\}px[^>]+>\$\{safeText\(PD\.handle\)\}/);
+  assert.match(html, /font-weight:700;font-size:\$\{h\*0\.105\}px[^>]+>\$\{safeText\(PD\.handle\)\}/);
   assert.match(html, /"tokens90d":\[0\.1,0\.2,0\.3\]/);
   assert.match(html, /"visualBuckets":\[0\.3,0\.45,0\.4,0\.6\]/);
   assert.match(html, /"tokens90dTotal":"2\.6B"/);
@@ -398,7 +398,7 @@ test('renders draft Stax block support data before server-only block fallbacks',
   assert.match(html, /Local Logs/);
   assert.match(html, /dial/);
   assert.doesNotMatch(html, /独立σ/);
-  assert.doesNotMatch(html, /api\/card/);
+  assert.match(html, /api\/card/);
 });
 
 test('deduplicates Stax team labels before rendering the card', () => {

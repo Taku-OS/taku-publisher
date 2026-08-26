@@ -27,12 +27,13 @@ open Claude Code in the project or workspace you want Taku Publisher to scan.
 Ask Claude Code:
 
 ```text
-Use Taku Publisher to generate an editable Creator Profile preview.
+打开 Taku Publisher 创作者工作台，生成我的 Stax Card，并让我选择要发布的本地项目。
 ```
 
 Other useful prompts:
 
 ```text
+Find my recent Codex and Claude Code projects and help me import one into Taku.
 Show my Taku Creator Center.
 Find a tool in the Taku community.
 Publish the tool in this workspace to Taku.
@@ -40,12 +41,17 @@ Publish the tool in this workspace to Taku.
 
 ## What To Expect
 
+- Project import first lists recent workspaces from local session metadata. It
+  inspects source only after you choose one exact project, then routes it to
+  SubApp conversion, existing Skill publishing, or bounded Skill generation.
 - Creator Profile requests create a local editable preview page.
 - Creator Center requests may ask you to sign in to Taku.
 - Publishing requests scan and package the selected workspace before opening
   the Taku review flow.
 - Marketplace search covers Apps, Skills, Tools, and Bundles. Search and details
   work in Claude Code, while Codex Skill installation remains Codex-only.
+- In terminal sessions, App searches show a numbered list without raw Taku
+  protocol links. Choose one item and the plugin will open it in Taku Desktop.
 
 The agent reads `skills/taku-publisher/SKILL.md` for detailed workflow rules.
 You usually do not need to run the bundled CLI commands yourself.

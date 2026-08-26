@@ -243,7 +243,13 @@ function githubManifestFromItem(item) {
   }
 }
 
-async function createPublicInventoryItem(entry, privateInventory) {
+async function createPublicInventoryItem(entry, privateInventory, options = {}) {
+  const publishToCommunity = options.publishToCommunity === true;
+  if (!publishToCommunity) {
+    return toPublicInventoryImportItem(entry.item, entry.item?.role, {
+      publishToCommunity: false,
+    });
+  }
   const referenceMetadata = await createReferenceInstallMetadata(entry.sourceItem, privateInventory, entry.item?.type);
   const publishItem = referenceMetadata
     ? {
@@ -254,7 +260,9 @@ async function createPublicInventoryItem(entry, privateInventory) {
         },
       }
     : entry.item;
-  const item = toPublicInventoryImportItem(publishItem);
+  const item = toPublicInventoryImportItem(publishItem, publishItem?.role, {
+    publishToCommunity,
+  });
   // Public GitHub tools are references, not user-authored local packages. Once
   // reference metadata is available, do not inspect or inline their install
   // directories. Explicit local uploads still take the packaging path below.
@@ -270,10 +278,21 @@ async function createPublicInventoryItem(entry, privateInventory) {
     inlinePackage = await createInlineSkillPackage(entry.sourceItem, privateInventory);
   } catch (error) {
     if (!isInlineSkillPackageSafetyError(error)) throw error;
-    if (isExplicitLocalInstallable(entry.sourceItem)) throw error;
-    return withSkippedInlinePackageMetadata(item, error);
+    // An explicitly selected Community Skill must either carry a verified
+    // installable package or fail the publish. Silently downgrading it to a
+    // reference creates a public card that cannot be installed or run.
+    throw error;
   }
   if (inlinePackage) return withInlinePackageInstallability(item, inlinePackage);
+  if (publishToCommunity && normalizeStaxDisplayItemType(entry.sourceItem?.type, '') === 'skill') {
+    const name = publicText(
+      entry.sourceItem?.customTitle || entry.sourceItem?.title || entry.sourceItem?.name,
+      160
+    ) || 'selected skill';
+    throw new Error(
+      `Refusing to publish Community Skill "${name}" without an install package.`
+    );
+  }
   if (isExplicitLocalInstallable(entry.sourceItem)) {
     const name = publicText(
       entry.sourceItem?.customTitle || entry.sourceItem?.title || entry.sourceItem?.name,
@@ -672,6 +691,7 @@ function sanitizeBuilderProfileSnapshot(value, schemaVersion) {
   const inventory = asRecord(raw.inventory);
   const dataReceipt = asRecord(raw.dataReceipt ?? raw.data_receipt);
   const staxBlocks = sanitizeStaxBlocks(raw.staxBlocks ?? raw.stax_blocks);
+  const staxCardSnapshot = sanitizeStaxCardSnapshot(raw.staxCardSnapshot ?? raw.stax_card_snapshot);
   const card = sanitizeSnapshotCard(raw.card);
   const personaTraits = asArray(persona.traits)
     .slice(0, 16)
@@ -798,6 +818,7 @@ function sanitizeBuilderProfileSnapshot(value, schemaVersion) {
         .filter(isNonNull),
     },
     ...(staxBlocks ? { staxBlocks } : {}),
+    ...(staxCardSnapshot ? { staxCardSnapshot } : {}),
     dataReceipt: {
       reads: stringArray(dataReceipt.reads, 12, 120),
       publicShareIncludes: stringArray(
@@ -810,16 +831,65 @@ function sanitizeBuilderProfileSnapshot(value, schemaVersion) {
   };
 }
 
+function sanitizeStaxCardSnapshot(value) {
+  const raw = asRecord(value);
+  if (raw.schemaVersion !== 'taku.stax.card-snapshot.v1') return undefined;
+  const rawCanvas = asRecord(raw.canvas);
+  const canvas = {
+    width: boundedInteger(rawCanvas.width, 320, 2000, 940),
+    height: boundedInteger(rawCanvas.height, 320, 2000, 796),
+    columns: boundedInteger(rawCanvas.columns, 1, 16, 8),
+    rows: boundedInteger(rawCanvas.rows, 1, 16, 6),
+    cellSize: boundedInteger(rawCanvas.cellSize, 24, 240, 104),
+    gap: boundedInteger(rawCanvas.gap, 0, 48, 8),
+  };
+  const blocks = asArray(raw.blocks)
+    .map((block) => sanitizeStaxCardSnapshotBlock(block, canvas))
+    .filter(isNonNull)
+    .slice(0, 32);
+  if (!blocks.length || !blocks.some((block) => block.key === 'hero')) return undefined;
+  const imageDataUrl = sanitizePngDataUrl(raw.imageDataUrl ?? raw.image_data_url);
+  return {
+    schemaVersion: 'taku.stax.card-snapshot.v1',
+    capturedAt: optionalString(raw.capturedAt ?? raw.captured_at, 80),
+    canvas,
+    blocks,
+    ...(imageDataUrl ? { imageDataUrl } : {}),
+  };
+}
+
+function sanitizeStaxCardSnapshotBlock(value, canvas) {
+  const raw = asRecord(value);
+  const key = stringValue(raw.key, 40).toLowerCase();
+  if (!/^[a-z0-9_-]{1,40}$/.test(key) || !STAX_BLOCK_KEYS.includes(key)) return null;
+  const cx = boundedInteger(raw.cx, 0, canvas.columns - 1, 0);
+  const cy = boundedInteger(raw.cy, 0, canvas.rows - 1, 0);
+  const cw = boundedInteger(raw.cw, 1, canvas.columns, 1);
+  const ch = boundedInteger(raw.ch, 1, canvas.rows, 1);
+  if (cx + cw > canvas.columns || cy + ch > canvas.rows) return null;
+  return { key, cx, cy, cw, ch };
+}
+
+function sanitizePngDataUrl(value) {
+  if (typeof value !== 'string') return '';
+  const text = value.trim();
+  if (text.length > 4_000_000) return '';
+  if (!/^data:image\/png;base64,[A-Za-z0-9+/=\r\n]+$/.test(text)) return '';
+  return text.replace(/\s+/g, '');
+}
+
 function sanitizeSnapshotCard(value) {
   const raw = asRecord(value);
   const displayName = optionalString(raw.displayName ?? raw.display_name, 120);
   const avatarUrl = publicHttpUrl(raw.avatarUrl ?? raw.avatar_url);
   const visibility = optionalString(raw.visibility, 40);
-  if (!displayName && !avatarUrl && !visibility) return null;
+  const qrTarget = optionalString(raw.qrTarget ?? raw.qr_target, 20) === 'profile' ? 'profile' : 'stax';
+  if (!displayName && !avatarUrl && !visibility && !raw.qrTarget && !raw.qr_target) return null;
   return {
     ...(displayName ? { displayName } : {}),
     ...(avatarUrl ? { avatarUrl } : {}),
     ...(visibility ? { visibility } : {}),
+    qrTarget,
   };
 }
 
@@ -969,9 +1039,15 @@ function sanitizeEstimatedCost(value) {
   return {
     currency: 'USD',
     estimated: true,
+    actualSpend: false,
+    pricingBasis: optionalString(raw.pricingBasis ?? raw.pricing_basis, 100) || 'monthly-market-api-price-equivalent',
+    priceTableUpdatedAt: optionalString(raw.priceTableUpdatedAt ?? raw.price_table_updated_at, 40),
     totalUsd: roundMoney(totalUsd),
+    totalObservedTokenCount: integerValue(raw.totalObservedTokenCount ?? raw.total_observed_token_count),
     pricedTokenCount: integerValue(raw.pricedTokenCount ?? raw.priced_token_count),
     unpricedTokenCount: integerValue(raw.unpricedTokenCount ?? raw.unpriced_token_count),
+    coverageRatio: normalizedRatio(raw.coverageRatio ?? raw.coverage_ratio),
+    partial: raw.partial === true,
     pricedModelCount: integerValue(raw.pricedModelCount ?? raw.priced_model_count),
     unpricedModelCount: integerValue(raw.unpricedModelCount ?? raw.unpriced_model_count),
     topModels: asArray(raw.topModels ?? raw.top_models).slice(0, 4).map(sanitizeCostModel).filter(isNonNull),
@@ -988,6 +1064,7 @@ function sanitizeCostModel(value) {
     modelId,
     provider: optionalString(raw.provider, 80),
     pricingModel: optionalString(raw.pricingModel ?? raw.pricing_model, 120),
+    priceSource: optionalString(raw.priceSource ?? raw.price_source, 40),
     totalUsd: roundMoney(totalUsd),
   };
 }
@@ -1199,6 +1276,12 @@ function integerValue(value) {
   return next > 0 ? next : 0;
 }
 
+function boundedInteger(value, min, max, fallback) {
+  const next = Math.round(Number(value));
+  if (!Number.isFinite(next)) return fallback;
+  return Math.min(max, Math.max(min, next));
+}
+
 function stringArray(value, maxItems, maxLength) {
   return asArray(value)
     .map((item) => stringValue(item, maxLength))
@@ -1401,16 +1484,21 @@ export async function createStaxCreatorPublishPayload(draft, privateInventory, o
   const builtSourceKeys = new Set(
     [...madeSourceItems, ...remixedSourceItems].map(publicInventorySourceKey).filter(Boolean)
   );
-  const baseUsingSourceItems = creatorToolSelectionIsCustom
-    ? []
-    : getDraftSectionItemsByCanonicalId(draft, 'using-tools');
+  const communitySourceKeys = new Set(
+    creatorToolSourceItems.map(publicInventorySourceKey).filter(Boolean)
+  );
+  const baseUsingSourceItems = getDraftSectionItemsByCanonicalId(draft, 'using-tools');
   const usingSourceItems = dedupePublicInventorySourceItems([
     ...baseUsingSourceItems,
     ...creatorToolSourceItems.filter((item) => creatorToolPublishRole(item) === 'using'),
   ]).filter((item) => !builtSourceKeys.has(publicInventorySourceKey(item)));
   const usingEntries = usingSourceItems
     .map((item) => toPublishDraftEntry(item, 'using', listingDrafts))
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((entry) => ({
+      ...entry,
+      publishToCommunity: communitySourceKeys.has(publicInventorySourceKey(entry.sourceItem)),
+    }));
   const madeEntries = madeSourceItems
     .map((item) => toPublishDraftEntry(item, 'made', listingDrafts))
     .filter(Boolean);
@@ -1419,13 +1507,19 @@ export async function createStaxCreatorPublishPayload(draft, privateInventory, o
     .filter(Boolean);
   const selectedItems = [...usingEntries, ...madeEntries, ...remixedEntries].map((entry) => entry.item);
   const usingTools = (await Promise.all(
-    usingEntries.map((entry) => createPublicInventoryItem(entry, privateInventory))
+    usingEntries.map((entry) => createPublicInventoryItem(entry, privateInventory, {
+      publishToCommunity: entry.publishToCommunity,
+    }))
   )).filter(Boolean);
   const madeItems = (await Promise.all(
-    madeEntries.map((entry) => createPublicInventoryItem(entry, privateInventory))
+    madeEntries.map((entry) => createPublicInventoryItem(entry, privateInventory, {
+      publishToCommunity: true,
+    }))
   )).filter(Boolean);
   const remixedItems = (await Promise.all(
-    remixedEntries.map((entry) => createPublicInventoryItem(entry, privateInventory))
+    remixedEntries.map((entry) => createPublicInventoryItem(entry, privateInventory, {
+      publishToCommunity: true,
+    }))
   )).filter(Boolean);
   const builtItems = [...madeItems, ...remixedItems];
   const usage = createPublicUsageSummary(draft.stats?.usage);
@@ -1446,6 +1540,7 @@ export async function createStaxCreatorPublishPayload(draft, privateInventory, o
   const card = {
     ...(displayName ? { displayName } : {}),
     ...(avatarUrl ? { avatarUrl } : {}),
+    qrTarget: cardSettings.qrTarget === 'profile' ? 'profile' : 'stax',
     showPersonaCode: cardSettings.showPersonaCode,
     showUsage: cardSettings.showUsage,
     showCreatorPageLink: cardSettings.showCreatorPageLink,

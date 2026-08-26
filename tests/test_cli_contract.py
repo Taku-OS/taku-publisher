@@ -234,6 +234,12 @@ class CliContractTests(unittest.TestCase):
         self.assertEqual("Weekly App", payload["items"][0]["name"])
         self.assertEqual("app", payload["items"][0]["display_kind"])
         self.assertFalse(payload["items"][0]["codex_install_supported"])
+        self.assertTrue(payload["items"][0]["taku_desktop_open_supported"])
+        self.assertEqual(
+            "open_in_taku_desktop",
+            payload["items"][0]["recommended_action"],
+        )
+        self.assertNotIn("deep_link", payload["items"][0])
         self.assertNotIn("metadata", payload["items"][0])
         self.assertEqual("weekly", fake_client.search["search"])
         self.assertEqual("all", fake_client.search["item_kind"])

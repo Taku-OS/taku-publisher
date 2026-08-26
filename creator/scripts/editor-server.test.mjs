@@ -112,7 +112,7 @@ test('allows bundled Stax preview fonts under the editor CSP', () => {
   assert.match(securityHeaders()['Content-Security-Policy'], /font-src 'self' data:/);
 });
 
-test('blocks profile publishing until each local tool listing has an icon and required fields', () => {
+test('does not block profile publishing while an icon is generated after authorization', () => {
   const tool = {
     id: 'local-tool-1',
     name: 'youtube-to-ebook',
@@ -138,7 +138,7 @@ test('blocks profile publishing until each local tool listing has an icon and re
     },
   };
 
-  assert.deepEqual(pendingLocalToolListingReviews(state)[0]?.missing, ['coverImageUrl']);
+  assert.deepEqual(pendingLocalToolListingReviews(state), []);
   state.draft.listingDrafts[tool.id].listing.coverImageUrl = 'https://cdn.taku.ai/icon.png';
   assert.deepEqual(pendingLocalToolListingReviews(state), []);
 });

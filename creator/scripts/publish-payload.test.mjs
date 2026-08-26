@@ -192,6 +192,25 @@ test('publishes sanitized Stax block support data in the public profile snapshot
             },
           },
           {
+            key: 'modelcost',
+            status: 'partial',
+            source: 'publisher.local_usage',
+            estimated: true,
+            quality: {
+              kind: 'estimate',
+              label: '估算',
+              reason: 'Per-model API-equivalent estimate.',
+            },
+            value: {
+              models: [
+                { modelId: 'gpt-5', name: 'GPT-5', provider: 'OpenAI', priceSource: 'uniapi', totalUsd: 35 },
+              ],
+              totalUsd: 35,
+              coverageRatio: 1,
+              partial: false,
+            },
+          },
+          {
             key: 'cgauge',
             status: 'unsupported',
             source: 'unavailable',
@@ -206,15 +225,47 @@ test('publishes sanitized Stax block support data in the public profile snapshot
   assert.equal(payload.profileSnapshot.staxBlocks.schemaVersion, 'taku.stax.blocks.v1');
   assert.deepEqual(
     payload.profileSnapshot.staxBlocks.blocks.map((block) => block.key),
-    ['hero', 'cgauge', 'ctxring'],
+    ['hero', 'modelcost', 'cgauge', 'ctxring'],
   );
   assert.equal(payload.profileSnapshot.staxBlocks.summary.supported, 1);
-  assert.equal(payload.profileSnapshot.staxBlocks.summary.partial, 1);
+  assert.equal(payload.profileSnapshot.staxBlocks.summary.partial, 2);
   assert.equal(payload.profileSnapshot.staxBlocks.summary.unsupported, 1);
   const ctxring = payload.profileSnapshot.staxBlocks.blocks.find((block) => block.key === 'ctxring');
+  const modelcost = payload.profileSnapshot.staxBlocks.blocks.find((block) => block.key === 'modelcost');
   assert.notEqual(ctxring.estimated, true);
   assert.equal(ctxring.quality.label, '本地日志');
+  assert.equal(modelcost.estimated, true);
+  assert.equal(modelcost.value.models[0].totalUsd, 35);
   assert.equal(JSON.stringify(payload).includes(privatePath), false);
+});
+
+test('publishes the user-arranged Stax card snapshot in the public profile snapshot', async () => {
+  const payload = await createStaxCreatorPublishPayload({
+    sections: [],
+    builderProfileSnapshot: {
+      schemaVersion: 'taku.creator.builder-profile-snapshot.v1',
+      privacy: { publicSummaryOnly: true },
+      persona: { code: 'EILH', title: 'Mad Scientist' },
+      staxCardSnapshot: {
+        schemaVersion: 'taku.stax.card-snapshot.v1',
+        capturedAt: '2026-08-16T00:00:00.000Z',
+        imageDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+        canvas: { width: 940, height: 796, columns: 8, rows: 6, cellSize: 104, gap: 8 },
+        blocks: [
+          { key: 'hero', cx: 0, cy: 1, cw: 4, ch: 2 },
+          { key: 'type', cx: 4, cy: 1, cw: 2, ch: 2 },
+          { key: 'not-real', cx: 0, cy: 0, cw: 1, ch: 1 },
+        ],
+      },
+    },
+    stats: {},
+  }, { items: [] }, publishOptions());
+
+  assert.deepEqual(payload.profileSnapshot.staxCardSnapshot.blocks, [
+    { key: 'hero', cx: 0, cy: 1, cw: 4, ch: 2 },
+    { key: 'type', cx: 4, cy: 1, cw: 2, ch: 2 },
+  ]);
+  assert.equal(payload.profileSnapshot.staxCardSnapshot.imageDataUrl, 'data:image/png;base64,iVBORw0KGgo=');
 });
 
 test('does not silently publish an explicitly local installable without a package', async () => {
@@ -234,8 +285,27 @@ test('does not silently publish an explicitly local installable without a packag
           },
         ],
       },
+      {
+        id: 'creator-tools',
+        items: [
+          {
+            id: 'missing-local-package',
+            name: 'missing-local-package',
+            type: 'skill',
+            source: 'local-upload',
+            sourceKind: 'local_upload',
+            installPolicy: 'installable',
+            role: 'using',
+            ownershipReasons: ['Selected in Creator Tool Dock'],
+            selected: true,
+          },
+        ],
+      },
     ],
-    stats: {},
+    stats: {
+      creatorToolSelectionMode: 'custom',
+      creatorToolIds: ['missing-local-package'],
+    },
   };
 
   await assert.rejects(
@@ -265,12 +335,12 @@ test('does not silently publish an explicitly local installable without a packag
   );
 });
 
-test('does not publish scanned or legacy candidate items without explicit selection', async () => {
+test('keeps scanned tools as profile-only metadata without explicit Community selection', async () => {
   const payload = await createStaxCreatorPublishPayload({
     sections: [
       {
         id: 'using-tools',
-        items: [{ id: 'scanned-tool', name: 'Scanned Tool', type: 'skill' }],
+        items: [{ id: 'scanned-tool', name: 'Scanned Tool', type: 'skill', selected: true }],
       },
       {
         id: 'used-candidates',
@@ -280,8 +350,88 @@ test('does not publish scanned or legacy candidate items without explicit select
     stats: {},
   }, { items: [] }, publishOptions());
 
-  assert.equal(payload.sections.usingTools.length, 0);
+  assert.equal(payload.sections.usingTools.length, 1);
+  assert.equal(payload.sections.usingTools[0].name, 'Scanned Tool');
+  assert.equal(payload.sections.usingTools[0].marketplacePublicationIntent, undefined);
+  assert.equal(payload.sections.usingTools[0].package, undefined);
   assert.equal(payload.sections.builtItems.length, 0);
+});
+
+test('packages a profile tool only after explicit Community selection', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-publisher-community-skill-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.writeFile(path.join(root, 'SKILL.md'), '# Browser helper\n\nControl a browser.\n');
+
+  const profileItem = {
+    id: 'browser-helper',
+    name: 'Browser helper',
+    type: 'skill',
+    source: 'codex-plugin-skill',
+    selected: true,
+  };
+  const communityItem = {
+    ...profileItem,
+    role: 'using',
+    relation: 'using',
+    ownership: 'others',
+    ownershipReasons: ['Selected in Creator Tool Dock'],
+  };
+  const payload = await createStaxCreatorPublishPayload({
+    sections: [
+      { id: 'using-tools', items: [profileItem] },
+      { id: 'creator-tools', items: [communityItem] },
+    ],
+    stats: {
+      creatorToolSelectionMode: 'custom',
+      creatorToolIds: [profileItem.id],
+    },
+  }, {
+    items: [{ id: profileItem.id, localPath: root }],
+  }, publishOptions());
+
+  assert.equal(payload.sections.usingTools.length, 1);
+  assert.equal(payload.sections.usingTools[0].marketplacePublicationIntent, 'publish');
+  assert.equal(payload.sections.usingTools[0].package.kind, 'skill');
+});
+
+test('refuses to downgrade an explicitly selected unsafe Community Skill to reference-only', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-publisher-unsafe-community-skill-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.writeFile(path.join(root, 'SKILL.md'), '# Unsafe helper\n');
+  await fs.writeFile(path.join(root, 'state.json'), JSON.stringify({
+    path: path.join(path.sep, 'Users', 'example', 'private'),
+  }));
+
+  const item = {
+    id: 'unsafe-helper',
+    name: 'unsafe-helper',
+    type: 'skill',
+    source: 'codex',
+    selected: true,
+  };
+  await assert.rejects(
+    () => createStaxCreatorPublishPayload({
+      sections: [
+        { id: 'using-tools', items: [item] },
+        {
+          id: 'creator-tools',
+          items: [{
+            ...item,
+            role: 'using',
+            ownership: 'others',
+            ownershipReasons: ['Selected in Creator Tool Dock'],
+          }],
+        },
+      ],
+      stats: {
+        creatorToolSelectionMode: 'custom',
+        creatorToolIds: [item.id],
+      },
+    }, {
+      items: [{ id: item.id, localPath: root }],
+    }, publishOptions()),
+    /may contain private data/,
+  );
 });
 
 test('publishes an owned Creator Tool Dock skill as a made installable item', async (t) => {
@@ -383,19 +533,29 @@ test('publishes a third-party GitHub workflow as reference-only without reading 
     }],
   }, null, 2));
 
-  const payload = await createStaxCreatorPublishPayload({
-    sections: [{
-      id: 'using-tools',
-      items: [{
+  const workflowItem = {
         id: itemId,
         name: 'Claude Marketing',
         type: 'workflow',
         source,
         role: 'using',
         selected: true,
-      }],
-    }],
-    stats: {},
+  };
+  const payload = await createStaxCreatorPublishPayload({
+    sections: [
+      { id: 'using-tools', items: [workflowItem] },
+      {
+        id: 'creator-tools',
+        items: [{
+          ...workflowItem,
+          ownershipReasons: ['Selected in Creator Tool Dock'],
+        }],
+      },
+    ],
+    stats: {
+      creatorToolSelectionMode: 'custom',
+      creatorToolIds: [itemId],
+    },
   }, {
     items: [{
       id: itemId,

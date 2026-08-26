@@ -1,0 +1,426 @@
+import { createHash } from 'node:crypto';
+import * as fs from 'node:fs';
+import * as fsp from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
+import {
+  assessProjectSource,
+  projectAssessmentJson,
+  skillAssessmentConfirmationToken,
+  type AssessProjectOptions,
+  type ProjectImportAssessment,
+} from './project-import.js';
+import type { JsonObject } from './types.js';
+import {
+  atomicWriteBytes,
+  atomicWriteJson,
+  isRecord,
+  isWithin,
+  normalizedRelative,
+  PublisherError,
+  secureDirectory,
+} from './util.js';
+
+const SKILL_CONVERSION_SCHEMA = 'taku.skill-conversion.v1' as const;
+const SKILL_CONVERSION_RECORD = '.taku/skill-conversion.json';
+const PLACEHOLDER_MARKER = 'TAKU_SKILL_CONVERSION_PLACEHOLDER';
+const MAX_SKILL_CANDIDATE_FILES = 500;
+const MAX_SKILL_CANDIDATE_BYTES = 10 * 1024 * 1024;
+const MAX_STATIC_TEXT_BYTES = 1024 * 1024;
+const SECRET_FILE_PATTERN = /^(?:\.env(?:\..*)?|credentials\.json|secrets\.json|id_rsa|id_ed25519)$/i;
+const SECRET_SUFFIXES = new Set(['.key', '.p12', '.pfx', '.pem']);
+
+export interface PrepareSkillCandidateRequest {
+  source: string;
+  outputRoot: string;
+  confirmationToken: string;
+  name?: string;
+}
+
+export interface PreparedSkillCandidate {
+  candidateRoot: string;
+  assessment: ProjectImportAssessment;
+  record: SkillConversionRecord;
+}
+
+export interface SkillConversionRecord extends JsonObject {
+  schema_version: typeof SKILL_CONVERSION_SCHEMA;
+  source: {
+    path: string;
+    digest: string;
+  };
+  candidate: {
+    path: string;
+    slug: string;
+  };
+  assessment: JsonObject;
+  prepared_at: string;
+  status: 'prepared';
+}
+
+export interface SkillAgentHandoff {
+  candidateRoot: string;
+  candidateDigest: string;
+  sourceRoot: string;
+  sourceDigest: string;
+  requiredReads: string[];
+  editableScope: string[];
+  readOnlyPaths: string[];
+  forbiddenActions: string[];
+  completionRequirements: string[];
+}
+
+export interface SkillConversionCheck {
+  candidateRoot: string;
+  candidateDigest: string;
+  converted: boolean;
+  findings: JsonObject[];
+  assessment: ProjectImportAssessment;
+}
+
+export async function prepareSkillCandidate(
+  request: PrepareSkillCandidateRequest,
+  options: AssessProjectOptions = {},
+): Promise<PreparedSkillCandidate> {
+  const assessment = await assessProjectSource(request.source, options);
+  if (assessment.route !== 'skill-generation' || assessment.eligibility !== 'eligible') {
+    throw new PublisherError(
+      'This project is not eligible for Skill generation.',
+      'skill_generation_not_eligible',
+      { route: assessment.route, eligibility: assessment.eligibility },
+    );
+  }
+  const expectedConfirmation = skillAssessmentConfirmationToken(assessment);
+  if (request.confirmationToken !== expectedConfirmation) {
+    throw new PublisherError(
+      'The Skill generation confirmation is missing, stale, or belongs to another project assessment.',
+      'skill_confirmation_mismatch',
+    );
+  }
+  const outputRoot = await validateOutputRoot(request.outputRoot, assessment.source.path);
+  const slug = skillSlug(request.name || `${assessment.project.name}-skill`);
+  const candidateRoot = path.join(outputRoot, slug);
+  if (path.dirname(candidateRoot) !== outputRoot || fs.existsSync(candidateRoot)) {
+    throw new PublisherError(
+      'Skill candidate target already exists or escapes the selected output directory.',
+      'skill_candidate_target_exists',
+    );
+  }
+  await secureDirectory(candidateRoot);
+  try {
+    await secureDirectory(path.join(candidateRoot, '.taku'));
+    await atomicWriteBytes(
+      path.join(candidateRoot, 'SKILL.md'),
+      Buffer.from(skillSkeleton(slug, assessment), 'utf8'),
+    );
+    const record: SkillConversionRecord = {
+      schema_version: SKILL_CONVERSION_SCHEMA,
+      source: {
+        path: assessment.source.path,
+        digest: assessment.source.digest,
+      },
+      candidate: { path: candidateRoot, slug },
+      assessment: projectAssessmentJson(assessment),
+      prepared_at: new Date().toISOString(),
+      status: 'prepared',
+    };
+    await atomicWriteJson(
+      path.join(candidateRoot, SKILL_CONVERSION_RECORD),
+      record,
+    );
+    return { candidateRoot, assessment, record };
+  } catch (error) {
+    await fsp.rm(candidateRoot, { recursive: true, force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function createSkillAgentHandoff(
+  candidateInput: string,
+  options: AssessProjectOptions = {},
+): Promise<SkillAgentHandoff> {
+  const { candidateRoot, record } = await loadSkillCandidate(candidateInput);
+  const assessment = await assessProjectSource(record.source.path, options);
+  assertSourceStillMatches(record, assessment);
+  const requiredReads = [
+    path.join(candidateRoot, 'SKILL.md'),
+    path.join(candidateRoot, SKILL_CONVERSION_RECORD),
+  ];
+  for (const relative of [
+    'README.md', 'AGENTS.md', 'package.json', 'pyproject.toml', 'requirements.txt',
+  ]) {
+    const file = path.join(record.source.path, relative);
+    if (await isFile(file)) requiredReads.push(file);
+  }
+  return {
+    candidateRoot,
+    candidateDigest: await skillCandidateDigest(candidateRoot),
+    sourceRoot: record.source.path,
+    sourceDigest: record.source.digest,
+    requiredReads,
+    editableScope: [
+      path.join(candidateRoot, 'SKILL.md'),
+      path.join(candidateRoot, 'scripts'),
+      path.join(candidateRoot, 'references'),
+      path.join(candidateRoot, 'assets'),
+    ],
+    readOnlyPaths: [record.source.path, path.join(candidateRoot, '.taku')],
+    forbiddenActions: [
+      'Modify or execute the source project.',
+      'Copy environment files, credentials, tokens, private keys, caches, or build output.',
+      'Add absolute local paths or real configuration values to the generated Skill.',
+      'Upload, publish, install, or register the candidate during conversion.',
+      'Create a background daemon, generic proxy, or undeclared network authority.',
+    ],
+    completionRequirements: [
+      `Remove the ${PLACEHOLDER_MARKER} marker from SKILL.md.`,
+      'Describe precise trigger conditions and the smallest complete repeatable workflow.',
+      'Copy only the scripts, references, and assets required by that workflow.',
+      'Declare configuration names and purposes without including real values.',
+      'Keep every referenced local file inside the candidate directory.',
+    ],
+  };
+}
+
+export async function checkSkillConversion(
+  candidateInput: string,
+  options: AssessProjectOptions = {},
+): Promise<SkillConversionCheck> {
+  const { candidateRoot, record } = await loadSkillCandidate(candidateInput);
+  const assessment = await assessProjectSource(record.source.path, options);
+  assertSourceStillMatches(record, assessment);
+  const findings: JsonObject[] = [];
+  const skillPath = path.join(candidateRoot, 'SKILL.md');
+  const skillText = await fsp.readFile(skillPath, 'utf8').catch(() => '');
+  if (!skillText) addFinding(findings, 'skill.missing', 'blocker', 'The candidate has no root SKILL.md.');
+  if (skillText.includes(PLACEHOLDER_MARKER)) {
+    addFinding(findings, 'skill.placeholder', 'blocker', 'The generated SKILL.md still contains the conversion placeholder.');
+  }
+  const frontmatter = parseFrontmatter(skillText);
+  const name = String(frontmatter.name ?? '').trim();
+  const description = String(frontmatter.description ?? '').trim();
+  if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(name)) {
+    addFinding(findings, 'skill.name', 'blocker', 'Skill frontmatter needs a lowercase kebab-case name.');
+  }
+  if (description.length < 24 || /\b(?:todo|replace me|placeholder)\b/i.test(description)) {
+    addFinding(findings, 'skill.description', 'blocker', 'Skill frontmatter needs a specific trigger-oriented description.');
+  }
+  const body = stripFrontmatter(skillText).trim();
+  if (body.length < 200) {
+    addFinding(findings, 'skill.instructions', 'blocker', 'Skill instructions are too short to define a complete workflow.');
+  }
+  const files = await collectCandidateFiles(candidateRoot);
+  const sourcePath = record.source.path;
+  for (const file of files) {
+    if (file.relative === SKILL_CONVERSION_RECORD) continue;
+    const base = path.basename(file.relative);
+    if (SECRET_FILE_PATTERN.test(base) || SECRET_SUFFIXES.has(path.extname(base).toLowerCase())) {
+      addFinding(findings, 'skill.secret-file', 'blocker', `Candidate contains a secret-bearing file type: ${file.relative}`);
+      continue;
+    }
+    if (file.size > MAX_STATIC_TEXT_BYTES) continue;
+    const text = await fsp.readFile(file.path, 'utf8').catch(() => '');
+    if (text.includes(sourcePath)) {
+      addFinding(findings, 'skill.absolute-source-path', 'blocker', `Candidate contains the original absolute source path: ${file.relative}`);
+    }
+  }
+  return {
+    candidateRoot,
+    candidateDigest: await skillCandidateDigest(candidateRoot),
+    converted: findings.every((finding) => finding.severity !== 'blocker'),
+    findings,
+    assessment,
+  };
+}
+
+async function loadSkillCandidate(candidateInput: string): Promise<{
+  candidateRoot: string;
+  record: SkillConversionRecord;
+}> {
+  if (!path.isAbsolute(candidateInput)) {
+    throw new PublisherError('Skill candidate path must be absolute.', 'invalid_skill_candidate');
+  }
+  const candidateRoot = path.resolve(candidateInput);
+  const stat = await fsp.lstat(candidateRoot).catch(() => undefined);
+  if (!stat?.isDirectory() || stat.isSymbolicLink()) {
+    throw new PublisherError('Skill candidate must be an existing non-symlink directory.', 'invalid_skill_candidate');
+  }
+  const recordPath = path.join(candidateRoot, SKILL_CONVERSION_RECORD);
+  let value: unknown;
+  try {
+    value = JSON.parse(await fsp.readFile(recordPath, 'utf8')) as unknown;
+  } catch {
+    throw new PublisherError('Skill candidate conversion record is missing or invalid.', 'invalid_skill_candidate');
+  }
+  if (!isRecord(value) || value.schema_version !== SKILL_CONVERSION_SCHEMA) {
+    throw new PublisherError('Skill candidate conversion record has an unsupported schema.', 'invalid_skill_candidate');
+  }
+  const source = value.source;
+  const candidate = value.candidate;
+  if (
+    !isRecord(source) || !isRecord(candidate) ||
+    typeof source.path !== 'string' || typeof source.digest !== 'string' ||
+    typeof candidate.path !== 'string' || path.resolve(candidate.path) !== candidateRoot ||
+    typeof candidate.slug !== 'string'
+  ) {
+    throw new PublisherError('Skill candidate conversion record is malformed.', 'invalid_skill_candidate');
+  }
+  return { candidateRoot, record: value as SkillConversionRecord };
+}
+
+function assertSourceStillMatches(
+  record: SkillConversionRecord,
+  assessment: ProjectImportAssessment,
+): void {
+  if (
+    assessment.route !== 'skill-generation' ||
+    assessment.eligibility !== 'eligible' ||
+    assessment.source.path !== record.source.path ||
+    assessment.source.digest !== record.source.digest
+  ) {
+    throw new PublisherError(
+      'The source project changed or is no longer eligible for the prepared Skill candidate.',
+      'skill_candidate_source_changed',
+    );
+  }
+}
+
+async function validateOutputRoot(outputInput: string, source: string): Promise<string> {
+  if (!path.isAbsolute(outputInput)) {
+    throw new PublisherError('Skill candidate output root must be absolute.', 'invalid_skill_output_root');
+  }
+  const outputRoot = path.resolve(outputInput);
+  const home = path.resolve(os.homedir());
+  if (outputRoot === path.parse(outputRoot).root || outputRoot === home) {
+    throw new PublisherError('Skill candidate output root is too broad.', 'unsafe_skill_output_root');
+  }
+  const stat = await fsp.lstat(outputRoot).catch(() => undefined);
+  if (!stat?.isDirectory() || stat.isSymbolicLink()) {
+    throw new PublisherError('Skill candidate output root must be an existing non-symlink directory.', 'invalid_skill_output_root');
+  }
+  const realOutput = await fsp.realpath(outputRoot);
+  if (isWithin(realOutput, source)) {
+    throw new PublisherError('Skill candidate output root cannot be inside the source project.', 'unsafe_skill_output_root');
+  }
+  return realOutput;
+}
+
+function skillSlug(value: string): string {
+  const slug = value
+    .normalize('NFKD')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64)
+    .replace(/-+$/g, '');
+  if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(slug)) {
+    throw new PublisherError('Skill candidate name cannot be converted to a valid slug.', 'invalid_skill_candidate_name');
+  }
+  return slug;
+}
+
+function skillSkeleton(slug: string, assessment: ProjectImportAssessment): string {
+  const projectDescription = assessment.project.description
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 300);
+  return `---
+name: ${slug}
+description: TODO describe exactly when this Skill should be used and the outcome it produces.
+---
+
+# ${assessment.project.name}
+
+<!-- ${PLACEHOLDER_MARKER} -->
+
+Convert the selected project into one bounded, repeatable Agent workflow.
+
+## Source summary
+
+${projectDescription || 'No public-safe project description was detected.'}
+
+## Workflow
+
+TODO document inputs, steps, outputs, approval boundaries, and failure handling.
+
+## Safety
+
+TODO declare filesystem, network, command, and configuration requirements without real values.
+`;
+}
+
+async function collectCandidateFiles(root: string): Promise<Array<{
+  path: string;
+  relative: string;
+  size: number;
+}>> {
+  const output: Array<{ path: string; relative: string; size: number }> = [];
+  let totalBytes = 0;
+  const visit = async (current: string): Promise<void> => {
+    const entries = await fsp.readdir(current, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const entryPath = path.join(current, entry.name);
+      if (entry.isSymbolicLink() || (!entry.isFile() && !entry.isDirectory())) {
+        throw new PublisherError('Skill candidate contains a symlink or non-regular file.', 'unsafe_skill_candidate');
+      }
+      if (entry.isDirectory()) {
+        await visit(entryPath);
+        continue;
+      }
+      const stat = await fsp.stat(entryPath);
+      totalBytes += stat.size;
+      if (output.length + 1 > MAX_SKILL_CANDIDATE_FILES || totalBytes > MAX_SKILL_CANDIDATE_BYTES) {
+        throw new PublisherError('Skill candidate exceeds static validation limits.', 'skill_candidate_too_large');
+      }
+      output.push({
+        path: entryPath,
+        relative: normalizedRelative(entryPath, root),
+        size: stat.size,
+      });
+    }
+  };
+  await visit(root);
+  return output;
+}
+
+async function skillCandidateDigest(root: string): Promise<string> {
+  const files = await collectCandidateFiles(root);
+  const hash = createHash('sha256');
+  for (const file of files) {
+    if (file.relative === SKILL_CONVERSION_RECORD) continue;
+    hash.update(file.relative).update('\0').update(String(file.size)).update('\0');
+    hash.update(await fsp.readFile(file.path)).update('\n');
+  }
+  return `sha256:${hash.digest('hex')}`;
+}
+
+function parseFrontmatter(text: string): Record<string, string> {
+  if (!text.startsWith('---\n') && !text.startsWith('---\r\n')) return {};
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
+  if (!match?.[1]) return {};
+  const output: Record<string, string> = {};
+  for (const line of match[1].split(/\r?\n/)) {
+    const pair = /^([A-Za-z0-9_-]+):\s*["']?(.*?)["']?\s*$/.exec(line);
+    if (pair?.[1]) output[pair[1]] = pair[2] ?? '';
+  }
+  return output;
+}
+
+function stripFrontmatter(text: string): string {
+  return text.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '');
+}
+
+function addFinding(
+  findings: JsonObject[],
+  code: string,
+  severity: 'warning' | 'blocker',
+  message: string,
+): void {
+  findings.push({ code, severity, message });
+}
+
+async function isFile(candidate: string): Promise<boolean> {
+  return fsp.stat(candidate).then((stat) => stat.isFile(), () => false);
+}

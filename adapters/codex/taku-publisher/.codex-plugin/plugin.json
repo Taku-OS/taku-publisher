@@ -1,7 +1,7 @@
 {
   "name": "taku-publisher",
-  "version": "0.3.1",
-  "description": "Search the full Taku community catalog, install compatible Skills, scan local creator capabilities, manage your Creator Center, and safely publish to Taku without Taku Desktop.",
+  "version": "0.3.8",
+  "description": "Generate a Stax Card, select recent Codex and Claude Code projects, and publish them through a safe Skill/SubApp queue.",
   "author": {
     "name": "Taku",
     "url": "https://taku.ai/"
@@ -13,13 +13,14 @@
     "marketplace",
     "creator",
     "publisher",
+    "subapp",
     "skills"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Taku Publisher",
-    "shortDescription": "Find, install, manage, and publish Taku AI tools.",
-    "longDescription": "Search Taku community Apps, Tools, Skills, and Bundles; safely install compatible Skills; discover and publish local tools; manage creator works; or generate an editable Creator Profile, directly from Codex.",
+    "shortDescription": "Create a Stax Card and import AI coding projects.",
+    "longDescription": "Generate an editable Stax Card, discover recent Codex and Claude Code workspaces from local metadata, let creators select Skill or SubApp targets, and process each project safely without delaying the card.",
     "developerName": "Taku",
     "category": "Productivity",
     "websiteURL": "https://taku.ai/",
@@ -27,6 +28,10 @@
     "termsOfServiceURL": "https://taku.ai/terms",
     "capabilities": [
       "Local discovery",
+      "Codex and Claude Code project import",
+      "Repository to SubApp conversion",
+      "Repository to Skill conversion",
+      "Local Taku Desktop installation",
       "Community catalog search",
       "Marketplace Skill installation",
       "Security review",
@@ -34,9 +39,9 @@
       "Creator Center management"
     ],
     "defaultPrompt": [
-      "Publish the tool in this workspace to Taku.",
-      "Show my Taku Creator Center.",
-      "Find a tool in the Taku community."
+      "打开 Taku Publisher 创作者工作台，生成我的 Stax Card，并让我选择要发布的本地项目。",
+      "Find my recent Codex and Claude Code projects and import one into Taku.",
+      "Publish the tool in this workspace to Taku."
     ]
   }
 }

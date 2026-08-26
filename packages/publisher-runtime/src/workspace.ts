@@ -231,7 +231,9 @@ async function copyFile(
   exclusions: JsonObject[],
 ): Promise<void> {
   const relative = normalizedRelative(source, root);
-  const reason = excludedFileReason(path.basename(source));
+  const reason = relative === '.taku/skill-conversion.json'
+    ? 'local_skill_conversion_record'
+    : excludedFileReason(path.basename(source));
   if (reason) {
     exclusions.push({ path: relative, reason });
     return;

@@ -45,8 +45,13 @@ import {
   installPreflight,
   marketplaceItem,
   marketplaceItems,
+  openMarketplaceItemInTaku,
 } from './marketplace.js';
 import { discoverRecentProjects } from './project-discovery.js';
+import {
+  assessProjectSource,
+  projectAssessmentJson,
+} from './project-import.js';
 import {
   applyDeepScanDispositions,
   assertPublicPayload,
@@ -77,6 +82,11 @@ import {
   planSubAppRegistration,
   registerSubAppDraft,
 } from './subapp-registration.js';
+import {
+  checkSkillConversion,
+  createSkillAgentHandoff,
+  prepareSkillCandidate,
+} from './skill-conversion.js';
 import type { JsonObject, JsonValue, PublisherState } from './types.js';
 import {
   emitJson,
@@ -296,6 +306,16 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
     const itemId = requiredFlag(args, 'item-id');
     return jsonOutput('marketplace_item', { item: marketplaceItem(await publicMarketplaceClient(args).getMarketplaceItem(itemId)) });
   }
+  if (args.command === 'marketplace-open') {
+    const itemId = requiredFlag(args, 'item-id');
+    const opened = await openMarketplaceItemInTaku(
+      await publicMarketplaceClient(args).getMarketplaceItem(itemId),
+    );
+    return jsonOutput('taku_opened', opened, {
+      requiresAction: true,
+      actionType: 'confirm_in_taku_desktop',
+    });
+  }
   if (args.command === 'marketplace-install') {
     const itemId = requiredFlag(args, 'item-id');
     const client = await marketplaceInstallClient(args);
@@ -352,6 +372,119 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
       requiresAction: true,
       actionType: projects.length ? 'select_local_projects_and_targets' : 'choose_an_explicit_project_directory',
     });
+  }
+  if (args.command === 'project-assess') {
+    const assessment = await assessProjectSource(
+      requiredFlag(args, 'source'),
+      {
+        converterBin: optionalFlag(args, 'converter-bin'),
+        timeoutMs: numberFlag(args, 'timeout', 120) * 1000,
+      },
+    );
+    const ready = assessment.eligibility === 'eligible';
+    const actionType = assessment.route === 'existing-skill'
+      ? 'confirm_existing_skill_publish'
+      : assessment.route === 'subapp-migration'
+        ? ready ? 'confirm_subapp_conversion' : 'review_subapp_assessment'
+        : assessment.route === 'skill-generation'
+          ? ready ? 'confirm_skill_generation' : 'review_skill_generation_risks'
+          : 'keep_repository_reference';
+    return jsonOutput(
+      ready ? 'project_route_ready'
+        : assessment.eligibility === 'review-required'
+          ? 'project_review_required'
+          : 'project_route_unsupported',
+      {
+        assessment: projectAssessmentJson(assessment),
+        phase_boundary: 'project_assessment_only',
+        source_modified: false,
+        scripts_executed: false,
+        upload_started: false,
+      },
+      { requiresAction: true, actionType },
+    );
+  }
+  if (args.command === 'skill-prepare') {
+    const prepared = await prepareSkillCandidate(
+      {
+        source: requiredFlag(args, 'source'),
+        outputRoot: requiredFlag(args, 'output-root'),
+        confirmationToken: requiredFlag(args, 'confirm-assessment'),
+        name: optionalFlag(args, 'name'),
+      },
+      {
+        converterBin: optionalFlag(args, 'converter-bin'),
+        timeoutMs: numberFlag(args, 'timeout', 120) * 1000,
+      },
+    );
+    return jsonOutput('skill_candidate_prepared', {
+      candidate_root: prepared.candidateRoot,
+      assessment: projectAssessmentJson(prepared.assessment),
+      phase_boundary: 'skill_candidate_only',
+      agent_started: false,
+      scripts_executed: false,
+      upload_started: false,
+      note: 'An isolated Skill candidate was prepared. The source project was not modified or executed.',
+    }, {
+      requiresAction: true,
+      actionType: 'review_skill_candidate_and_start_agent',
+    });
+  }
+  if (args.command === 'skill-convert') {
+    const handoff = await createSkillAgentHandoff(
+      requiredFlag(args, 'candidate'),
+      {
+        converterBin: optionalFlag(args, 'converter-bin'),
+        timeoutMs: numberFlag(args, 'timeout', 120) * 1000,
+      },
+    );
+    return jsonOutput('skill_agent_handoff_ready', {
+      candidate_root: handoff.candidateRoot,
+      candidate_digest: handoff.candidateDigest,
+      source_root: handoff.sourceRoot,
+      source_digest: handoff.sourceDigest,
+      agent_contract: {
+        required_reads: handoff.requiredReads,
+        editable_scope: handoff.editableScope,
+        read_only_paths: handoff.readOnlyPaths,
+        forbidden_actions: handoff.forbiddenActions,
+        completion_requirements: handoff.completionRequirements,
+      },
+      phase_boundary: 'skill_agent_conversion',
+      agent_started: false,
+      scripts_executed: false,
+      upload_started: false,
+    }, {
+      requiresAction: true,
+      actionType: 'perform_skill_agent_migration',
+    });
+  }
+  if (args.command === 'skill-conversion-check') {
+    const checked = await checkSkillConversion(
+      requiredFlag(args, 'candidate'),
+      {
+        converterBin: optionalFlag(args, 'converter-bin'),
+        timeoutMs: numberFlag(args, 'timeout', 120) * 1000,
+      },
+    );
+    return jsonOutput(
+      checked.converted ? 'skill_conversion_static_gate_passed' : 'skill_conversion_needs_work',
+      {
+        candidate_root: checked.candidateRoot,
+        candidate_digest: checked.candidateDigest,
+        assessment: projectAssessmentJson(checked.assessment),
+        findings: checked.findings,
+        phase_boundary: 'skill_static_conversion_validation',
+        scripts_executed: false,
+        upload_started: false,
+      },
+      {
+        requiresAction: true,
+        actionType: checked.converted
+          ? 'continue_to_skill_publish_preflight'
+          : 'continue_skill_agent_migration',
+      },
+    );
   }
   if (args.command === 'subapp-assess') {
     const serviceMappingsFile = optionalFlag(args, 'service-mappings');
@@ -1547,9 +1680,13 @@ Commands:
   creator-plan-next --plan-id <creator-plan-id>
   creator-plan-update --plan-id <creator-plan-id> [--card-status <ready_for_review|published|skipped>] [--project-id <id> --project-status <queued|in_progress|completed|blocked>] [--remote-item-id <id>]
   project-discover [--host codex|claude-code|all] [--max-projects <n>]
+  project-assess --source <absolute-local-directory>
+  skill-prepare --source <same-source> --output-root <absolute-dir> --confirm-assessment <token> [--name <candidate-name>]
+  skill-convert --candidate <absolute-candidate-path>
+  skill-conversion-check --candidate <same-candidate-path>
   remote-create, remote-get, remote-patch, remote-scan, remote-upload, remote-status
   auth-status, auth-refresh, auth-login, auth-logout
-  marketplace-search, marketplace-show, marketplace-install
+  marketplace-search, marketplace-show, marketplace-open, marketplace-install
   subapp-assess --source <absolute-path|github-url> [--source-ref <ref>] [--service-catalog-url <trusted-url>] [--service-mappings <reviewed-json>] [--assessment-review <bound-review-json>] [developer: --converter-bin <path>]
   subapp-prepare --source <same-source> --output-root <absolute-dir> --confirm-assessment <token> [--source-ref <same-ref>] [--name <candidate-name>] [--service-catalog-url <same-url>] [--service-mappings <same-reviewed-json>] [--assessment-review <same-bound-review-json>] [developer: --converter-bin <path>]
   subapp-convert --candidate <absolute-candidate-path> [developer: --converter-bin <path>]

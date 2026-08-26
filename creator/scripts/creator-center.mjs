@@ -8,6 +8,7 @@ import {
   resolveWorkerUrl,
 } from './publish-config.mjs';
 import { createTakuStaxClient } from './publish-client.mjs';
+import { buildStaxProfilePageUrl } from './stax-url.mjs';
 
 export const CREATOR_CENTER_SCHEMA = 'taku.creator.center.v1';
 
@@ -86,12 +87,13 @@ function publicUrls(item, siteUrl, profile) {
   const username = string(item.creatorUsername || item.creator_username || profile.username);
   const slug = string(item.slug);
   if (!username) return { creatorPageUrl: null, publicItemUrl: null };
-  const creatorPageUrl = `${siteUrl}/stax/${encodeURIComponent(username)}`;
+  const creatorPageUrl = buildStaxProfilePageUrl(siteUrl, username);
+  const publicItemBaseUrl = `${siteUrl}/stax/${encodeURIComponent(username)}`;
   return {
     creatorPageUrl,
     publicItemUrl:
       item.status === 'published' && slug
-        ? `${creatorPageUrl}/${encodeURIComponent(slug)}`
+        ? `${publicItemBaseUrl}/${encodeURIComponent(slug)}`
         : null,
   };
 }
@@ -159,7 +161,7 @@ export async function runCreatorCenterList(parsed, options = {}) {
       username: nullableString(profile.username),
       displayName: nullableString(profile.displayName ?? profile.display_name),
       creatorPageUrl: profile.username
-        ? `${context.siteUrl}/stax/${encodeURIComponent(profile.username)}`
+        ? buildStaxProfilePageUrl(context.siteUrl, profile.username)
         : null,
     },
     summary: {

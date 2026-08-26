@@ -1,20 +1,21 @@
 ---
 name: taku-publisher
-description: Generate a Taku Stax Card or AI Builder Profile, assess and convert an existing local App or GitHub repository into a Taku SubApp, create a verified dual-archive release, install it locally in Taku Desktop, and optionally register a confirmed private App draft version; manage the signed-in creator's Taku items and trusted stats; search public Taku community items and safely install a compatible Skill into Codex; or safely package, upload, publish, and update one installable Taku Skill. Public SubApp release remains a separate unsupported confirmation phase.
+description: Discover recent Codex and Claude Code projects, route a selected local project to Taku SubApp conversion, existing Skill publishing, or bounded Skill generation; generate a Taku Stax Card or AI Builder Profile; assess and convert an existing local App or GitHub repository into a Taku SubApp; safely package and publish one installable Taku Skill; manage Creator Center items; and search or install compatible Marketplace items. Public SubApp release remains a separate unsupported confirmation phase.
 ---
 
 # Taku Publisher
 
 Run every command from this skill directory with `node scripts/taku-publisher.mjs`. Treat CLI JSON as the workflow authority. Parse `ok`, `status`, `requires_action`, and `action_type` before responding.
 
-When the user asks generally to use or open Taku Publisher without already choosing a specific project or workflow, start with `creator-init`. It returns the signed-in state, Stax Card and Creator Profile entry points, and recent local project metadata in one response. Present the projects as a numbered multi-select list with the recommended `skill` or `subapp` target, then ask the creator which projects to process and whether to accept or change each recommendation. Do not auto-convert every discovered project.
+When the user asks generally to open the Taku Publisher creator workspace without already choosing one exact source, start with `creator-init`. It returns the signed-in state, an editable Stax Card draft, Creator Profile links, and recent local projects in one response. Present projects as a numbered multi-select list with the recommended `skill` or `subapp` target, then ask which projects to process and whether to accept or change each recommendation.
 
-After the creator selects projects, create one persistent plan with `creator-plan --select <project-id=skill|subapp,...>`. The plan publishes/reviews the Stax Card first, then processes selected projects as a sequential queue. A plan may contain multiple projects, but each Skill publishing workflow and each SubApp conversion still handles exactly one project at a time. Never make the Stax Card wait for SubApp migration, runtime validation, packaging, or registration. After each completed project receives its authoritative Taku item identity, offer to sync that work into the Stax Card; do not expose selected local projects publicly before that point.
+After the creator selects projects, create one persistent plan with `creator-plan --select <project-id=skill|subapp,...>`. Lead with Stax Card review/publishing, then process selected projects sequentially through the existing single-project import flows. Never make the Stax Card wait for SubApp migration, runtime validation, packaging, or registration. After a project receives an authoritative Taku item identity, offer to sync it into the Stax Card; never expose a selected local project publicly before that point.
 
 In Claude Code or Codex shell calls, always change into the directory that contains this `SKILL.md` in the same command before invoking the CLI, for example `cd <this-skill-directory> && node scripts/taku-publisher.mjs ...`. Never run `node scripts/taku-publisher.mjs ...` from the user's project or workspace directory.
 
-This skill has five product surfaces:
+This skill has six product surfaces:
 
+- Project import flow: discover recent Codex and Claude Code workspaces from local session metadata, let the creator select one exact project, assess it locally, and route it to existing Skill publishing, SubApp migration, bounded Skill generation, or reference-only handling.
 - Creator profile flow: scan local AI tooling and behavior, generate the public-safe persona summary, create a local Stax Card / Creator Page draft, and open the local editor. The editor/preview draft is the default output for creator-facing generation.
 - Creator Center flow: list and search the signed-in creator's Taku items, read trusted server-side stats, inspect one owned item, and edit the listing metadata of a private draft.
 - Marketplace consumer flow: search and inspect public community Apps, Skills, Tools, and Bundles; show an install preflight and safely install one compatible confirmed Skill into Codex.
@@ -49,7 +50,7 @@ Field translation:
 | Internal field / command | Say to the creator |
 |---|---|
 | `creator-init` / `creator_ready` | "Your creator workspace is ready; choose one or more local projects and confirm Skill/SubApp for each." |
-| `creator-init` / `login_required` | "I found your local projects; log in to Taku to connect your Creator Profile." |
+| `creator-init` / `login_required` | "I found your local projects and prepared a local Stax Card draft; log in to connect your Creator Profile." |
 | `creator-plan` / `creator_publish_plan_ready` | "Your publishing plan is ready. Review/publish the Stax Card first; selected projects will continue one at a time." |
 | `creator-plan-next` | "Here is the next Stax Card, Skill, or SubApp step in your publishing plan." |
 | `discover` / `needs_selection` | "I found publishable items; choose which one to publish." |
@@ -69,8 +70,14 @@ Field translation:
 | `creator-center-stats` | "Here are your trusted Taku creator statistics." |
 | `marketplace-search` | "Here are the matching Taku community items." |
 | `marketplace-show` | "Here are this Skill's details and configuration requirements." |
+| `marketplace-open` / `taku_opened` | "Taku Desktop is open. Confirm the selected App there." |
 | `marketplace-install` / `confirmation_required` | "This Skill is ready to install after you confirm the exact item." |
 | `marketplace-install` / `installed` | "The Skill is installed. Start a new Codex task to use it." |
+| `project-discover` / `project_selection_required` | "I found recent local projects; choose one before I inspect its source." |
+| `project-assess` / `project_route_ready` | "This project has a supported Taku conversion route. Review the proposed route before I prepare anything." |
+| `skill-prepare` / `skill_candidate_prepared` | "I prepared an isolated Skill candidate. The source project was not changed or executed." |
+| `skill-convert` / `skill_agent_handoff_ready` | "The candidate is ready for bounded Skill migration inside the returned editable scope." |
+| `skill-conversion-check` / `skill_conversion_static_gate_passed` | "The generated Skill passed the static conversion gate; safety scanning and packaging are still required." |
 | `subapp-assess` / `subapp_conversion_eligible` | "This project can enter SubApp conversion after you confirm." |
 | `subapp-assess` / `subapp_conversion_review_required` | "This project needs the listed technical, rights, or service review before conversion." |
 | `subapp-assess` / `subapp_conversion_review_accepted` | "The source-bound assessment review was accepted. Confirm before I prepare the isolated candidate." |
@@ -104,6 +111,12 @@ Examples:
 ## Safety Rules
 
 - Publish exactly one Skill per workflow. If discovery finds only an Action, Agent, or Plugin source, explain that its publishing type is not available yet and do not initialize a draft. Treat any existing draft of those unopened types as read-only: status inspection is allowed, but staging, scanning, packaging, metadata changes, and uploads are blocked.
+- Project discovery may inspect only Codex/Claude Code session metadata needed to recover absolute workspace paths and activity times, plus bounded root metadata such as `SKILL.md`, `README.md`, and dependency names for a lightweight route hint. It must not recursively scan source code or summarize, expose, upload, or semantically analyze prompt/message bodies before the creator selects one exact project.
+- Never auto-select a discovered project. Project assessment accepts only one explicit existing absolute local directory; reject filesystem roots, the whole home directory, symlinks, files, and arbitrary URLs.
+- Treat project assessment as read-only. Route `existing-skill` to the normal Skill publishing flow, `subapp-migration` to the existing SubApp flow, `skill-generation` to the bounded Skill candidate flow, and `reference-only` to a stop/reference response. Do not reinterpret an unsupported runtime as a Skill merely because it contains code.
+- Skill candidate preparation requires the exact confirmation token from the current eligible project assessment. It may create only one new child under an explicit existing output root, must not modify or execute the source, and must not upload, publish, install, or register anything.
+- Run `skill-convert` only after the creator explicitly asks to start or continue the exact candidate. Read every returned required file, edit only the returned editable scope, keep the source and `.taku` conversion record read-only, and do not copy credentials, environment files, caches, build output, or absolute local paths.
+- A passing `skill-conversion-check` is static only. Continue through the existing immutable staging, deterministic scan, semantic review, package, and Taku Web confirmation flow before claiming that the Skill is publishable or published.
 - Confirm `create` or `update` before staging. Require the platform `itemId` for `update`; never infer an update from a name or path match.
 - Never ask for an API key, token, password, private key, database credential, or Taku auth token in chat.
 - Never put a real Key in listing metadata, dispositions, `requirements.json`, the bundle, logs, or command arguments.
@@ -219,6 +232,72 @@ Examples:
   bundled runtime is unavailable or incompatible, report that installation as
   invalid; never copy Analyzer logic into a prompt or substitute an ad-hoc
   shell scan.
+
+## Project Import Flow
+
+Use this flow when the creator asks to find, import, convert, or package a
+project they worked on in Codex or Claude Code.
+
+Start with local metadata-only discovery:
+
+```bash
+node scripts/taku-publisher.mjs project-discover --host all
+```
+
+Show project name, source host, last activity, and the lightweight route hint.
+Do not show raw session paths or content. Ask the creator to choose exactly one
+project and stop until they do. Discovery is not source assessment.
+
+After selection, assess the exact absolute local directory:
+
+```bash
+node scripts/taku-publisher.mjs project-assess --source <absolute-project-directory>
+```
+
+Follow the returned route exactly:
+
+- `existing-skill`: use `discover` with the exact source, then the normal
+  confirmed Skill publishing flow.
+- `subapp-migration`: use the returned SubApp confirmation with
+  `subapp-prepare`, or follow `subapp-assess` review/service-mapping steps when
+  the unified assessment says review is required.
+- `skill-generation`: show the proposed Skill route and risks, then stop for
+  explicit confirmation before preparing a candidate.
+- `reference-only`: explain the unsupported runtime and stop. Do not prepare a
+  candidate.
+
+After the creator confirms one eligible Skill generation assessment, pass its
+token unchanged and prepare one isolated candidate:
+
+```bash
+node scripts/taku-publisher.mjs skill-prepare --source <same-source> --output-root <existing-absolute-directory> --confirm-assessment <token> [--name <candidate-name>]
+```
+
+After success, show the candidate name and ask whether to start bounded Agent
+migration. Stop until the creator confirms. Then run:
+
+```bash
+node scripts/taku-publisher.mjs skill-convert --candidate <absolute-candidate-path>
+```
+
+Read every returned `required_reads` file completely. Treat the source project
+and candidate `.taku` directory as read-only. Implement the smallest complete
+repeatable workflow only in `editable_scope`; remove the placeholder marker,
+write trigger-oriented frontmatter, and copy only required public-safe scripts,
+references, or assets. Never execute the source project during this phase.
+
+After each migration pass, run:
+
+```bash
+node scripts/taku-publisher.mjs skill-conversion-check --candidate <same-candidate-path>
+```
+
+Continue while the result is `skill_conversion_needs_work`. After
+`skill_conversion_static_gate_passed`, use the candidate as the explicit source
+for the normal Skill `discover -> init -> stage -> scan -> apply-review ->
+package` flow. The local `.taku/skill-conversion.json` record is excluded from
+staging. Static conversion success does not replace runtime review, security
+scanning, packaging, upload confirmation, or Taku Web submission.
 
 ## SubApp Candidate Flow
 
@@ -363,15 +442,15 @@ node scripts/taku-publisher.mjs creator-editor --json --draft <draft.json> [--wo
 node scripts/taku-publisher.mjs creator-publish --json --draft <draft.json> [--worker-url <url>] [--site-url <url>]
 ```
 
-Use `creator-init` for the first response when the request also needs local project choices, account state, or both Profile and Stax Card links. It creates the local Stax Card draft/editor while project discovery inspects bounded session and project-root metadata; it does not upload, convert, or publish a project. Show a compact numbered list containing each project name, recommended target, and a note that eligibility is checked after selection. Accept natural-language replies such as "1 and 3 as Skill, 2 as SubApp; publish my Stax Card first", map the chosen numbers to the returned project IDs, and create the persistent plan. Continue with `creator-draft --json --editor` directly only when the creator asks to regenerate or edit the card/profile without the initialization summary.
+Use `creator-init` for the first response when the request needs a Stax Card plus local project choices. Show each project name, recommended target, and a note that eligibility is validated after selection. Accept replies such as "1 and 3 as Skill, 2 as SubApp; publish my Stax Card first", map the displayed numbers to project IDs, and create the persistent plan.
 
 For a creator publish plan:
 
-- Treat `projectChoices.recommendedTarget` as a recommendation, not proof of eligibility. Skill selection must still discover one publishable Skill, and SubApp selection must still pass source assessment.
-- Lead with the Stax Card editor/review action. Once the creator publishes or explicitly skips it, record that card status and request `creator-plan-next`.
-- Mark only the current project `in_progress`. Run the existing single-project Skill or SubApp flow, then mark it `completed` only after authoritative success; use `blocked` when validation or review stops it.
-- Continue to the next queued project without making already-published Stax Card/Profile content wait for a long SubApp conversion.
-- Never describe the plan itself as publication. Final Skill release, SubApp registration, and Stax Card sync retain their existing confirmations and authoritative status checks.
+- Treat `projectChoices.recommendedTarget` as a recommendation, not proof of eligibility. Skill selection must still pass `project-assess` and the existing Skill route; SubApp selection must still pass assessment.
+- Once the creator publishes or explicitly skips the Stax Card, record that status and request `creator-plan-next`.
+- Mark only the current project `in_progress`. Run the existing single-project flow and mark it `completed` only after authoritative success; use `blocked` when validation or review stops it.
+- Continue queued projects without delaying the already-published Stax Card/Profile for a long SubApp conversion.
+- Never describe the plan itself as publication. All existing confirmations and authoritative status checks remain required.
 
 Default to `creator-draft --json --editor` for any creator-facing generation request, including "make my Stax Card", "generate persona labels", "generate Creator Profile", "summarize my builder persona", "generate a Creator Profile summary", or similar. The CLI's default usage window is the recent 90-day local scan; pass `--usage-period thisMonth` only when the creator explicitly asks for this-month stats. The editor is the only normal user-facing review surface; do not present raw JSON paths, local HTML paths, command names, or `previewPath` / `previewUrl` as the main call to action unless the creator asks for debugging details.
 
@@ -450,6 +529,7 @@ or install a compatible Skill from Taku Marketplace:
 ```bash
 node scripts/taku-publisher.mjs marketplace-search --json [--search <text>] [--kind all|app|tool|skill|plugin|mcp|cli|agents|workflow|bundle|reference] [--limit <n>] [--offset <n>]
 node scripts/taku-publisher.mjs marketplace-show --json --item-id <item-id>
+node scripts/taku-publisher.mjs marketplace-open --json --item-id <item-id>
 node scripts/taku-publisher.mjs marketplace-install --json --host codex --item-id <item-id>
 node scripts/taku-publisher.mjs marketplace-install --json --host codex --item-id <item-id> --confirm-item-id <same-item-id>
 ```
@@ -460,12 +540,31 @@ node scripts/taku-publisher.mjs marketplace-install --json --host codex --item-i
   what the user can do with each result.
 - Installation remains narrower than search: this consumer version installs
   only published `skill` items into Codex. Other kinds may be shown or opened
-  through their Taku deep link, but must not be written into the Codex Skills
-  directory. Search and show may run from either host, but do not claim Claude
-  Code installation support.
+  in Taku Desktop through `marketplace-open`, which keeps the deep link
+  internal; they must not be written into the Codex Skills directory. Search
+  and show may run from either host, but do not claim Claude Code installation
+  support.
 - Start with `marketplace-search --json`. Present a compact list with name,
   kind, creator, short description, version, and install count. If more than one
   item matches, ask the user to select one; never choose by fuzzy title.
+- Terminal responses must not display raw `taku://` deep links or rely on them
+  being clickable. Use `recommended_action` to distinguish the next step:
+  `install_in_codex` means the confirmed Skill installation flow;
+  `open_in_taku_desktop` means the item requires Taku Desktop; and
+  `view_details` means no direct terminal installation action is available.
+- For App and other `open_in_taku_desktop` results, say once that they cannot be
+  installed into Codex and ask the user to reply with one item number. Do not
+  print an opening command for every result and do not open anything during a
+  search-only request.
+- After the user selects one exact App and asks to open/install it, or replies
+  to an explicit "choose one and I will open it" prompt, run
+  `marketplace-open --item-id <selected-id>`. On success, say that Taku Desktop
+  is open and the user should confirm there. Do not expose the deep link or the
+  item ID in the normal response.
+- If `marketplace-open` cannot launch Taku, explain that the current terminal
+  may be remote/headless or Taku Desktop may be missing. Offer the returned
+  public HTTPS `external_url` when present; do not fall back to displaying the
+  custom-protocol address.
 - Use the selected `item_id` with `marketplace-show --json` when the user wants
   details. Do not expose raw Marketplace metadata, storage paths, package URLs,
   or authorization data.
