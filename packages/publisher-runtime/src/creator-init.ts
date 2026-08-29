@@ -43,8 +43,7 @@ export async function initializeCreator(
   const siteUrl = trimUrl(options.siteUrl ?? DEFAULT_SITE_URL);
   const workerUrl = trimUrl(options.workerUrl ?? DEFAULT_WORKER_URL);
   const tokenEnv = options.tokenEnv ?? 'TAKU_BEARER_TOKEN';
-  const [auth, projects, editorResult] = await Promise.all([
-    (dependencies.getAuthStatus ?? authStatus)({ tokenEnv, env: options.env }),
+  const [projects, editorResult] = await Promise.all([
     (dependencies.discoverProjects ?? discoverRecentProjects)({
       host: options.host ?? 'all',
       maxProjects: options.maxProjects,
@@ -60,6 +59,9 @@ export async function initializeCreator(
         )
       : Promise.resolve({ value: {}, warning: null }),
   ]);
+  // The editor may complete browser authorization. Read auth afterwards so the
+  // response describes the account that actually owns the new cloud draft.
+  const auth = await (dependencies.getAuthStatus ?? authStatus)({ tokenEnv, env: options.env });
   const authenticated = auth.authenticated === true;
   let profile: JsonObject = {};
   let profileWarning: string | null = null;

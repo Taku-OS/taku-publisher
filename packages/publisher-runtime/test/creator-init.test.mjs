@@ -73,6 +73,33 @@ test('creator-init returns separate Creator Profile and Stax Card URLs after log
   assert.equal(result.creatorProfile.loginUrl, null);
 });
 
+test('creator-init reports the account authorized while creating the cloud draft', async () => {
+  let authenticated = false;
+  const result = await initializeCreator({ siteUrl: 'https://taku.example.test' }, {
+    getAuthStatus: async () => ({
+      authenticated,
+      source: authenticated ? 'publisher_session' : 'missing',
+    }),
+    getAuth: async () => ({
+      token: ['publisher', 'fixture'].join('-'),
+      source: 'publisher_session',
+      iconToken: '',
+      scopes: ['creator.profile.read', 'creator.studio-draft.write'],
+      refreshed: false,
+    }),
+    discoverProjects: async () => [],
+    createEditor: async () => {
+      authenticated = true;
+      return { editorUrl: 'https://worker.taku.ai/stax/studio/editor?launch=test' };
+    },
+    fetchProfile: async () => ({ data: { profile: { username: '@alice' } } }),
+  });
+  assert.equal(result.authenticated, true);
+  assert.equal(result.auth.source, 'publisher_session');
+  assert.equal(result.staxCard.editorUrl, 'https://worker.taku.ai/stax/studio/editor?launch=test');
+  assert.equal(result.creatorProfile.needsLogin, false);
+});
+
 test('project discovery reads recent Codex workspace metadata without reading source files', async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-creator-init-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

@@ -33,6 +33,7 @@ export async function resolveAuth(
     tokenEnv?: string;
     env?: NodeJS.ProcessEnv;
     transport?: RefreshTransport;
+    allowDesktopSession?: boolean;
   } = {},
 ): Promise<ResolvedAuth> {
   const env = options.env ?? process.env;
@@ -53,6 +54,16 @@ export async function resolveAuth(
       scopes: Array.isArray(publisherSession.scopes)
         ? publisherSession.scopes.filter((scope): scope is string => typeof scope === 'string' && Boolean(scope.trim()))
         : [],
+      sessionPath: publisherPath,
+      refreshed: false,
+    };
+  }
+  if (options.allowDesktopSession === false) {
+    return {
+      token: '',
+      source: publisherSession ? 'publisher_session_expired' : 'publisher_session_missing',
+      iconToken: '',
+      scopes: [],
       sessionPath: publisherPath,
       refreshed: false,
     };

@@ -14,6 +14,7 @@ export async function loginWithBrowser(options: {
   workerUrl: string;
   siteUrl?: string;
   intent?: string;
+  accountMode?: 'confirm' | 'switch';
   timeoutMs?: number;
   openBrowser?: boolean;
   browserOpen?: (url: string) => Promise<boolean> | boolean;
@@ -79,23 +80,34 @@ export async function loginWithBrowser(options: {
     workerUrl: options.workerUrl,
     state,
     codeChallenge,
+    accountMode: options.accountMode,
   });
-  process.stderr.write(`Open this Taku authorization page if the browser did not open:\n${loginUrl}\n`);
-  if (options.openBrowser !== false) await (options.browserOpen ?? openExternal)(loginUrl);
+  process.stderr.write(
+    'Waiting for browser confirmation. Complete Taku sign-in or authorization in the opened page; this command will continue automatically.\n',
+  );
+  const browserOpened = options.openBrowser !== false
+    && await (options.browserOpen ?? openExternal)(loginUrl);
+  if (!browserOpened) {
+    process.stderr.write(`The browser did not open. Open this Taku authorization page:\n${loginUrl}\n`);
+  }
   let received: { code: string; state: string };
+  let timeoutId: NodeJS.Timeout | undefined;
   try {
     received = await Promise.race([
       callback,
-      new Promise<never>((_, reject) => setTimeout(
-        () => reject(new PublisherError(
-          'Taku Web authorization timed out. Run auth-login to try again.',
-          'auth_timeout',
-          { login_url: loginUrl },
-        )),
-        Math.max(1_000, options.timeoutMs ?? DEFAULT_LOGIN_TIMEOUT_MS),
-      )),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new PublisherError(
+            'Browser confirmation timed out. Run the original command again to retry authorization.',
+            'auth_timeout',
+            { browser_opened: browserOpened },
+          )),
+          Math.max(1_000, options.timeoutMs ?? DEFAULT_LOGIN_TIMEOUT_MS),
+        );
+      }),
     ]);
   } finally {
+    if (timeoutId) clearTimeout(timeoutId);
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
   const payload = await redeemLocalCode({
@@ -129,6 +141,7 @@ export function buildLoginUrl(options: {
   workerUrl: string;
   state: string;
   codeChallenge: string;
+  accountMode?: 'confirm' | 'switch';
 }): string {
   const query = new URLSearchParams({
     source: 'taku_creator',
@@ -140,6 +153,7 @@ export function buildLoginUrl(options: {
     code_challenge: options.codeChallenge,
     code_challenge_method: 'S256',
   });
+  if (options.accountMode) query.set('account_mode', options.accountMode);
   return `${options.siteUrl.replace(/\/+$/, '')}/profile?${query}`;
 }
 
