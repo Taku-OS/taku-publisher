@@ -9,14 +9,46 @@ import {
   buildPublisherSessionFromAuthResult,
   clearPublisherSession,
   createPublishStatus,
+  isTrustedWorkerUrl,
   readPublisherSession,
   readAuthorizedTakuToken,
+  readCreatorProfileToken,
   readExpectedPublisherUserId,
   readIconAuthToken,
   readPublishToken,
+  readStudioDraftToken,
   publisherUserIdFromToken,
+  resolveAuthSiteUrl,
+  resolveSiteUrl,
+  resolveStudioSiteUrl,
+  resolveStudioWorkerUrl,
+  resolveWorkerUrl,
   writePublisherSession,
 } from './publish-config.mjs';
+
+test('cloud Studio defaults to the production Worker and stable Taku Web', () => {
+  const parsed = parseArgs([]);
+  assert.equal(resolveWorkerUrl(parsed), 'https://worker.taku.ai');
+  assert.equal(resolveSiteUrl(parsed), 'https://taku.ai');
+  assert.equal(resolveStudioWorkerUrl(parsed), 'https://worker.taku.ai');
+  assert.equal(resolveStudioSiteUrl(parsed), 'https://taku.ai');
+  assert.equal(resolveAuthSiteUrl(parsed), 'https://taku.ai');
+  assert.equal(isTrustedWorkerUrl('https://taku-workers-studio-preview.takuos.workers.dev'), false);
+});
+
+test('authorization localhost requires an explicit auth-site development flag', () => {
+  const parsed = parseArgs([
+    '--site-url',
+    'http://localhost:3100',
+    '--worker-url',
+    'http://127.0.0.1:7049',
+    '--auth-site-url',
+    'http://localhost:3200',
+  ]);
+  assert.equal(resolveStudioWorkerUrl(parsed), 'http://127.0.0.1:7049');
+  assert.equal(resolveStudioSiteUrl(parsed), 'http://localhost:3100');
+  assert.equal(resolveAuthSiteUrl(parsed), 'http://localhost:3200');
+});
 
 function jwtForUser(userId) {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
@@ -74,7 +106,7 @@ test('reads only the requested Creator Center scope from a stored session', () =
   }
 });
 
-test('accepts the current publisher draft scope for Stax card publishing', () => {
+test('keeps tool drafts, Studio drafts, and public card writes isolated', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'taku-publisher-current-scope-'));
   const sessionPath = path.join(directory, 'session.json');
   const previous = process.env.TAKU_PUBLISHER_SESSION_PATH;
@@ -86,7 +118,17 @@ test('accepts the current publisher draft scope for Stax card publishing', () =>
     }));
     process.env.TAKU_PUBLISHER_SESSION_PATH = sessionPath;
 
-    assert.equal(readPublishToken(parseArgs([])), 'test-publisher-drafts-token');
+    assert.equal(readPublishToken(parseArgs([])), '');
+    assert.equal(readStudioDraftToken(parseArgs([])), '');
+
+    writeFileSync(sessionPath, JSON.stringify({
+      accessToken: 'test-studio-draft-token',
+      expiresAt: Date.now() + 60_000,
+      scopes: ['creator.profile.read', 'creator.studio-draft.write'],
+    }));
+    assert.equal(readStudioDraftToken(parseArgs([])), 'test-studio-draft-token');
+    assert.equal(readCreatorProfileToken(parseArgs([])), 'test-studio-draft-token');
+    assert.equal(readPublishToken(parseArgs([])), '');
   } finally {
     if (previous === undefined) delete process.env.TAKU_PUBLISHER_SESSION_PATH;
     else process.env.TAKU_PUBLISHER_SESSION_PATH = previous;
@@ -116,6 +158,25 @@ test('persists a local auth result as a reusable publisher session', () => {
     else process.env.TAKU_PUBLISHER_SESSION_PATH = previous;
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('does not invent broader scopes when persisting Studio authorization', () => {
+  const session = buildPublisherSessionFromAuthResult({
+    token: 'test-studio-token',
+    expiresIn: 60,
+    scopes: ['creator.profile.read', 'creator.studio-draft.write'],
+  });
+  assert.deepEqual(session.scopes, ['creator.profile.read', 'creator.studio-draft.write']);
+  assert.equal(session.scopes.includes('creator.card.write'), false);
+  assert.equal(session.scopes.includes('publisher.drafts.write'), false);
+});
+
+test('treats an auth result without declared scopes as unprivileged', () => {
+  const session = buildPublisherSessionFromAuthResult({
+    token: 'test-scope-less-token',
+    expiresIn: 60,
+  });
+  assert.deepEqual(session.scopes, []);
 });
 
 test('binds a reusable publisher session to one public account identity', () => {

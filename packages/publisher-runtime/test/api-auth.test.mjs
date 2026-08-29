@@ -7,8 +7,16 @@ import * as path from 'node:path';
 import test from 'node:test';
 
 import {
+  attemptCreatorBrowserAuthorization,
   authHasScope,
   buildLoginUrl,
+  creatorAuthorizationAccountMode,
+  creatorAuthorizationRequired,
+  creatorAuthorizationSiteUrl,
+  creatorCommandMode,
+  creatorSwitchResumeArguments,
+  creatorWorkerUrl,
+  dispatch,
   draftCreatePayload,
   extractDraftListing,
   normalizeListingMetadata,
@@ -20,6 +28,69 @@ import {
   setTreeWritable,
   TakuPublisherClient,
 } from '../dist/index.js';
+
+test('Creator editor authorizes before scan and uses cloud Studio by default', () => {
+  assert.deepEqual(creatorCommandMode('draft', ['--editor']), {
+    localEditor: false,
+    cloudStudio: true,
+    requiresAuth: true,
+  });
+  assert.deepEqual(creatorCommandMode('editor', []), {
+    localEditor: false,
+    cloudStudio: true,
+    requiresAuth: true,
+  });
+  assert.deepEqual(creatorCommandMode('draft', ['--editor', '--local-editor']), {
+    localEditor: true,
+    cloudStudio: false,
+    requiresAuth: false,
+  });
+  assert.equal(creatorWorkerUrl('draft', ['--editor'], {}), 'https://worker.taku.ai');
+  assert.equal(
+    creatorAuthorizationSiteUrl(['--site-url', 'http://localhost:3100'], {}),
+    'https://taku.ai',
+  );
+});
+
+test('Creator authorization is scoped, bounded, and account switching reuses the saved draft', async () => {
+  const auth = {
+    token: ['publisher', 'session', 'fixture'].join('-'),
+    source: 'publisher_session',
+    iconToken: '',
+    scopes: ['creator.profile.read', 'creator.studio-draft.write'],
+    refreshed: false,
+  };
+  assert.equal(
+    creatorAuthorizationRequired(auth, ['creator.profile.read', 'creator.studio-draft.write']),
+    false,
+  );
+  assert.equal(
+    creatorAuthorizationRequired({ ...auth, scopes: ['creator.profile.read'] }, ['creator.profile.read', 'creator.studio-draft.write']),
+    true,
+  );
+  const state = { attempts: 0 };
+  let calls = 0;
+  const authorize = async () => { calls += 1; };
+  assert.equal(await attemptCreatorBrowserAuthorization(state, authorize), true);
+  assert.equal(await attemptCreatorBrowserAuthorization(state, authorize), false);
+  assert.equal(calls, 1);
+  assert.equal(creatorAuthorizationAccountMode(false, true), 'confirm');
+  assert.equal(creatorAuthorizationAccountMode(true, true), 'switch');
+  assert.deepEqual(creatorSwitchResumeArguments({
+    draftPath: '/private/local-card.json',
+    workerUrl: 'https://worker.taku.ai',
+    siteUrl: 'https://taku.ai',
+  }, [], (target) => target === '/private/local-card.json'), [
+    '--json',
+    '--draft',
+    '/private/local-card.json',
+    '--worker-url',
+    'https://worker.taku.ai',
+    '--site-url',
+    'https://taku.ai',
+    '--switch-account',
+  ]);
+});
 
 async function temporaryDirectory(t) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-publisher-api-'));
@@ -40,6 +111,96 @@ async function listenOnLoopback(t, server) {
   assert.ok(address && typeof address !== 'string');
   return `http://127.0.0.1:${address.port}`;
 }
+
+test('Creator cloud authorization completes before the scan process starts', async (t) => {
+  if (process.platform === 'win32') return t.skip('The browser launcher fixture is POSIX-only.');
+  const root = await temporaryDirectory(t);
+  const skillRoot = path.join(root, 'skill');
+  const binRoot = path.join(root, 'bin');
+  const creatorLog = path.join(root, 'creator.log');
+  const browserLog = path.join(root, 'browser.log');
+  await fs.mkdir(path.join(skillRoot, 'creator', 'scripts'), { recursive: true });
+  await fs.mkdir(binRoot, { recursive: true });
+  await fs.writeFile(path.join(skillRoot, 'creator', 'scripts', 'taku_creator.mjs'), `
+import fs from 'node:fs';
+fs.appendFileSync(process.env.MOCK_CREATOR_LOG, JSON.stringify({ args: process.argv.slice(2), token: process.env.TAKU_PUBLISH_TOKEN || '' }) + '\\n');
+const ok = process.env.TAKU_PUBLISH_TOKEN === 'replacement-publisher-token';
+console.log(JSON.stringify(ok
+  ? { ok: true, editorUrl: 'https://worker.taku.ai/stax/studio/editor?launch=test' }
+  : { ok: false, needsAuth: true, status: 401, draftPath: '/private/generated-card.json' }));
+`);
+  const launcher = `#!/usr/bin/env node
+import fs from 'node:fs';
+const authorization = new URL(process.argv[2]);
+fs.writeFileSync(process.env.MOCK_BROWSER_LOG, authorization.toString());
+const response = await fetch(authorization.searchParams.get('return_to'), {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ code: 'replacement-code', state: authorization.searchParams.get('auth_state') }),
+});
+if (!response.ok) process.exitCode = 1;
+`;
+  for (const command of ['open', 'xdg-open']) {
+    await fs.writeFile(path.join(binRoot, command), launcher, { mode: 0o755 });
+  }
+  const worker = http.createServer((request, response) => {
+    response.setHeader('Content-Type', 'application/json');
+    if (request.method === 'POST' && request.url === '/marketplace/local-auth/redeem') {
+      response.end(JSON.stringify({
+        token: 'replacement-publisher-token',
+        expiresIn: 3600,
+        scopes: ['creator.profile.read', 'creator.studio-draft.write'],
+        accountHint: 'ne***@example.com',
+      }));
+      return;
+    }
+    response.statusCode = 404;
+    response.end(JSON.stringify({ error: 'Not found' }));
+  });
+  const workerUrl = await listenOnLoopback(t, worker);
+  const previous = {
+    PATH: process.env.PATH,
+    TAKU_PUBLISHER_HOME: process.env.TAKU_PUBLISHER_HOME,
+    TAKU_PUBLISHER_SKILL_ROOT: process.env.TAKU_PUBLISHER_SKILL_ROOT,
+    TAKU_BEARER_TOKEN: process.env.TAKU_BEARER_TOKEN,
+    TAKU_PUBLISH_TOKEN: process.env.TAKU_PUBLISH_TOKEN,
+    MOCK_CREATOR_LOG: process.env.MOCK_CREATOR_LOG,
+    MOCK_BROWSER_LOG: process.env.MOCK_BROWSER_LOG,
+  };
+  t.after(() => {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+  process.env.PATH = `${binRoot}${path.delimiter}${previous.PATH || ''}`;
+  process.env.TAKU_PUBLISHER_HOME = path.join(root, 'publisher');
+  process.env.TAKU_PUBLISHER_SKILL_ROOT = skillRoot;
+  process.env.MOCK_CREATOR_LOG = creatorLog;
+  process.env.MOCK_BROWSER_LOG = browserLog;
+  delete process.env.TAKU_BEARER_TOKEN;
+  delete process.env.TAKU_PUBLISH_TOKEN;
+  await savePublisherSession({
+    accessToken: ['rejected', 'publisher', 'fixture'].join('-'),
+    expiresAt: Date.now() + 10 * 60_000,
+    scopes: ['creator.card.write', 'publisher.drafts.write'],
+  });
+
+  const result = await dispatch({
+    command: 'creator-draft',
+    flags: new Map(),
+    rest: ['--json', '--editor', '--worker-url', workerUrl, '--allow-custom-worker-url'],
+  });
+  assert.equal(result.ok, true);
+  const invocations = (await fs.readFile(creatorLog, 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.equal(invocations.length, 1);
+  assert.equal(invocations[0].token, 'replacement-publisher-token');
+  assert.equal(invocations[0].args[0], 'draft');
+  const authorization = new URL(await fs.readFile(browserLog, 'utf8'));
+  assert.equal(authorization.searchParams.get('account_mode'), 'confirm');
+  const resolved = await resolveAuth({ allowDesktopSession: false });
+  assert.equal(resolved.token, 'replacement-publisher-token');
+});
 
 test('scoped Publisher session is resolved without exposing or widening scopes', async (t) => {
   const root = await temporaryDirectory(t);

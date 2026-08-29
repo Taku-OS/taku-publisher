@@ -31,10 +31,14 @@ Open the unified creator workspace with:
 node scripts/taku-publisher.mjs creator-init --host all
 ```
 
-The first response includes Taku login state, an editable Stax Card, Creator
-Profile links, and recent local projects. After the creator chooses one or more
+The flow confirms the Taku account first, then scans locally and saves an
+editable private Stax Card draft to Taku Cloud Studio. The response includes
+the durable Studio URL, Creator Profile links, and recent local projects. After the creator chooses one or more
 projects and a `skill` or `subapp` target for each, `creator-plan` persists the
 queue. Stax Card review stays first and does not wait for longer SubApp work.
+Use `creator-switch-account` to save the same local draft to another account
+without scanning again. The old loopback editor remains an explicit
+`--local-editor` development fallback.
 
 Recent local projects can be discovered from Codex/Claude Code session metadata
 and assessed without executing them:

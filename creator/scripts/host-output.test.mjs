@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import {
   compactScanCommandResult,
+  createCloudStudioCommandResult,
   createEditorCommandResult,
 } from './host-output.mjs';
 
@@ -96,6 +97,27 @@ test('compact scan output removes paths and scan previews from host context', ()
   assert.equal(serialized.includes(privatePath), false);
   assert.equal(serialized.includes('scanPreview'), false);
   assert.equal(serialized.includes('private source content'), false);
+});
+
+test('cloud Studio host result returns the durable Studio URL', () => {
+  const studioUrl = 'https://worker.taku.ai/stax/studio/editor?launch=test';
+  const result = createCloudStudioCommandResult(
+    {
+      personaV2: { code: 'EILW', archetype: { title: 'Mad Inventor' } },
+      stats: { displayedToolCount: 3 },
+    },
+    studioUrl,
+    {
+      workerUrl: 'https://worker.taku.ai',
+      accountHint: 'ow***@example.com',
+    },
+  );
+  assert.equal(result.editorUrl, studioUrl);
+  assert.equal(result.primaryAction, 'open_cloud_studio');
+  assert.equal(result.cloudDraft, true);
+  assert.equal(result.savedToAccount, 'ow***@example.com');
+  assert.equal(result.switchAccount.command, 'creator-switch-account');
+  assert.equal(result.switchAccount.rescansWorkspace, false);
 });
 
 test('editor host result returns only the actionable URL and compact summary', () => {

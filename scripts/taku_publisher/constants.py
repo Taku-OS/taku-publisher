@@ -62,6 +62,7 @@ SECRET_DIR_NAMES = {
 EXCLUDED_FILE_NAMES = {
     ".dockercfg",
     ".ds_store",
+    ".git",
     ".netrc",
     ".npmrc",
     ".pypirc",

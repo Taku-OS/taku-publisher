@@ -27,7 +27,7 @@ export const SECRET_DIR_NAMES = new Set([
 ]);
 
 export const EXCLUDED_FILE_NAMES = new Set([
-  '.dockercfg', '.ds_store', '.netrc', '.npmrc', '.pypirc', 'credentials.json',
+  '.dockercfg', '.ds_store', '.git', '.netrc', '.npmrc', '.pypirc', 'credentials.json',
   'id_rsa', 'id_ed25519', 'secrets.json',
 ]);
 

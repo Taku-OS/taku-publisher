@@ -20,6 +20,7 @@ import {
   clearPublisherSession,
   publisherAccountHint,
   resolveAuth,
+  type ResolvedAuth,
 } from './auth.js';
 import { buildBundle, verifyLocalBundle } from './bundle.js';
 import { DEFAULT_SITE_URL, loginWithBrowser } from './browser-auth.js';
@@ -36,6 +37,7 @@ import {
 } from './creator-plan.js';
 import {
   DEFAULT_WORKER_URL,
+  publisherHome,
   SUPPORTED_TYPES,
   UNAVAILABLE_PUBLISH_TYPES,
 } from './constants.js';
@@ -169,6 +171,9 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
 }
 
 export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
+  if (args.command === 'creator-switch-account') {
+    return runCreatorSwitchAccount(args.rest);
+  }
   const creatorCommand = CREATOR_COMMANDS.get(args.command);
   if (creatorCommand) return runCreatorCommand(creatorCommand, args.rest);
 
@@ -1169,7 +1174,13 @@ async function remoteCreate(
 
 async function runCreatorCommand(command: string, creatorArgs: string[]): Promise<JsonObject> {
   const script = locateCreatorScript();
-  const createsPersona = ['scan', 'draft'].includes(command) || (command === 'editor' && !creatorArgument(creatorArgs, 'draft'));
+  const { localEditor, cloudStudio, requiresAuth } = creatorCommandMode(command, creatorArgs);
+  const configuredCreatorWorkerUrl = creatorConfiguredWorkerUrl(creatorArgs);
+  const workerUrl = creatorWorkerUrl(command, creatorArgs);
+  const effectiveCreatorArgs = cloudStudio && !configuredCreatorWorkerUrl
+    ? [...creatorArgs, '--worker-url', workerUrl]
+    : creatorArgs;
+  const switchingAccount = creatorArgs.includes('--switch-account');
   const centerScope: Record<string, string> = {
     'center-list': 'creator.items.read',
     'center-show': 'creator.items.read',
@@ -1177,29 +1188,99 @@ async function runCreatorCommand(command: string, creatorArgs: string[]): Promis
     'center-update': 'creator.items.write',
     'center-unpublish': 'creator.items.unpublish',
   };
-  let auth = (command === 'publish' || createsPersona || centerScope[command]) ? await resolveAuth() : null;
-  if (auth) {
-    const requiredScope = centerScope[command] ?? 'creator.card.write';
-    if (!authHasScope(auth, requiredScope)) {
-      const workerUrl = creatorArgument(creatorArgs, 'worker-url') ?? 'https://worker.taku.ai';
-      validateWorkerUrl(workerUrl, creatorArgs.includes('--allow-custom-worker-url') || workerUrl === 'https://worker.taku.ai');
+  if (switchingAccount) {
+    if (creatorExplicitToken()) {
+      throw new PublisherError(
+        'Account switching is unavailable while an explicit Taku token environment variable is set.',
+        'creator_account_switch_env_token',
+      );
+    }
+    await clearPublisherSession();
+  }
+  const strictPublisherBinding = cloudStudio || switchingAccount;
+  let auth = (requiresAuth || centerScope[command])
+    ? await resolveAuth({ allowDesktopSession: !strictPublisherBinding })
+    : null;
+  const requiredScopes = centerScope[command]
+    ? [centerScope[command]]
+    : cloudStudio
+      ? ['creator.profile.read', 'creator.studio-draft.write']
+      : ['creator.card.write'];
+  const browserAuthorization = { attempts: 0 };
+  const authorizeOnce = async (): Promise<boolean> => {
+    if (creatorExplicitToken()) return false;
+    return attemptCreatorBrowserAuthorization(browserAuthorization, async () => {
+      const trustedCreatorWorker = [
+        'https://worker.taku.ai',
+        'https://taku-workers-staging.takuos.workers.dev',
+      ].includes(workerUrl);
+      validateWorkerUrl(
+        workerUrl,
+        creatorArgs.includes('--allow-custom-worker-url') || trustedCreatorWorker,
+      );
       await loginWithBrowser({
         workerUrl,
-        siteUrl: creatorArgument(creatorArgs, 'site-url') ?? DEFAULT_SITE_URL,
+        siteUrl: creatorAuthorizationSiteUrl(effectiveCreatorArgs),
         intent: command === 'center-unpublish' ? 'creator_center_unpublish' : centerScope[command] ? 'creator_center' : 'publish_stax_card',
+        accountMode: creatorAuthorizationAccountMode(switchingAccount, cloudStudio),
       });
-      auth = await resolveAuth();
-      if (!authHasScope(auth, requiredScope)) throw new PublisherError(
+      auth = await resolveAuth({ allowDesktopSession: !strictPublisherBinding });
+      if (creatorAuthorizationRequired(auth, requiredScopes)) throw new PublisherError(
         'Taku authorization did not grant the requested Creator access.',
         centerScope[command] ? 'creator_center_auth_scope_missing' : 'creator_auth_scope_missing',
       );
-    }
+    });
+  };
+  if (
+    (requiresAuth || Boolean(centerScope[command]))
+    && creatorAuthorizationRequired(auth, requiredScopes, switchingAccount)
+  ) {
+    await authorizeOnce();
   }
-  const passthrough = command === 'editor' || (command === 'draft' && creatorArgs.includes('--editor'));
+  const passthrough = localEditor
+    && (command === 'editor' || (command === 'draft' && effectiveCreatorArgs.includes('--editor')));
   const env = creatorEnvironment();
   if (auth?.token && !env.TAKU_PUBLISH_TOKEN) env.TAKU_PUBLISH_TOKEN = auth.token;
-  const result = await spawnNode(script, [command, ...creatorArgs], env, passthrough);
+  let result = await spawnNode(script, [command, ...effectiveCreatorArgs], env, passthrough);
   if (passthrough) return { _skip_emit: true, _process_exit_code: result.code };
+  let payload = parseCreatorCommandPayload(result);
+  if (
+    cloudStudio
+    && payload.needsAuth === true
+    && browserAuthorization.attempts === 0
+    && !creatorExplicitToken()
+  ) {
+    const authorized = await authorizeOnce();
+    if (authorized && auth?.token) {
+      env.TAKU_PUBLISH_TOKEN = auth.token;
+      const retry = creatorAuthorizationRetryInvocation(command, effectiveCreatorArgs, payload);
+      result = await spawnNode(script, [retry.command, ...retry.args], env, false);
+      payload = parseCreatorCommandPayload(result);
+    }
+  }
+  if (cloudStudio && payload.ok === true) {
+    const accountHint = String(
+      payload.publisherAccountHint
+      ?? payload.savedToAccount
+      ?? publisherAccountHint({ authSource: auth?.source }),
+    ).trim();
+    if (accountHint) {
+      payload.publisherAccountHint = accountHint;
+      payload.savedToAccount = accountHint;
+    }
+    payload.switchAccount = {
+      supported: true,
+      actionType: 'switch_taku_account_and_resave_local_draft',
+      command: 'creator-switch-account',
+      reusesLocalDraft: true,
+      rescansWorkspace: false,
+    };
+  }
+  payload._process_exit_code = result.code;
+  return payload;
+}
+
+function parseCreatorCommandPayload(result: { stdout: string; stderr: string }): JsonObject {
   if (result.stderr) process.stderr.write(result.stderr);
   let payload: unknown;
   try {
@@ -1208,13 +1289,122 @@ async function runCreatorCommand(command: string, creatorArgs: string[]): Promis
     throw new PublisherError('Taku Creator returned non-JSON output.', 'creator_invalid_output', { output: result.stdout.slice(0, 1000) });
   }
   if (!isRecord(payload)) throw new PublisherError('Taku Creator returned an invalid JSON payload.', 'creator_invalid_output');
-  payload._process_exit_code = result.code;
   return payload;
 }
 
+function creatorAuthorizationRetryInvocation(
+  command: string,
+  creatorArgs: string[],
+  payload: JsonObject,
+): { command: string; args: string[] } {
+  if (command !== 'draft') return { command, args: creatorArgs };
+  const draftPath = String(payload.draftPath ?? '').trim();
+  if (!draftPath) {
+    throw new PublisherError(
+      'The generated Stax Card draft could not be reused after authorization.',
+      'creator_retry_draft_missing',
+    );
+  }
+  const args = ['--json', '--draft', draftPath];
+  for (const name of ['worker-url', 'site-url']) {
+    const value = creatorArgument(creatorArgs, name);
+    if (value) args.push(`--${name}`, value);
+  }
+  return { command: 'editor', args };
+}
+
+export function creatorCommandMode(command: string, creatorArgs: string[]) {
+  const localEditor = creatorArgs.includes('--local-editor');
+  const cloudStudio = !localEditor && (
+    command === 'editor'
+    || (command === 'draft' && creatorArgs.includes('--editor'))
+  );
+  const requiresAuth = command === 'publish' || cloudStudio;
+  return { localEditor, cloudStudio, requiresAuth };
+}
+
+export function creatorAuthorizationRequired(
+  auth: ResolvedAuth | null,
+  requiredScopes: string[],
+  switchingAccount = false,
+): boolean {
+  return switchingAccount
+    || auth === null
+    || requiredScopes.some((scope) => !authHasScope(auth, scope));
+}
+
+export async function attemptCreatorBrowserAuthorization(
+  state: { attempts: number },
+  authorize: () => Promise<void>,
+): Promise<boolean> {
+  if (state.attempts >= 1) return false;
+  state.attempts += 1;
+  await authorize();
+  return true;
+}
+
+export function creatorAuthorizationAccountMode(
+  switchingAccount: boolean,
+  cloudStudio: boolean,
+): 'confirm' | 'switch' | undefined {
+  if (switchingAccount) return 'switch';
+  return cloudStudio ? 'confirm' : undefined;
+}
+
+function creatorExplicitToken(env: NodeJS.ProcessEnv = process.env): string {
+  return String(env.TAKU_BEARER_TOKEN || env.TAKU_PUBLISH_TOKEN || '').trim();
+}
+
+async function runCreatorSwitchAccount(creatorArgs: string[]): Promise<JsonObject> {
+  const reserved = ['draft', 'workspace', 'output', 'worker-url', 'site-url', 'auth-site-url', 'local-editor'];
+  const overridden = reserved.find((name) => creatorArgs.includes(`--${name}`)
+    || creatorArgs.some((value) => value.startsWith(`--${name}=`)));
+  if (overridden) {
+    throw new PublisherError(
+      `creator-switch-account reuses the saved draft and does not accept --${overridden}.`,
+      'creator_account_switch_override',
+    );
+  }
+  const statePath = path.join(publisherHome(), 'creator-cloud-draft.json');
+  const state = await readJson(statePath).catch(() => null);
+  if (!isRecord(state) || state.schemaVersion !== 'taku.publisher.creator-cloud-draft.v1') {
+    throw new PublisherError(
+      'No reusable local Stax Card draft was found. Generate a cloud Studio draft first.',
+      'creator_cloud_draft_missing',
+    );
+  }
+  return runCreatorCommand('editor', creatorSwitchResumeArguments(state, creatorArgs));
+}
+
+export function creatorSwitchResumeArguments(
+  state: JsonObject,
+  creatorArgs: string[] = [],
+  pathExists: (target: string) => boolean = fs.existsSync,
+): string[] {
+  const draftPath = String(state.draftPath ?? '').trim();
+  const workerUrl = String(state.workerUrl ?? '').trim();
+  const siteUrl = String(state.siteUrl ?? '').trim();
+  if (!draftPath || !pathExists(draftPath) || !workerUrl || !siteUrl) {
+    throw new PublisherError(
+      'The reusable local Stax Card draft is no longer available.',
+      'creator_cloud_draft_unavailable',
+    );
+  }
+  return [
+    '--json',
+    '--draft',
+    draftPath,
+    '--worker-url',
+    workerUrl,
+    '--site-url',
+    siteUrl,
+    '--switch-account',
+    ...creatorArgs,
+  ];
+}
+
 async function createCreatorInitEditor(args: ParsedArguments): Promise<JsonObject> {
-  const script = locateCreatorScript();
-  const creatorArgs = ['draft', '--json', '--editor'];
+  const creatorArgs = ['--json', '--editor'];
   const forwarded = new Set([
     'workspace',
     'usage-period',
@@ -1233,6 +1423,7 @@ async function createCreatorInitEditor(args: ParsedArguments): Promise<JsonObjec
     'output',
     'preview',
     'site-url',
+    'auth-site-url',
     'worker-url',
     'allow-custom-worker-url',
   ]);
@@ -1241,21 +1432,8 @@ async function createCreatorInitEditor(args: ParsedArguments): Promise<JsonObjec
     creatorArgs.push(`--${name}`);
     if (typeof value === 'string') creatorArgs.push(value);
   }
-  const env = creatorEnvironment();
-  const auth = await resolveAuth({ tokenEnv: stringFlag(args, 'token-env', 'TAKU_BEARER_TOKEN') });
-  if (auth.token && !env.TAKU_PUBLISH_TOKEN) env.TAKU_PUBLISH_TOKEN = auth.token;
-  const result = await spawnNode(script, creatorArgs, env, false);
-  if (result.stderr) process.stderr.write(result.stderr);
-  let payload: unknown;
-  try {
-    payload = JSON.parse(result.stdout);
-  } catch {
-    throw new PublisherError('Taku Creator returned non-JSON output.', 'creator_invalid_output', {
-      output: result.stdout.slice(0, 1000),
-    });
-  }
-  if (!isRecord(payload)) throw new PublisherError('Taku Creator returned an invalid editor result.', 'creator_invalid_output');
-  if (result.code !== 0 || payload.ok === false) {
+  const payload = await runCreatorCommand('draft', creatorArgs);
+  if (payload.ok === false) {
     throw new PublisherError(
       String(payload.error ?? 'Unable to start the Stax Card editor.'),
       'creator_editor_failed',
@@ -1647,6 +1825,36 @@ function creatorArgument(args: string[], name: string): string | undefined {
   return undefined;
 }
 
+function creatorConfiguredWorkerUrl(
+  args: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  return creatorArgument(args, 'worker-url')
+    ?? (String(
+      env.TAKU_WORKER_URL
+      || env.VITE_WORKER_URL
+      || env.NEXT_PUBLIC_TAKU_WORKER_URL
+      || env.NEXT_PUBLIC_WORKER_URL
+      || '',
+    ).trim() || undefined);
+}
+
+export function creatorWorkerUrl(
+  _command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return creatorConfiguredWorkerUrl(args, env) ?? DEFAULT_WORKER_URL;
+}
+
+export function creatorAuthorizationSiteUrl(
+  args: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return creatorArgument(args, 'auth-site-url')
+    ?? (String(env.TAKU_AUTH_SITE_URL || '').trim() || DEFAULT_SITE_URL);
+}
+
 function creatorEnvironment(): NodeJS.ProcessEnv {
   const env = { ...process.env };
   const existing = String(env.NO_PROXY ?? env.no_proxy ?? '').split(',').map((item) => item.trim()).filter(Boolean);
@@ -1700,6 +1908,7 @@ Commands:
   subapp-register-plan --package-root <release-dir> --metadata <json> --mode <create|update> [--app-id <required-for-update>]
   subapp-register --package-root <same-release-dir> --metadata <same-json> --mode <same-mode> --confirm-registration <token> [--app-id <same-update-id>] [--upload-timeout <seconds>]
   creator-doctor, creator-scan, creator-draft, creator-editor, creator-publish
+  creator-switch-account
   creator-center-list, creator-center-show, creator-center-stats
   creator-center-update, creator-center-unpublish
 `;
