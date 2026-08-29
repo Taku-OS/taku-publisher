@@ -48,35 +48,6 @@ export function createEditorCommandResult(draft = {}, editorUrl = '') {
   };
 }
 
-export function createCloudStudioCommandResult(draft = {}, studioUrl = '', extra = {}) {
-  const accountHint = cleanString(extra.accountHint, 160);
-  return {
-    ok: true,
-    schemaVersion: 'taku.creator.editor-result.v1',
-    editorUrl: studioUrl,
-    primaryUrl: studioUrl,
-    primaryAction: 'open_cloud_studio',
-    cloudDraft: true,
-    persona: compactPersona(draft.personaV2),
-    summary: compactSummary(draft.stats || {}),
-    ...(extra.workerUrl ? { workerUrl: extra.workerUrl } : {}),
-    ...(accountHint ? {
-      publisherAccountHint: accountHint,
-      savedToAccount: accountHint,
-    } : {}),
-    switchAccount: {
-      supported: true,
-      actionType: 'switch_taku_account_and_resave_local_draft',
-      command: 'creator-switch-account',
-      reusesLocalDraft: true,
-      rescansWorkspace: false,
-    },
-    message: accountHint
-      ? `The private Studio draft was saved to Taku account ${accountHint}. Open editorUrl to review it, or switch accounts without regenerating the card.`
-      : 'The private Studio draft was saved to the selected Taku account. Open editorUrl to review it, or switch accounts without regenerating the card.',
-  };
-}
-
 function compactInventory(items, limit) {
   const source = Array.isArray(items) ? items : [];
   return {

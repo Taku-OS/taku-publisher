@@ -2,9 +2,6 @@
 
 Install Taku Publisher directly from this GitHub marketplace.
 
-Current release: **0.3.11**. It confirms the Taku account before scanning and
-opens the generated Stax Card as a private cloud Studio draft.
-
 ## Codex
 
 ```sh
