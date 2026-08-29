@@ -3018,6 +3018,27 @@ function buildStaxAppModel(draft = {}, options = {}) {
     };
   });
   const needsTakuProfile = Boolean(isTakuAuthorized && !hasTrustedTakuIdentity && !options.readonlyPreview);
+  const snapshotLayout = recordValue(
+    recordValue(draft.staxCardSnapshot).schemaVersion
+      ? draft.staxCardSnapshot
+      : recordValue(snapshot.staxCardSnapshot),
+  );
+  const layoutBlocks = Array.isArray(snapshotLayout.blocks)
+    ? snapshotLayout.blocks
+        .map((entry) => {
+          const block = recordValue(entry);
+          const key = cleanDisplayText(block.key, '', 40).toLowerCase();
+          if (!key) return null;
+          return {
+            key,
+            cx: Math.max(0, Math.floor(Number(block.cx) || 0)),
+            cy: Math.max(0, Math.floor(Number(block.cy) || 0)),
+            cw: Math.max(1, Math.floor(Number(block.cw) || 1)),
+            ch: Math.max(1, Math.floor(Number(block.ch) || 1)),
+          };
+        })
+        .filter(Boolean)
+    : [];
   return {
     displayName,
     handle: publicHandle,
@@ -3097,6 +3118,10 @@ function buildStaxAppModel(draft = {}, options = {}) {
     communityTools: collectCommunityToolCandidates(draft),
     publishedStax,
     readonly: Boolean(options.readonlyPreview),
+    studioLayout: {
+      schemaVersion: 'taku.stax.studio-layout.v1',
+      blocks: layoutBlocks,
+    },
   };
 }
 
@@ -3132,6 +3157,25 @@ function renderStaxAppPreview(draft, options = {}) {
     );
   }
   return template;
+}
+
+export function createStaxStudioRendererPayload(draft = {}, options = {}) {
+  return {
+    schemaVersion: 'taku.stax.studio-renderer.v1',
+    renderer: 'publisher-stax-app',
+    model: buildStaxAppModel(draft, {
+      ...options,
+      editor: {
+        enabled: true,
+        ...(options.editor || {}),
+        publish: {
+          authenticated: true,
+          canPublish: true,
+          ...(options.editor?.publish || {}),
+        },
+      },
+    }),
+  };
 }
 
 function renderStaxAppBootstrapScript(model) {

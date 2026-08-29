@@ -10,6 +10,7 @@ import {
   mergeStaxCreatorPublishPayloadWithExistingCard,
 } from './publish-payload.mjs';
 import { buildStaxPublishedLinks } from './stax-url.mjs';
+import { createStaxStudioRendererPayload } from './editor-renderer.mjs';
 
 const PUBLISH_IMPORT_TIMEOUT_MS = 60000;
 
@@ -26,6 +27,118 @@ export async function createPublishPayloadFromDraft(draft, privateInventory, con
     buildBuilderProfileSnapshot: context.buildBuilderProfileSnapshot,
     getCardSettings: context.getCardSettings,
   });
+}
+
+function mergeDraftWithTakuProfile(draft, profileResult = {}) {
+  const profile = profileResult.profile && typeof profileResult.profile === 'object'
+    ? profileResult.profile
+    : {};
+  const staxProfile = profileResult.staxProfile && typeof profileResult.staxProfile === 'object'
+    ? profileResult.staxProfile
+    : {};
+  return {
+    ...draft,
+    creator: {
+      ...(draft?.creator || {}),
+      ...(profile.displayName ? { name: profile.displayName } : {}),
+      ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}),
+    },
+    card: {
+      ...(draft?.card || {}),
+      ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}),
+    },
+    ...(Object.keys(staxProfile).length
+      ? { staxProfile: { ...(draft?.staxProfile || {}), ...staxProfile } }
+      : {}),
+    stats: {
+      ...(draft?.stats || {}),
+      creatorProfileSynced: true,
+    },
+  };
+}
+
+export async function saveDraftToTakuStudio({
+  draft,
+  privateInventory,
+  workerUrl,
+  token,
+  siteUrl,
+  canReadCreatorProfile = !String(token || '').startsWith('taku_pub_'),
+  context = {},
+}) {
+  const profile = canReadCreatorProfile
+    ? await fetchTakuCreatorProfile({ workerUrl, token }).catch(() => null)
+    : null;
+  const cloudDraft = profile?.ok ? mergeDraftWithTakuProfile(draft, profile) : draft;
+  const publishContext = profile?.ok
+    ? withTakuCreatorProfileFallback(context, profile.profile)
+    : context;
+  const payload = await createPublishPayloadFromDraft(
+    cloudDraft,
+    privateInventory,
+    publishContext,
+  );
+  const client = createTakuStaxClient({ workerUrl, token });
+  const studioPayload = createStudioDraftPayload(payload);
+  studioPayload.studioRenderer = createStaxStudioRendererPayload(cloudDraft, {
+    editor: {
+      publish: { siteUrl, workerUrl },
+    },
+  });
+
+  try {
+    const data = await client.saveMyStudioDraft(studioPayload);
+    const responseData = data?.data && typeof data.data === 'object' && !Array.isArray(data.data)
+      ? data.data
+      : {};
+    const launchContext = responseData.launchContext && typeof responseData.launchContext === 'object'
+      ? responseData.launchContext
+      : responseData.launch_context && typeof responseData.launch_context === 'object'
+        ? responseData.launch_context
+        : {};
+    const account = responseData.account && typeof responseData.account === 'object'
+      ? responseData.account
+      : {};
+    const launchContextId = String(
+      launchContext.id || launchContext.contextId || launchContext.context_id || '',
+    ).trim();
+    const accountHint = String(
+      account.hint || account.accountHint || account.account_hint || '',
+    ).trim();
+    const studioUrl = String(responseData.studioUrl || responseData.studio_url || '').trim();
+    if (!studioUrl) {
+      return {
+        ok: false,
+        status: 502,
+        workerUrl,
+        endpoint: `${workerUrl}/stax/studio/cards/me`,
+        error: 'The Worker saved the draft but did not return a cloud Studio URL.',
+        data,
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      workerUrl,
+      endpoint: `${workerUrl}/stax/studio/cards/me`,
+      data,
+      studioUrl,
+      ...(launchContextId ? { launchContextId } : {}),
+      ...(accountHint ? { accountHint } : {}),
+      draft: cloudDraft,
+    };
+  } catch (error) {
+    const status = Number(error?.status) || 0;
+    return {
+      ok: false,
+      status,
+      needsAuth: status === 401 || status === 403,
+      workerUrl,
+      endpoint: `${workerUrl}/stax/studio/cards/me`,
+      error: `The private Studio draft could not be saved: ${error instanceof Error ? error.message : String(error)}`,
+      data: {},
+    };
+  }
 }
 
 function withTakuCreatorProfileFallback(context = {}, creatorProfile = {}) {
@@ -184,4 +297,23 @@ export async function publishDraftToTaku({
       installableItemCount: typeof data?.data?.installableItemCount === 'number' ? data.data.installableItemCount : undefined,
     },
   };
+}
+
+export function createStudioDraftPayload(publishPayload) {
+  const payload = structuredClone(publishPayload || {});
+  const sections = payload && typeof payload.sections === 'object' && !Array.isArray(payload.sections)
+    ? payload.sections
+    : {};
+  for (const key of ['builtItems', 'madeItems', 'remixedItems', 'usingTools']) {
+    if (!Array.isArray(sections[key])) continue;
+    sections[key] = sections[key].map((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+      const next = { ...item };
+      delete next.package;
+      delete next.marketplacePublicationIntent;
+      delete next.marketplace_publication_intent;
+      return next;
+    });
+  }
+  return payload;
 }
