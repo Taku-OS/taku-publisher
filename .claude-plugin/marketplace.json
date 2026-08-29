@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "taku-publisher",
-      "description": "Convert repositories into local Taku SubApps, generate a Creator Profile, manage your Creator Center, and safely publish tools.",
+      "description": "Authorize first, create a private cloud Stax Card draft, and publish selected projects safely.",
       "author": {
         "name": "Taku"
       },
