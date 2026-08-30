@@ -2464,18 +2464,41 @@ async function copyText(value){
   input.value=value;input.setAttribute('readonly','');input.style.position='fixed';input.style.opacity='0';
   document.body.appendChild(input);input.select();document.execCommand('copy');input.remove();
 }
-function previewCardExportPayload(scale=1){
+function exportablePreviewCardNode(){
   const source=document.querySelector('#pv .cardpg');
   if(!source)throw new Error('OPEN PREVIEW FIRST');
   const node=source.cloneNode(true);
   node.style.cssText='margin:0;max-width:none;width:940px;height:796px;animation:none;transform:none';
   node.querySelectorAll('.drag,.fresh,.shake').forEach(el=>el.classList.remove('drag','fresh','shake'));
+  return node;
+}
+function previewCardStyles(){
+  return Array.from(document.querySelectorAll('style')).map(style=>style.textContent||'').join('\n');
+}
+function previewCardExportPayload(scale=1){
+  const node=exportablePreviewCardNode();
   return {
     cardHtml:new XMLSerializer().serializeToString(node),
-    styles:Array.from(document.querySelectorAll('style')).map(style=>style.textContent||'').join('\n'),
+    styles:previewCardStyles(),
     width:940,
     height:796,
     scale,
+  };
+}
+function previewCardOgExportPayload(){
+  const node=exportablePreviewCardNode();
+  node.style.transform='scale('+(630/796)+')';
+  node.style.transformOrigin='center center';
+  node.style.flex='none';
+  const frame=document.createElement('div');
+  frame.style.cssText='width:1200px;height:630px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#09090d';
+  frame.appendChild(node);
+  return {
+    cardHtml:new XMLSerializer().serializeToString(frame),
+    styles:previewCardStyles(),
+    width:1200,
+    height:630,
+    scale:1,
   };
 }
 function blobToDataUrl(blob){
@@ -2521,18 +2544,23 @@ async function createExportPngBlob(payload){
   }
   return response.blob();
 }
-async function captureCurrentStaxCardImageDataUrl(){
-  const payload=previewCardExportPayload(2);
-  return blobToDataUrl(await createExportPngBlob({...payload,filename:'taku-stax-share.png'}));
+async function captureCurrentStaxCardImages(){
+  const [shareBlob,ogBlob]=await Promise.all([
+    createExportPngBlob({...previewCardExportPayload(2),filename:'taku-stax-share.png'}),
+    createExportPngBlob({...previewCardOgExportPayload(),filename:'taku-stax-og.png'}),
+  ]);
+  const [imageDataUrl,ogImageDataUrl]=await Promise.all([blobToDataUrl(shareBlob),blobToDataUrl(ogBlob)]);
+  return {imageDataUrl,ogImageDataUrl};
 }
 async function currentStaxCardSnapshot(){
+  const images=await captureCurrentStaxCardImages();
   return {
     schemaVersion:'taku.stax.card-snapshot.v1',
     capturedAt:new Date().toISOString(),
     canvas:{width:940,height:796,columns:PCOLS,rows:PROWS,cellSize:U,gap:GAP},
     blocks:placedP.map(p=>({key:p.key,cx:p.cx,cy:p.cy,cw:p.cw,ch:p.ch}))
       .sort((a,b)=>a.cy-b.cy||a.cx-b.cx||a.key.localeCompare(b.key)),
-    imageDataUrl:await captureCurrentStaxCardImageDataUrl(),
+    ...images,
   };
 }
 async function copyPublishedLink(url,{missingMessage,successMessage,channel}){

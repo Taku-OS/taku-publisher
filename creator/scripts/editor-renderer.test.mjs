@@ -160,6 +160,10 @@ test('cloud Studio runtime captures a PNG snapshot before publishing', () => {
   assert.match(html, /const staxCardSnapshot=await currentStaxCardSnapshot\(\)/);
   assert.match(html, /post\('publish',\{layout:currentLayout\(\),staxCardSnapshot\}\)/);
   assert.match(html, /renderExportPayloadInBrowser/);
+  assert.match(html, /previewCardOgExportPayload/);
+  assert.match(html, /width:1200/);
+  assert.match(html, /height:630/);
+  assert.match(html, /ogImageDataUrl/);
   assert.match(html, /window\.parent!==window&&typeof window\.__TAKU_STAX_POST__==='function'/);
   assert.match(html, /id="githubconnect"/);
   assert.match(html, /id="githubconfirm"/);
