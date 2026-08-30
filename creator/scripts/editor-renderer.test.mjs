@@ -146,6 +146,23 @@ function draftFixture() {
   };
 }
 
+test('shows three persona badges on the hero when no hidden persona is featured', () => {
+  const data = staxDataFromHtml(renderPreview({
+    creator: { username: 'demo' },
+    personaV2: {
+      code: 'EILW',
+      archetype: { title: 'Mad Inventor', signature: 'Demo' },
+      traits: [
+        { id: 'token-tycoon', label: 'Token Tycoon' },
+        { id: 'flow-state', label: 'Flow State' },
+        { id: 'snack-coder', label: 'Snack Coder' },
+      ],
+    },
+  }, { editor: { enabled: true } }));
+
+  assert.deepEqual(data.heroTags, ['Token Tycoon', 'Flow State', 'Snack Coder']);
+});
+
 function staxDataFromHtml(html) {
   const match = String(html).match(/window\.__TAKU_STAX_DATA__ = (.*?);\nwindow\.__TAKU_STAX_BOOTSTRAP__/s);
   assert.ok(match, 'Stax data bootstrap is missing from the preview HTML');

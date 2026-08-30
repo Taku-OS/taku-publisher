@@ -2885,7 +2885,7 @@ function buildStaxAppModel(draft = {}, options = {}) {
   const personaTraits = personaTraitSource
     .map(publicTraitBadge)
     .filter((badge) => badge?.label)
-    .slice(0, 2);
+    .slice(0, 3);
   const heroDefinition = personaDefinitionForStax(
     canonicalCode,
     persona.basePersona?.signature || persona.archetype?.signature || draft.personaV2?.archetype?.signature,
