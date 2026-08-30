@@ -3288,7 +3288,10 @@ export function renderStaxStudioRuntime() {
       if(typeof window.__TAKU_GITHUB_SAVE_SUCCESS__==='function')window.__TAKU_GITHUB_SAVE_SUCCESS__(message);
       setTimeout(()=>post('layout-change',{layout:currentLayout()}),0);
     }
-    if(message.type===MESSAGE_PREFIX+'settings-error'&&typeof window.__TAKU_GITHUB_SAVE_ERROR__==='function')window.__TAKU_GITHUB_SAVE_ERROR__(message);
+    if(message.type===MESSAGE_PREFIX+'settings-error'){
+      if(String(message.requestId||'').startsWith('github-')&&typeof window.__TAKU_GITHUB_SAVE_ERROR__==='function')window.__TAKU_GITHUB_SAVE_ERROR__(message);
+      else if(message.message&&typeof toast==='function')toast(String(message.message));
+    }
     if(message.type===MESSAGE_PREFIX+'status'&&message.message&&typeof toast==='function')toast(String(message.message));
   });
   document.addEventListener('click',async(event)=>{
@@ -3630,6 +3633,10 @@ function renderStaxAppBootstrapScript(model) {
     '      for (const placed of placedP) chipRefs[placed.key]?.classList.add("on");',
     '      toast("PRIMARY AI · " + persona.team[0]);',
     '      if (!data.readonly) {',
+    '        if (typeof window.__TAKU_STAX_POST__ === "function") {',
+    '          window.__TAKU_STAX_POST__("settings-change", { requestId: "primary-ai-" + Date.now() + "-" + Math.random().toString(36).slice(2), settings: { primaryAi: selectedTeam.id } });',
+    '          return;',
+    '        }',
     '        try {',
     '          await fetch("/api/card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ card: { primaryAi: selectedTeam.id } }) });',
     '        } catch {}',
@@ -3661,6 +3668,10 @@ function renderStaxAppBootstrapScript(model) {
     '      for (const placed of placedP) chipRefs[placed.key]?.classList.add("on");',
     '      toast("QR LINK · " + text(selectedQr.label, selectedQr.id).toUpperCase());',
     '      if (!data.readonly) {',
+    '        if (typeof window.__TAKU_STAX_POST__ === "function") {',
+    '          window.__TAKU_STAX_POST__("settings-change", { requestId: "qr-target-" + Date.now() + "-" + Math.random().toString(36).slice(2), settings: { qrTarget: selectedQr.id } });',
+    '          return;',
+    '        }',
     '        try {',
     '          await fetch("/api/card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ card: { qrTarget: selectedQr.id } }) });',
     '        } catch {}',

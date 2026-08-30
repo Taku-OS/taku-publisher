@@ -165,6 +165,8 @@ test('cloud Studio runtime captures a PNG snapshot before publishing', () => {
   assert.match(html, /id="githubconfirm"/);
   assert.match(html, /window\.__TAKU_STAX_POST__\("settings-change"/);
   assert.match(html, /settings: \{ confirmedSocial: \{ github: githubCandidate \} \}/);
+  assert.match(html, /settings: \{ primaryAi: selectedTeam\.id \}/);
+  assert.match(html, /settings: \{ qrTarget: selectedQr\.id \}/);
   assert.match(html, /message\.type===MESSAGE_PREFIX\+'settings-saved'/);
   assert.match(html, /window\.__TAKU_GITHUB_SAVE_SUCCESS__/);
   assert.doesNotMatch(html, /gh auth token|readGitHubToken|githubToken/i);
@@ -370,6 +372,7 @@ test('renders draft Stax block support data before server-only block fallbacks',
   assert.match(html, /top:\$\{h\*0\.825\}px/);
   assert.match(html, /async function exportPreviewPng\(\)/);
   assert.match(html, /fetch\('\/api\/export\/png'/);
+  assert.match(html, /const png=await createExportPngBlob\(\{\.\.\.previewCardExportPayload\(2\),filename\}\)/);
   assert.match(html, /canvas\.toBlob/);
   assert.match(html, /const filename='taku-stax-'\+publicSlug\(PD\.handle\)\+'\.png'/);
   assert.match(html, /link\.download=filename/);
