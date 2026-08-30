@@ -250,6 +250,7 @@ test('publishes the user-arranged Stax card snapshot in the public profile snaps
         schemaVersion: 'taku.stax.card-snapshot.v1',
         capturedAt: '2026-08-16T00:00:00.000Z',
         imageDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+        ogImageDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
         canvas: { width: 940, height: 796, columns: 8, rows: 6, cellSize: 104, gap: 8 },
         blocks: [
           { key: 'hero', cx: 0, cy: 1, cw: 4, ch: 2 },
@@ -266,6 +267,7 @@ test('publishes the user-arranged Stax card snapshot in the public profile snaps
     { key: 'type', cx: 4, cy: 1, cw: 2, ch: 2 },
   ]);
   assert.equal(payload.profileSnapshot.staxCardSnapshot.imageDataUrl, 'data:image/png;base64,iVBORw0KGgo=');
+  assert.equal(payload.profileSnapshot.staxCardSnapshot.ogImageDataUrl, 'data:image/png;base64,iVBORw0KGgo=');
 });
 
 test('does not silently publish an explicitly local installable without a package', async () => {

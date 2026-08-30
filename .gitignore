@@ -25,6 +25,7 @@ venv/
 .taku/
 .taku-publisher/
 .tmp/
+/tmp/
 /failed
 
 # Logs, archives, and operating-system files

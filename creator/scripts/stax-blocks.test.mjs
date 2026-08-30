@@ -429,8 +429,8 @@ test('keeps community rank and provider quota dimensions unsupported until trust
     .filter((block) => block.status === 'unsupported')
     .map((block) => block.key);
 
-  assert.deepEqual(unsupported, ['tier1', 'aura', 'cgauge', 'water', 'tier4']);
-  assert.equal(result.summary.unsupported, 5);
+  assert.deepEqual(unsupported, ['tier1', 'aura', 'social', 'cgauge', 'water', 'tier4']);
+  assert.equal(result.summary.unsupported, 6);
   assert.equal(blockByKey(result, 'tier1').lockLabel, 'GROW ON TAKU');
   assert.match(blockByKey(result, 'tier1').reason, /Publish a tool or gain subscribers/);
   assert.match(blockByKey(result, 'cgauge').reason, /monthly quota/);

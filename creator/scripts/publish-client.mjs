@@ -376,7 +376,9 @@ export class TakuStaxClient {
     const result = await this.fetchJson(path, init, options);
     if (!result.parsedJson) {
       const preview = result.rawText.slice(0, 160).replace(/\s+/g, ' ').trim();
-      throw new Error(`Expected JSON from ${path}, got ${result.response.status} ${result.response.statusText}: ${preview}`);
+      const error = new Error(`Expected JSON from ${path}, got ${result.response.status} ${result.response.statusText}: ${preview}`);
+      error.status = result.response.status;
+      throw error;
     }
     if (!result.response.ok) {
       const error = new Error(result.data?.error || result.data?.message || `HTTP ${result.response.status}`);

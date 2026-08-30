@@ -2925,12 +2925,14 @@ function buildStaxAppModel(draft = {}, options = {}) {
     draft.personaSignals?.external?.rankGrade?.topPercent,
   ) : 0;
   const publicHandle = handle.startsWith('@') ? handle : `@${handle}`;
+  const confirmedGitHubHandle = cleanDisplayText(card.confirmedSocial?.github, '', 40).replace(/^@+/, '');
+  const confirmedSocialHandle = confirmedGitHubHandle ? `@${confirmedGitHubHandle}` : '';
   const serial = cleanDisplayText(trustedStaxProfile.serial?.display || trustedStaxProfile.serial || trustedStaxProfile.serialNumber, 'UNMINTED', 40);
   const hasTrustedTakuIdentity = Boolean(isTakuAuthorized && trustedHandle && serial !== 'UNMINTED');
   const hasDisplayableTakuIdentity = Boolean(hasTrustedTakuIdentity || (isTakuAuthorized && trustedHandle) || publishedStaxUsername);
   const cardDisplayHandle = hasDisplayableTakuIdentity
     ? publicHandle
-    : (isTakuAuthorized ? (connectedDisplayName || 'SIGNED IN DRAFT') : 'LOCAL DRAFT');
+    : (confirmedSocialHandle || (isTakuAuthorized ? (connectedDisplayName || 'SIGNED IN DRAFT') : 'LOCAL DRAFT'));
   const cardDisplaySerial = hasTrustedTakuIdentity ? serial : 'UNMINTED';
   const publishedProfilePageUrl = publishedStaxUsername
     ? buildStaxProfilePageUrl(options.editor?.publish?.siteUrl, publishedStaxUsername)
@@ -2971,9 +2973,29 @@ function buildStaxAppModel(draft = {}, options = {}) {
       username: qrUsername,
     };
   }
+  const socialBlock = blocks.find((block) => block.key === 'social');
+  const currentSocial = recordValue(socialBlock?.value);
+  const githubCandidate = recordValue(draft.socialCandidates).github;
+  const socialCandidateUsername = options.editor?.enabled && !options.readonlyPreview && !currentSocial.github
+    ? cleanDisplayText(githubCandidate?.username, '', 80).replace(/^@+/, '')
+    : '';
+  const socialCandidate = socialCandidateUsername
+    ? {
+        platform: 'github',
+        username: socialCandidateUsername,
+        profileUrl: cleanDisplayText(githubCandidate?.profileUrl, `https://github.com/${socialCandidateUsername}`, 800),
+        source: cleanDisplayText(githubCandidate?.source, 'github-cli', 80),
+        verified: githubCandidate?.verified === true,
+        requiresConfirmation: true,
+      }
+    : null;
   const publicBlocks = blocks.map((block) => {
     const unlockKind = block.status === 'unsupported'
-      ? (TAKU_AUTH_BLOCK_KEYS.has(block.key) ? 'taku-auth' : 'unavailable')
+      ? (block.key === 'social' && socialCandidate
+          ? 'social-confirm'
+          : TAKU_AUTH_BLOCK_KEYS.has(block.key)
+            ? 'taku-auth'
+            : 'unavailable')
       : 'local';
     if (block.key === 'team') {
       return {
@@ -3061,6 +3083,7 @@ function buildStaxAppModel(draft = {}, options = {}) {
     teamOptions,
     qrOptions,
     qrTarget: activeQrOption?.id || qrTarget,
+    socialCandidate,
     axes: Array.isArray(persona.axes)
       ? persona.axes.slice(0, 4).map((axis, index) => staxAxisForDisplay(axis, index))
       : [],
@@ -3178,6 +3201,133 @@ export function createStaxStudioRendererPayload(draft = {}, options = {}) {
   };
 }
 
+export function renderStaxStudioRuntime() {
+  const html = renderStaxAppPreview({}, {
+    editor: {
+      enabled: true,
+      publish: {
+        authenticated: true,
+        canPublish: true,
+      },
+    },
+  });
+  const cloudStyle = [
+    '<style id="taku-cloud-studio-style">',
+    'html,body{background:#09090d}',
+    'body{visibility:hidden}',
+    'body.taku-cloud-ready{visibility:visible}',
+    '</style>',
+  ].join('');
+  const cloudBridge = `<script id="taku-cloud-studio-bridge">
+(function(){
+  const MESSAGE_PREFIX='taku:stax-studio:';
+  let initialized=false;
+  let publishing=false;
+  function currentLayout(){
+    return {
+      schemaVersion:'taku.stax.studio-layout.v1',
+      blocks:Array.isArray(placedP)?placedP.map((item)=>({key:item.key,cx:item.cx,cy:item.cy,cw:item.cw,ch:item.ch})):[],
+    };
+  }
+  function post(type,payload){
+    if(window.parent===window)return;
+    window.parent.postMessage({type:MESSAGE_PREFIX+type,...(payload||{})},'*');
+  }
+  window.__TAKU_STAX_POST__=post;
+  function clearBoard(){
+    if(!Array.isArray(placedP))return;
+    placedP.splice(0).forEach((item)=>item.el&&item.el.remove());
+    if(typeof chipRefs==='object'&&chipRefs){Object.values(chipRefs).forEach((chip)=>chip&&chip.classList&&chip.classList.remove('on'));}
+    if(typeof counts==='function')counts();
+  }
+  function applyLayout(layout){
+    const blocks=layout&&Array.isArray(layout.blocks)?layout.blocks:[];
+    if(!blocks.length)return;
+    clearBoard();
+    blocks.forEach((item)=>{
+      if(!item||typeof item.key!=='string'||typeof place!=='function')return;
+      const placed=place(item.key,Number(item.cx)||0,Number(item.cy)||0);
+      if(placed&&typeof chipRefs==='object'&&chipRefs[placed.key])chipRefs[placed.key].classList.add('on');
+    });
+  }
+  function initialize(message){
+    const model=message&&message.model&&typeof message.model==='object'?message.model:null;
+    if(!model||typeof window.__TAKU_STAX_BOOTSTRAP__!=='function')return;
+    window.__TAKU_STAX_DATA__={...model,readonly:false,publishedStax:{...(model.publishedStax||{})}};
+    window.__TAKU_STAX_BOOTSTRAP__();
+    applyLayout(message.layout||model.studioLayout);
+    document.body.classList.add('taku-cloud-ready');
+    initialized=true;
+    post('ready',{layout:currentLayout()});
+  }
+  function finishPublish(message){
+    const publication=message&&message.publication&&typeof message.publication==='object'?message.publication:null;
+    if(!publication||typeof setStaxPublication!=='function')return;
+    setStaxPublication(publication);
+    publishing=false;
+    const button=document.getElementById('mpost');
+    if(button){button.disabled=false;button.textContent='POSTED ✓';}
+    document.getElementById('modal')?.classList.remove('on');
+    if(typeof confetti==='function')confetti();
+    if(typeof openShare==='function')openShare('owner');
+    if(message.message&&typeof toast==='function')toast(String(message.message));
+  }
+  function failPublish(message){
+    publishing=false;
+    const button=document.getElementById('mpost');
+    if(button){button.disabled=false;button.textContent='TRY AGAIN';}
+    if(message&&message.message&&typeof toast==='function')toast(String(message.message));
+  }
+  window.addEventListener('message',(event)=>{
+    const message=event.data;
+    if(!message||typeof message.type!=='string'||!message.type.startsWith(MESSAGE_PREFIX))return;
+    if(message.type===MESSAGE_PREFIX+'init')initialize(message);
+    if(message.type===MESSAGE_PREFIX+'published')finishPublish(message);
+    if(message.type===MESSAGE_PREFIX+'publish-error')failPublish(message);
+    if(message.type===MESSAGE_PREFIX+'settings-saved'){
+      if(typeof window.__TAKU_GITHUB_SAVE_SUCCESS__==='function')window.__TAKU_GITHUB_SAVE_SUCCESS__(message);
+      setTimeout(()=>post('layout-change',{layout:currentLayout()}),0);
+    }
+    if(message.type===MESSAGE_PREFIX+'settings-error'){
+      if(String(message.requestId||'').startsWith('github-')&&typeof window.__TAKU_GITHUB_SAVE_ERROR__==='function')window.__TAKU_GITHUB_SAVE_ERROR__(message);
+      else if(message.message&&typeof toast==='function')toast(String(message.message));
+    }
+    if(message.type===MESSAGE_PREFIX+'status'&&message.message&&typeof toast==='function')toast(String(message.message));
+  });
+  document.addEventListener('click',async(event)=>{
+    const target=event.target instanceof Element?event.target.closest('#mpost'):null;
+    if(!target||!initialized)return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if(publishing)return;
+    publishing=true;
+    target.disabled=true;
+    target.textContent='CAPTURING...';
+    try{
+      const staxCardSnapshot=await currentStaxCardSnapshot();
+      target.textContent='PUBLISHING...';
+      post('publish',{layout:currentLayout(),staxCardSnapshot});
+    }catch(error){
+      failPublish({message:error&&error.message?error.message:'Could not capture the Stax Card image.'});
+    }
+  },true);
+  const reportLayout=()=>{if(initialized)post('layout-change',{layout:currentLayout()});};
+  document.addEventListener('pointerup',(event)=>{
+    if(event.target instanceof Element&&event.target.closest('#mpost'))return;
+    setTimeout(reportLayout,0);
+  },true);
+  document.addEventListener('click',(event)=>{
+    if(event.target instanceof Element&&event.target.closest('#ball,#bclear,.dock'))setTimeout(reportLayout,0);
+  });
+  post('booted');
+})();
+</script>`;
+  return html
+    .replace('</head>', cloudStyle + '</head>')
+    .replace('</body>', cloudBridge + '</body>');
+}
+
+
 function renderStaxAppBootstrapScript(model) {
   return [
     'window.__TAKU_STAX_DATA__ = ' + jsonForScript(model) + ';',
@@ -3208,6 +3358,7 @@ function renderStaxAppBootstrapScript(model) {
     '  const text = (input, fallback) => String(input || fallback || "").trim();',
     '  const teamValue = value("team");',
     '  const qrValue = value("qr");',
+    '  const socialValue = value("social");',
     '  const clockValue = value("clock");',
     '  const basicValue = value("basic");',
     '  const heroValue = value("hero");',
@@ -3253,6 +3404,7 @@ function renderStaxAppBootstrapScript(model) {
     '    type: text(typeValue.type || heroValue.type, data.code || "AI"),',
     '    seal: { serial: text(sealValue.serial, data.cardSerial || data.serial || "UNMINTED") },',
     '    qr: { target: text(qrValue.target, data.qrTarget || "stax"), url: text(qrValue.url, ""), username: text(qrValue.username, ""), size: Math.max(0, Math.floor(Number(qrValue.size) || 0)), matrix: text(qrValue.matrix, ""), errorCorrectionLevel: text(qrValue.errorCorrectionLevel, "M") },',
+    '    social: { x: text(socialValue.x, ""), github: text(socialValue.github, "") },',
     '    axes: Array.isArray(typeValue.axes) && typeValue.axes.length ? typeValue.axes : (Array.isArray(data.axes) && data.axes.length ? data.axes : MASON.axes),',
     '    basicVal: text(basicValue.basicVal, data.basicValue || data.tokenLabel || "0"),',
     '    band: Array.isArray(clockValue.band) ? clockValue.band : MASON.band,',
@@ -3481,6 +3633,10 @@ function renderStaxAppBootstrapScript(model) {
     '      for (const placed of placedP) chipRefs[placed.key]?.classList.add("on");',
     '      toast("PRIMARY AI · " + persona.team[0]);',
     '      if (!data.readonly) {',
+    '        if (typeof window.__TAKU_STAX_POST__ === "function") {',
+    '          window.__TAKU_STAX_POST__("settings-change", { requestId: "primary-ai-" + Date.now() + "-" + Math.random().toString(36).slice(2), settings: { primaryAi: selectedTeam.id } });',
+    '          return;',
+    '        }',
     '        try {',
     '          await fetch("/api/card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ card: { primaryAi: selectedTeam.id } }) });',
     '        } catch {}',
@@ -3512,9 +3668,80 @@ function renderStaxAppBootstrapScript(model) {
     '      for (const placed of placedP) chipRefs[placed.key]?.classList.add("on");',
     '      toast("QR LINK · " + text(selectedQr.label, selectedQr.id).toUpperCase());',
     '      if (!data.readonly) {',
+    '        if (typeof window.__TAKU_STAX_POST__ === "function") {',
+    '          window.__TAKU_STAX_POST__("settings-change", { requestId: "qr-target-" + Date.now() + "-" + Math.random().toString(36).slice(2), settings: { qrTarget: selectedQr.id } });',
+    '          return;',
+    '        }',
     '        try {',
     '          await fetch("/api/card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ card: { qrTarget: selectedQr.id } }) });',
     '        } catch {}',
+    '      }',
+    '    });',
+    '  }',
+    '  const githubConnect = document.getElementById("githubconnect");',
+    '  const githubConfirm = document.getElementById("githubconfirm");',
+    '  const githubConfirmHandle = document.getElementById("githubconfirmhandle");',
+    '  const githubConfirmCancel = document.getElementById("githubconfirmcancel");',
+    '  const githubConfirmSubmit = document.getElementById("githubconfirmsubmit");',
+    '  const socialCandidate = data.socialCandidate && typeof data.socialCandidate === "object" ? data.socialCandidate : null;',
+    '  const githubCandidate = text(socialCandidate?.username, "").replace(/^@+/, "");',
+    '  if (githubConnect && githubConfirm && githubConfirmSubmit && githubCandidate && !persona.social.github && !data.readonly) {',
+    '    document.getElementById("githubcandidate").textContent = "@" + githubCandidate;',
+    '    if (githubConfirmHandle) githubConfirmHandle.textContent = "@" + githubCandidate;',
+    '    githubConnect.classList.remove("is-hidden");',
+    '    const closeGithubConfirm = () => githubConfirm.classList.remove("on");',
+    '    const openGithubConfirm = () => { githubConfirm.classList.add("on"); githubConfirmSubmit.focus(); };',
+    '    window.__TAKU_OPEN_GITHUB_CONFIRM__ = openGithubConfirm;',
+    '    githubConnect.addEventListener("click", openGithubConfirm);',
+    '    githubConfirmCancel?.addEventListener("click", closeGithubConfirm);',
+    '    githubConfirm.addEventListener("click", (event) => { if (event.target === githubConfirm) closeGithubConfirm(); });',
+    '    let pendingGithubRequestId = "";',
+    '    const setGithubSaving = (saving) => {',
+    '      githubConfirmSubmit.disabled = saving;',
+    '      githubConfirmSubmit.textContent = saving ? "CONNECTING..." : "ADD GITHUB";',
+    '      githubConfirmSubmit.setAttribute("aria-busy", saving ? "true" : "false");',
+    '      if (githubConfirmCancel) githubConfirmCancel.disabled = saving;',
+    '    };',
+    '    const applyConfirmedGithub = () => {',
+    '      setGithubSaving(false);',
+    '      persona.social.github = githubCandidate;',
+    '      const socialBlock = byKey.get("social");',
+    '      if (socialBlock) { socialBlock.status = "supported"; socialBlock.source = "publisher.confirmed_social"; socialBlock.value = { ...(socialBlock.value || {}), github: githubCandidate }; }',
+    '      delete locks.social;',
+    '      if (!selected.includes("social")) selected.splice(Math.min(1, selected.length), 0, "social");',
+    '      PERSONAS.publisher.fullset = [...selected];',
+    '      PERSONAS.publisher.pd = persona;',
+    '      githubConnect.classList.add("is-hidden");',
+    '      closeGithubConfirm();',
+    '      setPersona("publisher");',
+    '      toast("GITHUB @" + githubCandidate + " ADDED");',
+    '    };',
+    '    window.__TAKU_GITHUB_SAVE_SUCCESS__ = (message) => {',
+    '      if (pendingGithubRequestId && message?.requestId !== pendingGithubRequestId) return;',
+    '      pendingGithubRequestId = "";',
+    '      applyConfirmedGithub();',
+    '    };',
+    '    window.__TAKU_GITHUB_SAVE_ERROR__ = (message) => {',
+    '      if (pendingGithubRequestId && message?.requestId !== pendingGithubRequestId) return;',
+    '      pendingGithubRequestId = "";',
+    '      setGithubSaving(false);',
+    '      toast(text(message?.message, "Could not add GitHub account."));',
+    '    };',
+    '    githubConfirmSubmit.addEventListener("click", async () => {',
+    '      setGithubSaving(true);',
+    '      if (typeof window.__TAKU_STAX_POST__ === "function") {',
+    '        pendingGithubRequestId = "github-" + Date.now() + "-" + Math.random().toString(36).slice(2);',
+    '        window.__TAKU_STAX_POST__("settings-change", { requestId: pendingGithubRequestId, settings: { confirmedSocial: { github: githubCandidate } } });',
+    '        return;',
+    '      }',
+    '      try {',
+    '        const response = await fetch("/api/card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ card: { confirmedSocial: { github: githubCandidate } } }) });',
+    '        const result = await response.json().catch(() => ({}));',
+    '        if (!response.ok || result.ok === false) throw new Error(result.error || "Could not add GitHub account.");',
+    '        applyConfirmedGithub();',
+    '      } catch (error) {',
+    '        setGithubSaving(false);',
+    '        toast(error instanceof Error ? error.message : "COULD NOT ADD GITHUB");',
     '      }',
     '    });',
     '  }',

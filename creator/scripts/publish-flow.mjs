@@ -9,7 +9,7 @@ import {
   getBuilderProfileSnapshotForDisplay as getBuilderProfileSnapshotForDisplayCore,
   mergeStaxCreatorPublishPayloadWithExistingCard,
 } from './publish-payload.mjs';
-import { buildStaxPublishedLinks } from './stax-url.mjs';
+import { buildStaxPublishedLinks, buildStaxStudioUrl } from './stax-url.mjs';
 import { createStaxStudioRendererPayload } from './editor-renderer.mjs';
 
 const PUBLISH_IMPORT_TIMEOUT_MS = 60000;
@@ -87,7 +87,9 @@ export async function saveDraftToTakuStudio({
   });
 
   try {
-    const data = await client.saveMyStudioDraft(studioPayload);
+    const data = await saveStudioDraftWithRevision(client, studioPayload, {
+      issueLaunchContext: true,
+    });
     const responseData = data?.data && typeof data.data === 'object' && !Array.isArray(data.data)
       ? data.data
       : {};
@@ -105,24 +107,14 @@ export async function saveDraftToTakuStudio({
     const accountHint = String(
       account.hint || account.accountHint || account.account_hint || '',
     ).trim();
-    const studioUrl = String(responseData.studioUrl || responseData.studio_url || '').trim();
-    if (!studioUrl) {
-      return {
-        ok: false,
-        status: 502,
-        workerUrl,
-        endpoint: `${workerUrl}/stax/studio/cards/me`,
-        error: 'The Worker saved the draft but did not return a cloud Studio URL.',
-        data,
-      };
-    }
+    const workerStudioUrl = String(responseData.studioUrl || responseData.studio_url || '').trim();
     return {
       ok: true,
       status: 200,
       workerUrl,
       endpoint: `${workerUrl}/stax/studio/cards/me`,
       data,
-      studioUrl,
+      studioUrl: workerStudioUrl || buildStaxStudioUrl(siteUrl, { launchContextId }),
       ...(launchContextId ? { launchContextId } : {}),
       ...(accountHint ? { accountHint } : {}),
       draft: cloudDraft,
@@ -239,6 +231,25 @@ export async function publishDraftToTaku({
           builderProfileSnapshotSchema: context.builderProfileSnapshotSchema,
         }
       );
+  const studioPayload = createStudioDraftPayload(publishPayload);
+  studioPayload.studioRenderer = createStaxStudioRendererPayload(draft, {
+    editor: {
+      publish: { siteUrl, workerUrl },
+    },
+  });
+  try {
+    await saveStudioDraftWithRevision(client, studioPayload);
+  } catch (error) {
+    return {
+      ok: false,
+      status: Number(error?.status) || 0,
+      workerUrl,
+      endpoint: `${workerUrl}/stax/studio/cards/me`,
+      error: `The private Studio draft could not be saved: ${error instanceof Error ? error.message : String(error)}`,
+      data: {},
+      links: {},
+    };
+  }
   const body = JSON.stringify(publishPayload);
   let response;
   let data;
@@ -271,6 +282,10 @@ export async function publishDraftToTaku({
   const ok = response.ok && parsedJson;
   const error = ok ? undefined : createWorkerPublishError({ response, data, parsedJson, endpoint });
   const links = ok ? buildStaxPublishedLinks(siteUrl, data?.data || data) : {};
+  const studioUrl = links.studioUrl || buildStaxStudioUrl(siteUrl);
+  const studioDraftSync = typeof data?.data?.studioDraftSync === 'string'
+    ? data.data.studioDraftSync
+    : undefined;
   return {
     ok,
     status: response.status,
@@ -284,6 +299,11 @@ export async function publishDraftToTaku({
     staxCardPageUrl: links.staxCardPageUrl,
     staxCardShareUrl: links.staxCardShareUrl,
     staxCardImageUrl: links.staxCardImageUrl,
+    studioUrl,
+    studioDraftSync,
+    warning: studioDraftSync === 'conflict'
+      ? 'The public card was published, but the Studio draft changed in another session and was not overwritten.'
+      : undefined,
     publishedInventory: {
       usingToolCount: publishPayload.sections.usingTools.length,
       madeItemCount: publishPayload.sections.madeItems.length,
@@ -295,8 +315,36 @@ export async function publishDraftToTaku({
       personaAvatarSkippedReason: personaAvatar.skipped ? personaAvatar.reason : undefined,
       workerSections: Array.isArray(data?.data?.sections) ? data.data.sections : undefined,
       installableItemCount: typeof data?.data?.installableItemCount === 'number' ? data.data.installableItemCount : undefined,
+      studioDraftSync,
     },
   };
+}
+
+async function saveStudioDraftWithRevision(
+  client,
+  content,
+  { issueLaunchContext = false } = {},
+) {
+  let current;
+  try {
+    current = await client.getMyStudioDraft();
+  } catch (error) {
+    if (![404, 405].includes(Number(error?.status))) throw error;
+    return await client.saveMyStudioDraft(content);
+  }
+  const supportsRevisionContract = current?.data?.saveContract === 'revision-v1';
+  if (!supportsRevisionContract) {
+    return await client.saveMyStudioDraft(content);
+  }
+  const revision = Number(current?.data?.draft?.revision);
+  const expectedRevision = Number.isInteger(revision) && revision > 0
+    ? revision
+    : null;
+  return await client.saveMyStudioDraft({
+    content,
+    expectedRevision,
+    issueLaunchContext,
+  });
 }
 
 export function createStudioDraftPayload(publishPayload) {

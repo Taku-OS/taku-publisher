@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import vm from 'node:vm';
 
-import { renderPreview } from './editor-renderer.mjs';
+import { renderPreview, renderStaxStudioRuntime } from './editor-renderer.mjs';
 
 function draftFixture() {
   return {
@@ -168,6 +169,35 @@ function staxDataFromHtml(html) {
   assert.ok(match, 'Stax data bootstrap is missing from the preview HTML');
   return JSON.parse(match[1]);
 }
+
+test('cloud Studio runtime captures a PNG snapshot before publishing', () => {
+  const html = renderStaxStudioRuntime();
+
+  assert.match(html, /target\.textContent='CAPTURING\.\.\.'/);
+  assert.match(html, /const staxCardSnapshot=await currentStaxCardSnapshot\(\)/);
+  assert.match(html, /post\('publish',\{layout:currentLayout\(\),staxCardSnapshot\}\)/);
+  assert.match(html, /renderExportPayloadInBrowser/);
+  assert.match(html, /previewCardOgExportPayload/);
+  assert.match(html, /width:1200/);
+  assert.match(html, /height:630/);
+  assert.match(html, /ogImageDataUrl/);
+  assert.match(html, /window\.parent!==window&&typeof window\.__TAKU_STAX_POST__==='function'/);
+  assert.match(html, /id="githubconnect"/);
+  assert.match(html, /id="githubconfirm"/);
+  assert.match(html, /window\.__TAKU_STAX_POST__\("settings-change"/);
+  assert.match(html, /settings: \{ confirmedSocial: \{ github: githubCandidate \} \}/);
+  assert.match(html, /settings: \{ primaryAi: selectedTeam\.id \}/);
+  assert.match(html, /settings: \{ qrTarget: selectedQr\.id \}/);
+  assert.match(html, /message\.type===MESSAGE_PREFIX\+'settings-saved'/);
+  assert.match(html, /window\.__TAKU_GITHUB_SAVE_SUCCESS__/);
+  assert.doesNotMatch(html, /gh auth token|readGitHubToken|githubToken/i);
+
+  const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)];
+  assert.ok(scripts.length > 0);
+  scripts.forEach((match, index) => {
+    new vm.Script(match[1], { filename: `cloud-runtime-${index + 1}.js` });
+  });
+});
 
 test('renders local and Taku creator metrics as simple data tables', () => {
   const html = renderPreview(draftFixture());
@@ -363,7 +393,8 @@ test('renders draft Stax block support data before server-only block fallbacks',
   assert.match(html, /top:\$\{h\*0\.825\}px/);
   assert.match(html, /async function exportPreviewPng\(\)/);
   assert.match(html, /fetch\('\/api\/export\/png'/);
-  assert.doesNotMatch(html, /canvas\.toBlob/);
+  assert.match(html, /const png=await createExportPngBlob\(\{\.\.\.previewCardExportPayload\(2\),filename\}\)/);
+  assert.match(html, /canvas\.toBlob/);
   assert.match(html, /const filename='taku-stax-'\+publicSlug\(PD\.handle\)\+'\.png'/);
   assert.match(html, /link\.download=filename/);
   assert.doesNotMatch(html, /PNG EXPORT · wired in prod/);

@@ -106,6 +106,10 @@ import {
   detectInvokingAiClient,
   discoverAiClients,
 } from './host-platform.mjs';
+import {
+  detectGitHubIdentity,
+  withGitHubSocialCandidate,
+} from './social-identity.mjs';
 
 const VERSION = '0.2.4';
 const SCAN_SCHEMA = 'taku.creator.scan.v1';
@@ -143,12 +147,13 @@ async function scan(parsed, options = {}) {
         localOnly,
         url: resolveReferencePricingUrl(parsed),
       });
-  const [localCreatorMetrics, workerCreatorMetrics, creatorProfileResult] = await Promise.all([
+  const [localCreatorMetrics, workerCreatorMetrics, creatorProfileResult, githubIdentity] = await Promise.all([
     loadCreatorMetrics(parsed),
     localOnly ? Promise.resolve(null) : fetchCreatorMetricsFromWorker(parsed),
     localOnly
       ? Promise.resolve({ profile: null, warning: undefined })
       : fetchCreatorProfileForScan(parsed),
+    detectGitHubIdentity(),
   ]);
   const creatorProfile = creatorProfileResult?.profile || null;
   const staxProfile = creatorProfileResult?.staxProfile || null;
@@ -204,7 +209,7 @@ async function scan(parsed, options = {}) {
     claudeConfigDir: process.env.CLAUDE_CONFIG_DIR,
     usageSources: usage.sources,
   });
-  const result = {
+  const result = withGitHubSocialCandidate({
     schemaVersion: SCAN_SCHEMA,
     generatedAt: new Date().toISOString(),
     privacy: {
@@ -214,6 +219,7 @@ async function scan(parsed, options = {}) {
       sourceContentUploaded: false,
       envVarsUploaded: false,
       tokensUploaded: false,
+      githubTokenRead: false,
       localPathsIncluded: false,
     },
     ...(creatorProfile ? { creatorProfile } : {}),
@@ -258,7 +264,7 @@ async function scan(parsed, options = {}) {
       defaultAiClient: aiIdentity.defaultClient,
       availableAiClients: aiIdentity.options.map((item) => item.id),
     },
-  };
+  }, githubIdentity);
   if (options.includePrivateInventory) {
     Object.defineProperty(result, '__privateInventory', {
       value: createPrivateInventory([...used.tools, ...ownedCreations]),
@@ -450,6 +456,9 @@ async function runEditor(parsed) {
       includeStoredDrafts: hasFlag(parsed, 'reuse-listing-drafts'),
       persist: true,
     }));
+    if (!draft.socialCandidates?.github?.username) {
+      draft = withGitHubSocialCandidate(draft, await detectGitHubIdentity());
+    }
     draft = refreshBuilderProfileSnapshot(draft);
     await writeJson(resolvedDraftPath, draft);
     await writeText(previewPath, renderPreview({ ...draft, __toolChoices: toolChoices, __creationChoices: creationChoices }, READONLY_PREVIEW_OPTIONS));

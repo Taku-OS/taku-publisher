@@ -2268,7 +2268,11 @@ async function discoverUnsafeNextRoutes(
   );
 }
 
-function normalizeTrustedSystemAlias(absolutePath: string): string {
+export function normalizeTrustedSystemAlias(
+  absolutePath: string,
+  platform: NodeJS.Platform = process.platform
+): string {
+  if (platform !== 'darwin') return absolutePath;
   for (const [alias, canonical] of [
     ['/tmp', '/private/tmp'],
     ['/var', '/private/var'],
