@@ -301,6 +301,9 @@ body{overflow-x:hidden}
 .teamswitch span{font-family:'Space Mono';font-size:8px;letter-spacing:.13em;color:rgba(255,255,255,.42)}
 .teamswitch select{min-width:82px;border:0;outline:0;background:transparent;color:#fff;font-family:'Space Mono';font-size:9px;letter-spacing:.08em;cursor:pointer}
 .teamswitch select:disabled{cursor:default;opacity:.68}
+.socialswitch{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border:1px solid rgba(255,138,69,.45);border-radius:999px;background:rgba(24,14,10,.88);color:#FFB083;font-family:'Space Mono';font-size:8px;letter-spacing:.08em;cursor:pointer}
+.socialswitch.is-hidden{display:none}
+.socialswitch b{color:#fff;font-size:8px}
 .pswitch{display:flex;gap:8px;align-items:center;margin-left:16px}
 .pav{width:34px;height:34px;border-radius:50%;cursor:pointer;position:relative;border:2px solid transparent;transition:all .15s;overflow:hidden;flex:none}
 .pav img{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);width:78%}
@@ -342,6 +345,14 @@ body{overflow-x:hidden}
 .tchip.lock.auth .tv{filter:grayscale(.55)}
 .tchip.lock.auth .tlock{color:#C9F24C}
 .tchip.lock.future .tlock{color:rgba(255,255,255,.48)}
+.githubconfirm{position:fixed;inset:0;z-index:560;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(5,5,8,.82);backdrop-filter:blur(10px)}
+.githubconfirm.on{display:flex}
+.githubconfirmbox{width:min(420px,calc(100vw - 48px));box-sizing:border-box;padding:28px;border:1px solid rgba(255,138,69,.42);border-radius:18px;background:#15151c;box-shadow:0 24px 80px rgba(0,0,0,.55);text-align:center}
+.githubconfirmbox small{font-family:'Space Mono';font-size:9px;letter-spacing:.18em;color:#FF8A45}
+.githubconfirmbox h2{margin:10px 0 8px;font-family:'Space Grotesk';font-size:28px;line-height:1.1;color:#fff}
+.githubconfirmbox p{margin:0;color:rgba(255,255,255,.58);font:13px/1.55 'DM Sans'}
+.githubconfirmactions{display:flex;justify-content:center;gap:10px;margin-top:22px}
+.githubconfirmactions .btn2:disabled{cursor:wait;opacity:.72;pointer-events:none}
 .dockdrag{position:fixed;z-index:520;pointer-events:none;opacity:.9;filter:drop-shadow(0 16px 20px rgba(0,0,0,.45))}
 .tv{position:relative;overflow:hidden;border-radius:7px}
 .tv .ct{position:absolute;pointer-events:none}
@@ -499,6 +510,7 @@ body{overflow-x:hidden}
   <span class="usr" id="huduser" style="margin-left:10px">@mason · EILW · HACKERS</span>
   <label class="teamswitch is-hidden"><span>PRIMARY AI</span><select id="teamselect" aria-label="Primary AI"></select></label>
   <label class="teamswitch qrswitch is-hidden"><span>QR LINK</span><select id="qrselect" aria-label="QR code link target"></select></label>
+  <button class="socialswitch is-hidden" id="githubconnect" type="button" title="Use detected GitHub account in Social"><span id="githubcandidate"></span><b>ADD GITHUB</b></button>
   <span style="flex:1"></span>
   <button class="btn2" id="bintro">▶ INTRO</button>
   <button class="btn2" id="ball">SHUFFLE BUILD</button>
@@ -518,6 +530,15 @@ body{overflow-x:hidden}
 </div>
 
 <div class="dock"><div class="dockscroll" id="dockscroll"></div></div>
+
+<div class="githubconfirm" id="githubconfirm" role="dialog" aria-modal="true" aria-labelledby="githubconfirmtitle">
+  <div class="githubconfirmbox">
+    <small>PUBLIC SOCIAL LINK</small>
+    <h2 id="githubconfirmtitle">Add <span id="githubconfirmhandle">@github</span>?</h2>
+    <p>This GitHub handle will be shown publicly on your Stax Card.</p>
+    <div class="githubconfirmactions"><button class="btn2" id="githubconfirmcancel" type="button">CANCEL</button><button class="btn2 pri" id="githubconfirmsubmit" type="button">ADD GITHUB</button></div>
+  </div>
+</div>
 
 <div class="modal" id="modal">
   <span class="mclose" id="mclose">✕ CLOSE</span>
@@ -558,6 +579,9 @@ const SH='rgba(0,0,0,.5)', DX=5, DY=6, RX=7, GAP=8;
 let UID=0;
 const C={orange:'#F0641E',violet:'#7C6CF6',lime:'#C9F24C',teal:'#2BD4C0',yellow:'#FFC93D',
   blue:'#AECDE0',ink:'#1E1E25',cream:'#F4F0E6',brand:'#FF5A1F'};
+const SOCIAL_ICONS={
+  github:'M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12',
+};
 const F=s=>Math.max(8.5,s);
 /* persona ink helper: family colour -> dark text pair */
 const INKMAP={'#F0641E':['#2A1608','rgba(42,22,8,.6)','rgba(42,22,8,.66)'],
@@ -589,7 +613,7 @@ function setActionTheme(color){
 const MASON={team:['CLAUDE','claude'],n1:'MAD',n2:'Inventor',handle:'@mason',family:'HACKERS',fam:'#F0641E',art:'inv',
   type:'EILW',axes:[['EXPLORER','ARCHITECT','#7C6CF6',8],['MAKER','INFRA','#2BD4C0',3],['LARK','OWL','#C9F24C',7],['WOLF','HOARDER','#FFC93D',8]],
   band:[6,13],peakH:9,bird:'LARK 71%',peakLabel:'PEAK 09:00',basicLbl:'DAYS · ON TAKU',basicVal:'214',
-  badges:['TOKEN TYCOON','FLOW STATE']};
+  social:{github:''},badges:['TOKEN TYCOON','FLOW STATE']};
 let PD=MASON;
 function rr(w,h,rx=RX){return `M${rx},0 H${w-rx} Q${w},0 ${w},${rx} V${h-rx} Q${w},${h} ${w-rx},${h} H${rx} Q0,${h} 0,${h-rx} V${rx} Q0,0 ${rx},0 Z`;}
 function svgWrap(w,h,inner){return `<svg width="${w+13}" height="${h+14}" viewBox="-4 -4 ${w+13} ${h+14}">${inner}</svg>`;}
@@ -969,6 +993,16 @@ R.qr=(w,h)=>{
     `<text x="${w/2}" y="${h*0.92}" text-anchor="middle" font-family="Space Mono" font-size="${F(h*0.027)}" fill="rgba(255,255,255,.42)">${safeText(url)}</text>`;
   return svgWrap(w,h,artwork)+
     LBL('left:14px','top:11px','SCAN MY STAX','rgba(255,255,255,.55)',h*0.052);
+};
+R.social=(w,h)=>{
+  const social=PD.social&&typeof PD.social==='object'?PD.social:{};
+  const github=String(social.github||'').trim().replace(/^@+/, '');
+  const account=github||'NOT CONNECTED';
+  const iconSize=h*0.22;
+  return svgWrap(w,h,shadowed(rr(w,h),C.ink))+
+    LBL('left:15px','top:13px','FIND ME','rgba(255,255,255,.5)',h*0.088)+
+    `<div class="ct" style="left:15px;top:${h*0.42}px;width:${iconSize}px;height:${iconSize}px"><svg viewBox="0 0 24 24" width="100%" height="100%" fill="rgba(255,255,255,.92)" style="display:block"><path d="${SOCIAL_ICONS.github}"/></svg></div>`+
+    `<div class="ct" style="left:15px;right:12px;bottom:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:${SM};font-size:${F(h*0.13)}px;letter-spacing:.01em;color:rgba(255,255,255,.88)">${safeText(account)}</div>`;
 };
 /* ============ 03 CHARTS (all legacy, fixed) ============ */
 /* BARS: single-line label/value layout with a shared center line. */
@@ -1657,7 +1691,7 @@ const U=104,PCOLS=8,PROWS=6;
 const pboard=document.getElementById('pboard');
 const pghost=document.getElementById('pghost');
 const placedP=[];
-const SIZES={hero:[4,2],team:[2,1],type:[2,2],basic:[1,1],seal:[2,2],qr:[2,2],tier1:[1,1],bars90:[2,1],pie:[2,2],modelcost:[2,2],cgauge:[2,2],rings:[2,2],ctxring:[1,1],clock:[2,2],heat:[2,2],dots:[2,1],vsavg:[2,1],trend:[1,1],tally:[2,1],dial:[2,1],wave:[2,1],peaks:[2,1],halfl:[1,2],halfr:[1,2],badges:[2,1],tools:[2,2],stadium:[2,1],knock:[1,1],bracket:[1,1],water:[1,2],aura:[1,1],ratio:[2,1],tier4:[1,1],node:[2,2],splitring:[2,1]};
+const SIZES={hero:[4,2],team:[2,1],type:[2,2],basic:[1,1],seal:[2,2],qr:[2,2],social:[1,1],tier1:[1,1],bars90:[2,1],pie:[2,2],modelcost:[2,2],cgauge:[2,2],rings:[2,2],ctxring:[1,1],clock:[2,2],heat:[2,2],dots:[2,1],vsavg:[2,1],trend:[1,1],tally:[2,1],dial:[2,1],wave:[2,1],peaks:[2,1],halfl:[1,2],halfr:[1,2],badges:[2,1],tools:[2,2],stadium:[2,1],knock:[1,1],bracket:[1,1],water:[1,2],aura:[1,1],ratio:[2,1],tier4:[1,1],node:[2,2],splitring:[2,1]};
 const RK={clock:'burst'};
 /* mini tray variants: graphics only, never blank */
 const MINI={
@@ -2452,14 +2486,44 @@ function blobToDataUrl(blob){
     reader.readAsDataURL(blob);
   });
 }
-async function captureCurrentStaxCardImageDataUrl(){
-  const payload=previewCardExportPayload(2);
-  const response=await fetch('/api/export/png',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,filename:'taku-stax-share.png'})});
+async function renderExportPayloadInBrowser(payload){
+  if(document.fonts&&document.fonts.ready)await document.fonts.ready;
+  const width=Math.max(1,Math.floor(Number(payload.width)||940));
+  const height=Math.max(1,Math.floor(Number(payload.height)||796));
+  const scale=Math.max(1,Math.min(4,Number(payload.scale)||1));
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('xmlns','http://www.w3.org/2000/svg');
+  svg.setAttribute('width',String(width));svg.setAttribute('height',String(height));
+  svg.setAttribute('viewBox','0 0 '+width+' '+height);
+  const foreign=document.createElementNS('http://www.w3.org/2000/svg','foreignObject');
+  foreign.setAttribute('width','100%');foreign.setAttribute('height','100%');
+  const host=document.createElement('div');host.setAttribute('xmlns','http://www.w3.org/1999/xhtml');
+  host.style.cssText='width:'+width+'px;height:'+height+'px;margin:0;overflow:hidden;background:#09090d';
+  const style=document.createElement('style');style.textContent=String(payload.styles||'');host.appendChild(style);
+  const template=document.createElement('template');template.innerHTML=String(payload.cardHtml||'');
+  host.appendChild(template.content.cloneNode(true));foreign.appendChild(host);svg.appendChild(foreign);
+  const source=new XMLSerializer().serializeToString(svg);
+  const imageUrl='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(source);
+  const image=await new Promise((resolve,reject)=>{
+    const next=new Image();next.onload=()=>resolve(next);next.onerror=()=>reject(new Error('PNG RENDER FAILED'));next.src=imageUrl;
+  });
+  const canvas=document.createElement('canvas');canvas.width=Math.round(width*scale);canvas.height=Math.round(height*scale);
+  const context=canvas.getContext('2d');if(!context)throw new Error('PNG CANVAS UNAVAILABLE');
+  context.drawImage(image,0,0,canvas.width,canvas.height);
+  return await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('PNG ENCODE FAILED')),'image/png'));
+}
+async function createExportPngBlob(payload){
+  if(window.parent!==window&&typeof window.__TAKU_STAX_POST__==='function')return renderExportPayloadInBrowser(payload);
+  const response=await fetch('/api/export/png',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   if(!response.ok){
     const result=await response.json().catch(()=>({}));
     throw new Error(result.error||'PNG EXPORT FAILED');
   }
-  return blobToDataUrl(await response.blob());
+  return response.blob();
+}
+async function captureCurrentStaxCardImageDataUrl(){
+  const payload=previewCardExportPayload(2);
+  return blobToDataUrl(await createExportPngBlob({...payload,filename:'taku-stax-share.png'}));
 }
 async function currentStaxCardSnapshot(){
   return {

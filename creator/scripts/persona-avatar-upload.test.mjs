@@ -78,6 +78,17 @@ test('publishes the local Persona avatar that matches the scanned Persona code',
       response.end(JSON.stringify({ error: 'Not found' }));
       return;
     }
+    if (request.method === 'GET' && request.url === '/stax/studio/cards/me') {
+      response.end(JSON.stringify({
+        ok: true,
+        data: { saveContract: 'revision-v1', draft: null },
+      }));
+      return;
+    }
+    if (request.method === 'PUT' && request.url === '/stax/studio/cards/me') {
+      response.end(JSON.stringify({ ok: true, data: { draft: { revision: 1 } } }));
+      return;
+    }
     if (request.method === 'POST' && request.url === '/stax/cards/import-inventory') {
       let body = '';
       for await (const chunk of request) body += chunk;
@@ -127,6 +138,8 @@ test('publishes the local Persona avatar that matches the scanned Persona code',
       'POST /profile/avatar/signed-upload',
       'PUT /avatar-upload',
       'GET /stax/cards/me',
+      'GET /stax/studio/cards/me',
+      'PUT /stax/studio/cards/me',
       'POST /stax/cards/import-inventory',
     ]);
   } finally {
@@ -162,6 +175,17 @@ test('publishes Stax when a local Persona avatar exists but the publisher token 
     if (request.method === 'GET' && request.url === '/stax/cards/me') {
       response.statusCode = 404;
       response.end(JSON.stringify({ error: 'Not found' }));
+      return;
+    }
+    if (request.method === 'GET' && request.url === '/stax/studio/cards/me') {
+      response.end(JSON.stringify({
+        ok: true,
+        data: { saveContract: 'revision-v1', draft: null },
+      }));
+      return;
+    }
+    if (request.method === 'PUT' && request.url === '/stax/studio/cards/me') {
+      response.end(JSON.stringify({ ok: true, data: { draft: { revision: 1 } } }));
       return;
     }
     if (request.method === 'POST' && request.url === '/stax/cards/import-inventory') {
@@ -211,6 +235,8 @@ test('publishes Stax when a local Persona avatar exists but the publisher token 
     assert.deepEqual(calls.map((call) => `${call.method} ${call.url}`), [
       'GET /stax/profile',
       'GET /stax/cards/me',
+      'GET /stax/studio/cards/me',
+      'PUT /stax/studio/cards/me',
       'POST /stax/cards/import-inventory',
     ]);
   } finally {
