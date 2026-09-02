@@ -1,7 +1,7 @@
 {
   "name": "taku-publisher",
-  "version": "0.3.8",
-  "description": "Generate a Stax Card, select recent Codex and Claude Code projects, and publish them through a safe Skill/SubApp queue.",
+  "version": "0.3.12",
+  "description": "Authorize first, generate a private cloud Stax Card draft, and publish selected Codex and Claude Code projects safely.",
   "author": {
     "name": "Taku",
     "url": "https://taku.ai/"
@@ -20,7 +20,7 @@
   "interface": {
     "displayName": "Taku Publisher",
     "shortDescription": "Create a Stax Card and import AI coding projects.",
-    "longDescription": "Generate an editable Stax Card, discover recent Codex and Claude Code workspaces from local metadata, let creators select Skill or SubApp targets, and process each project safely without delaying the card.",
+    "longDescription": "Confirm the Taku account before scanning, save an editable private Stax Card draft to Taku Cloud Studio, discover recent Codex and Claude Code workspaces from local metadata, and process selected Skill or SubApp targets safely.",
     "developerName": "Taku",
     "category": "Productivity",
     "websiteURL": "https://taku.ai/",
@@ -28,6 +28,7 @@
     "termsOfServiceURL": "https://taku.ai/terms",
     "capabilities": [
       "Local discovery",
+      "Private cloud Stax Card drafts",
       "Codex and Claude Code project import",
       "Repository to SubApp conversion",
       "Repository to Skill conversion",

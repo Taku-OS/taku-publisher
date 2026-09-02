@@ -11,6 +11,7 @@ export const STAX_BLOCK_KEYS = [
   'basic',
   'seal',
   'qr',
+  'social',
   'bars90',
   'pie',
   'modelcost',
@@ -162,6 +163,14 @@ export function buildStaxBlocks(draft = {}) {
   const qrTarget = String(draft.card?.qrTarget || '').trim().toLowerCase() === 'profile'
     ? 'profile'
     : 'stax';
+  const profileSocial = publicSocialProfiles(staxProfile);
+  const confirmedSocial = publicSocialProfiles({ social: draft.card?.confirmedSocial });
+  const social = { ...confirmedSocial, ...profileSocial };
+  const socialCandidate = publicSocialProfiles({ social: draft.socialCandidates });
+  const pendingSocialCandidate = !(social.x || social.github) && socialCandidate.github;
+  const socialSource = profileSocial.x || profileSocial.github
+    ? 'server.profile'
+    : 'publisher.confirmed_social';
   const family = clean(staxProfile.family || persona.family || familyForPersonaCode(persona.code), 80);
   const tokens90d = tokenBuckets(dailyHeatmap, 12);
   const observedTokenBucketCount = tokens90d.filter((value) => Number(value) > 0.02).length;
@@ -208,6 +217,15 @@ export function buildStaxBlocks(draft = {}) {
       target: qrTarget,
       username: qrUsername,
     }, 'a public Taku username is required to create a QR code'),
+    social: supportedIf(social.x || social.github, socialSource, social,
+      pendingSocialCandidate
+        ? `detected GitHub @${socialCandidate.github} is waiting for confirmation`
+        : 'public X or GitHub handles are not available from the signed-in Taku profile',
+      'supported', pendingSocialCandidate ? {
+        source: 'publisher.github_candidate',
+        lockLabel: 'ADD GITHUB',
+        lockReason: `Confirm @${socialCandidate.github} before adding it to this Stax Card.`,
+      } : {}),
     bars90: supportedIf(dailyHeatmap.length || totalTokens > 0, 'publisher.local_usage', {
       tokens90d,
       visualBuckets: visualTokenBuckets(tokens90d, tokenBarsNeedDisplayScaffold),
@@ -938,6 +956,78 @@ function aiOption(value) {
     gemini: { id: 'gemini', label: 'GEMINI', icon: 'gemini' },
     codex: { id: 'codex', label: 'CODEX', icon: 'codex' },
   }[family];
+}
+
+function publicSocialProfiles(staxProfile) {
+  const profile = record(staxProfile);
+  const social = firstRecord(
+    profile.social,
+    profile.socials,
+    profile.socialLinks,
+    profile.social_links,
+  );
+  const rows = [
+    ...array(profile.socialLinks),
+    ...array(profile.social_links),
+    ...array(profile.socials),
+    ...array(profile.links),
+  ];
+  const x = socialHandle([
+    social.x,
+    social.twitter,
+    profile.xUsername,
+    profile.x_username,
+    profile.xHandle,
+    profile.x_handle,
+    profile.twitterUsername,
+    profile.twitter_username,
+    profile.twitterHandle,
+    profile.twitter_handle,
+    ...socialRows(rows, ['x', 'twitter']),
+  ], ['x.com', 'twitter.com'], true);
+  const github = socialHandle([
+    social.github,
+    profile.githubUsername,
+    profile.github_username,
+    profile.githubHandle,
+    profile.github_handle,
+    ...socialRows(rows, ['github']),
+  ], ['github.com']);
+  return {
+    ...(x ? { x } : {}),
+    ...(github ? { github } : {}),
+  };
+}
+
+function socialRows(rows, platforms) {
+  const accepted = new Set(platforms);
+  return rows
+    .filter((row) => accepted.has(clean(row?.platform || row?.provider || row?.type, 40).toLowerCase()))
+    .map((row) => row?.username || row?.handle || row?.url);
+}
+
+function socialHandle(values, hostnames, prefixAt = false) {
+  for (const value of values) {
+    const candidate = isRecord(value)
+      ? value.username || value.handle || value.url
+      : value;
+    const text = clean(candidate, 240);
+    if (!text) continue;
+    let username = text;
+    if (/^https?:\/\//i.test(text)) {
+      try {
+        const url = new URL(text);
+        if (!hostnames.includes(url.hostname.toLowerCase().replace(/^www\./, ''))) continue;
+        username = url.pathname.split('/').filter(Boolean)[0] || '';
+      } catch {
+        username = '';
+      }
+    }
+    username = username.replace(/^@+/, '').trim();
+    if (!/^[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,78})$/.test(username)) continue;
+    return prefixAt ? `@${username}` : username;
+  }
+  return '';
 }
 
 function aiFamily(value) {

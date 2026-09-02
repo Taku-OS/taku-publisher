@@ -43,7 +43,8 @@ Publish the tool in this workspace to Taku.
 - Project import first lists recent workspaces from local session metadata. It
   inspects source only after you choose one exact project, then routes it to
   SubApp conversion, existing Skill publishing, or bounded Skill generation.
-- Creator Profile requests create a local editable preview page.
+- Creator Profile requests confirm the Taku account first, then create a private
+  cloud draft and return its durable Studio editing URL.
 - Creator Center requests may ask you to sign in to Taku.
 - Publishing requests scan and package the selected workspace before opening
   the Taku review flow.

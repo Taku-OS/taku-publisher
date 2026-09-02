@@ -849,12 +849,14 @@ function sanitizeStaxCardSnapshot(value) {
     .slice(0, 32);
   if (!blocks.length || !blocks.some((block) => block.key === 'hero')) return undefined;
   const imageDataUrl = sanitizePngDataUrl(raw.imageDataUrl ?? raw.image_data_url);
+  const ogImageDataUrl = sanitizePngDataUrl(raw.ogImageDataUrl ?? raw.og_image_data_url);
   return {
     schemaVersion: 'taku.stax.card-snapshot.v1',
     capturedAt: optionalString(raw.capturedAt ?? raw.captured_at, 80),
     canvas,
     blocks,
     ...(imageDataUrl ? { imageDataUrl } : {}),
+    ...(ogImageDataUrl ? { ogImageDataUrl } : {}),
   };
 }
 

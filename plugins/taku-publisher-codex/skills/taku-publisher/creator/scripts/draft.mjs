@@ -28,6 +28,7 @@ import {
 } from './usage.mjs';
 import { createEmptyEstimatedCostSummary } from './usage-pricing.mjs';
 import { buildStaxBlocks } from './stax-blocks.mjs';
+import { normalizeGitHubUsername } from './social-identity.mjs';
 
 export const DRAFT_SCHEMA = 'taku.creator.draft.v1';
 export const BUILDER_PROFILE_SNAPSHOT_SCHEMA = 'taku.creator.builder-profile-snapshot.v1';
@@ -148,6 +149,7 @@ export function buildDraft(scanResult, toolSelection, creationSelection) {
     },
     personaSignals: scanResult.personaSignals,
     ...(isRecord(scanResult.staxProfile) ? { staxProfile: scanResult.staxProfile } : {}),
+    ...(isRecord(scanResult.socialCandidates) ? { socialCandidates: scanResult.socialCandidates } : {}),
     behaviorProfileV1: scanResult.personaSignals?.behaviorProfileV1 || scanResult.personaSignals?.behaviorProfile,
     personaOverrides: scanResult.personaOverrides || {},
     personaV2: scanResult.personaV2,
@@ -1327,6 +1329,14 @@ function normalizeQrTarget(value, fallback = 'stax') {
   return normalized === 'profile' ? 'profile' : 'stax';
 }
 
+function normalizeConfirmedSocial(value) {
+  const social = isRecord(value) ? value : {};
+  const github = normalizeGitHubUsername(cleanText(social.github, 80));
+  return {
+    ...(github ? { github } : {}),
+  };
+}
+
 function createDefaultCardSettings(input = {}) {
   const primaryAi = normalizePrimaryAiClient(input.primaryAi);
   return {
@@ -1345,11 +1355,13 @@ export function cardSettingsForDraft(draft) {
   const card = isRecord(draft?.card) ? draft.card : {};
   const name = cleanText(card.name || creator.name || creator.displayName, 120);
   const primaryAi = normalizePrimaryAiClient(card.primaryAi);
+  const confirmedSocial = normalizeConfirmedSocial(card.confirmedSocial);
   return {
     ...(name ? { name } : {}),
     avatarUrl: publicHttpUrl(card.avatarUrl || creator.avatarUrl),
     ...(primaryAi ? { primaryAi } : {}),
     qrTarget: normalizeQrTarget(card.qrTarget),
+    ...(Object.keys(confirmedSocial).length ? { confirmedSocial } : {}),
     showPersonaCode: normalizeBooleanOption(card.showPersonaCode, true),
     showUsage: normalizeBooleanOption(card.showUsage, true),
     showCreatorPageLink: normalizeBooleanOption(card.showCreatorPageLink, true),
@@ -1374,10 +1386,14 @@ export function applyCardSettingsToDraft(draft, input = {}) {
     nextDraft.aiIdentity,
     current.primaryAi,
   );
+  const confirmedSocial = Object.prototype.hasOwnProperty.call(incoming, 'confirmedSocial')
+    ? normalizeConfirmedSocial(incoming.confirmedSocial)
+    : normalizeConfirmedSocial(current.confirmedSocial);
   const settings = {
     ...(avatarUrl ? { avatarUrl } : {}),
     ...(primaryAi ? { primaryAi } : {}),
     qrTarget: normalizeQrTarget(incoming.qrTarget, current.qrTarget),
+    ...(Object.keys(confirmedSocial).length ? { confirmedSocial } : {}),
     showPersonaCode: normalizeBooleanOption(incoming.showPersonaCode, current.showPersonaCode),
     showUsage: normalizeBooleanOption(incoming.showUsage, current.showUsage),
     showCreatorPageLink: normalizeBooleanOption(incoming.showCreatorPageLink, current.showCreatorPageLink),
