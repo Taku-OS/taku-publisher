@@ -38,9 +38,14 @@ import {
 } from './draft-state.mjs';
 import {
   buildTakuLoginUrl,
+  readCreatorProfileToken,
   readIconAuthToken,
   readPublishToken,
+  readStudioDraftToken,
+  rememberCreatorCloudDraft,
   resolveSiteUrl,
+  resolveStudioSiteUrl,
+  resolveStudioWorkerUrl,
   resolveWorkerUrl,
 } from './publish-config.mjs';
 import {
@@ -66,7 +71,7 @@ import {
   selectDisplayedCreations,
   selectDisplayedTools,
 } from './draft.mjs';
-import { publishDraftToTaku } from './publish-flow.mjs';
+import { publishDraftToTaku, saveDraftToTakuStudio } from './publish-flow.mjs';
 import {
   createPrivateInventory,
   publicItem,
@@ -93,11 +98,18 @@ import {
   runCreatorCenterUnpublish,
   runCreatorCenterUpdate,
 } from './creator-center.mjs';
-import { compactScanCommandResult } from './host-output.mjs';
+import {
+  compactScanCommandResult,
+  createCloudStudioCommandResult,
+} from './host-output.mjs';
 import {
   detectInvokingAiClient,
   discoverAiClients,
 } from './host-platform.mjs';
+import {
+  detectGitHubIdentity,
+  withGitHubSocialCandidate,
+} from './social-identity.mjs';
 
 const VERSION = '0.2.4';
 const SCAN_SCHEMA = 'taku.creator.scan.v1';
@@ -135,12 +147,13 @@ async function scan(parsed, options = {}) {
         localOnly,
         url: resolveReferencePricingUrl(parsed),
       });
-  const [localCreatorMetrics, workerCreatorMetrics, creatorProfileResult] = await Promise.all([
+  const [localCreatorMetrics, workerCreatorMetrics, creatorProfileResult, githubIdentity] = await Promise.all([
     loadCreatorMetrics(parsed),
     localOnly ? Promise.resolve(null) : fetchCreatorMetricsFromWorker(parsed),
     localOnly
       ? Promise.resolve({ profile: null, warning: undefined })
       : fetchCreatorProfileForScan(parsed),
+    detectGitHubIdentity(),
   ]);
   const creatorProfile = creatorProfileResult?.profile || null;
   const staxProfile = creatorProfileResult?.staxProfile || null;
@@ -196,7 +209,7 @@ async function scan(parsed, options = {}) {
     claudeConfigDir: process.env.CLAUDE_CONFIG_DIR,
     usageSources: usage.sources,
   });
-  const result = {
+  const result = withGitHubSocialCandidate({
     schemaVersion: SCAN_SCHEMA,
     generatedAt: new Date().toISOString(),
     privacy: {
@@ -206,6 +219,7 @@ async function scan(parsed, options = {}) {
       sourceContentUploaded: false,
       envVarsUploaded: false,
       tokensUploaded: false,
+      githubTokenRead: false,
       localPathsIncluded: false,
     },
     ...(creatorProfile ? { creatorProfile } : {}),
@@ -250,7 +264,7 @@ async function scan(parsed, options = {}) {
       defaultAiClient: aiIdentity.defaultClient,
       availableAiClients: aiIdentity.options.map((item) => item.id),
     },
-  };
+  }, githubIdentity);
   if (options.includePrivateInventory) {
     Object.defineProperty(result, '__privateInventory', {
       value: createPrivateInventory([...used.tools, ...ownedCreations]),
@@ -261,7 +275,7 @@ async function scan(parsed, options = {}) {
 }
 
 async function fetchCreatorProfileForScan(parsed) {
-  const token = readPublishToken(parsed);
+  const token = readCreatorProfileToken(parsed);
   if (!token) return { profile: null, warning: 'Taku account profile skipped: missing local Creator Profile authorization.' };
   try {
     const result = await fetchTakuCreatorProfile({
@@ -328,14 +342,27 @@ async function createDraftResult(parsed) {
 }
 
 async function runDraft(parsed) {
-  const result = await createDraftResult(parsed);
+  const cloudParsed = hasFlag(parsed, 'editor') && !hasFlag(parsed, 'local-editor')
+    ? withStudioWorker(parsed)
+    : parsed;
+  const result = await createDraftResult(cloudParsed);
   if (hasFlag(parsed, 'editor')) {
-    if (!hasFlag(parsed, 'foreground-editor')) {
-      return startDetachedEditorServer(parsed, result);
+    if (hasFlag(parsed, 'local-editor')) {
+      if (!hasFlag(parsed, 'foreground-editor')) {
+        return startDetachedEditorServer(parsed, result);
+      }
+      return startEditorServer(parsed, result);
     }
-    return startEditorServer(parsed, result);
+    return saveDraftResultToCloudStudio(cloudParsed, result);
   }
   return result;
+}
+
+function withStudioWorker(parsed) {
+  const flags = new Map(parsed.flags);
+  flags.set('worker-url', resolveStudioWorkerUrl(parsed));
+  flags.set('site-url', resolveStudioSiteUrl(parsed));
+  return { ...parsed, flags };
 }
 
 async function startDetachedEditorServer(parsed, draftResult) {
@@ -416,6 +443,7 @@ async function readDraft(filePath) {
 }
 
 async function runEditor(parsed) {
+  const editorParsed = hasFlag(parsed, 'local-editor') ? parsed : withStudioWorker(parsed);
   const draftPath = getFlag(parsed, 'draft');
   if (draftPath) {
     const resolvedDraftPath = path.resolve(draftPath);
@@ -424,14 +452,17 @@ async function runEditor(parsed) {
     const previewPath = path.resolve(getFlag(parsed, 'preview') || state?.previewPath || previewPathFor(resolvedDraftPath));
     const toolChoices = state?.toolChoices || fallbackToolChoicesFromDraft(draft);
     const creationChoices = state?.creationChoices || fallbackCreationChoicesFromDraft(draft);
-    ({ draft } = await hydrateDraftListingDrafts(parsed, draft, toolChoices, {
+    ({ draft } = await hydrateDraftListingDrafts(editorParsed, draft, toolChoices, {
       includeStoredDrafts: hasFlag(parsed, 'reuse-listing-drafts'),
       persist: true,
     }));
+    if (!draft.socialCandidates?.github?.username) {
+      draft = withGitHubSocialCandidate(draft, await detectGitHubIdentity());
+    }
     draft = refreshBuilderProfileSnapshot(draft);
     await writeJson(resolvedDraftPath, draft);
     await writeText(previewPath, renderPreview({ ...draft, __toolChoices: toolChoices, __creationChoices: creationChoices }, READONLY_PREVIEW_OPTIONS));
-    return startEditorServer(parsed, {
+    const result = {
       ok: true,
       schemaVersion: 'taku.creator.draft-result.v1',
       draftPath: resolvedDraftPath,
@@ -442,10 +473,68 @@ async function runEditor(parsed) {
       toolChoices,
       creationChoices,
       draft,
-    });
+    };
+    return hasFlag(parsed, 'local-editor')
+      ? startEditorServer(parsed, result)
+      : saveDraftResultToCloudStudio(editorParsed, result);
   }
-  const result = await createDraftResult(parsed);
-  return startEditorServer(parsed, result);
+  const result = await createDraftResult(editorParsed);
+  return hasFlag(parsed, 'local-editor')
+    ? startEditorServer(parsed, result)
+    : saveDraftResultToCloudStudio(editorParsed, result);
+}
+
+async function saveDraftResultToCloudStudio(parsed, draftResult) {
+  const draftPath = path.resolve(draftResult.draftPath);
+  const workerUrl = resolveWorkerUrl(parsed);
+  const siteUrl = resolveSiteUrl(parsed);
+  const token = readStudioDraftToken(parsed);
+  if (!token) {
+    return {
+      ok: false,
+      schemaVersion: 'taku.creator.editor-result.v1',
+      needsAuth: true,
+      primaryAction: 'sign_in_for_cloud_studio',
+      loginUrl: buildTakuLoginUrl(parsed, {
+        intent: 'publish_stax_card',
+        accountMode: 'confirm',
+      }),
+      draftPath,
+      message: 'Sign in to Taku first, then run the command again. The local draft has been kept.',
+    };
+  }
+
+  const privateState = await readPrivateState(draftPath);
+  const privateInventory = draftResult.privateInventory || privateState?.privateInventory;
+  const saved = await saveDraftToTakuStudio({
+    draft: draftResult.draft,
+    privateInventory,
+    workerUrl,
+    token,
+    siteUrl,
+    context: createPublishContext(),
+  });
+  if (!saved.ok) {
+    return {
+      ...saved,
+      schemaVersion: 'taku.creator.editor-result.v1',
+      draftPath,
+      primaryAction: 'retry_cloud_studio_sync',
+      message: saved.error || 'The private cloud Studio draft could not be created.',
+    };
+  }
+
+  if (saved.draft) await writeJson(draftPath, saved.draft);
+  rememberCreatorCloudDraft({
+    draftPath,
+    workerUrl,
+    siteUrl,
+    accountHint: saved.accountHint,
+  });
+  return createCloudStudioCommandResult(saved.draft || draftResult.draft, saved.studioUrl, {
+    workerUrl,
+    accountHint: saved.accountHint,
+  });
 }
 
 async function runPublish(parsed) {
@@ -491,8 +580,8 @@ function printUsage() {
   node scripts/taku_creator.mjs doctor --json
   node scripts/taku_creator.mjs scan --json [--compact] [--workspace <dir>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal] [--persona-tone brainrot] [--persona-rules <json>] [--creator-metrics <json>] [--fetch-creator-stats] [--include-github-metrics] [--include-prompt-style]
   node scripts/taku_creator.mjs ai-setup --json [--workspace <dir>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal]
-  node scripts/taku_creator.mjs draft --json [--editor] [--foreground-editor] [--workspace <dir>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal] [--persona-tone brainrot] [--persona-rules <json>] [--creator-metrics <json>] [--fetch-creator-stats] [--include-github-metrics] [--include-prompt-style] [--tool-limit <n>] [--display-tools <ids,names,or indexes>] [--hide-tools <ids,names,or indexes>] [--creation-limit <n>] [--display-creations <ids,names,or indexes>] [--hide-creations <ids,names,or indexes>] [--reuse-listing-drafts] [--worker-url <url>] [--site-url <url>] [--output <file>]
-  node scripts/taku_creator.mjs editor --json [--draft <file>] [--workspace <dir>] [--port <port>] [--site-url <url>] [--worker-url <url>] [--reuse-listing-drafts]
+  node scripts/taku_creator.mjs draft --json [--editor] [--local-editor] [--foreground-editor] [--workspace <dir>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal] [--persona-tone brainrot] [--persona-rules <json>] [--creator-metrics <json>] [--fetch-creator-stats] [--include-github-metrics] [--include-prompt-style] [--tool-limit <n>] [--display-tools <ids,names,or indexes>] [--hide-tools <ids,names,or indexes>] [--creation-limit <n>] [--display-creations <ids,names,or indexes>] [--hide-creations <ids,names,or indexes>] [--reuse-listing-drafts] [--worker-url <url>] [--site-url <url>] [--output <file>]
+  node scripts/taku_creator.mjs editor --json [--draft <file>] [--workspace <dir>] [--local-editor] [--port <port>] [--site-url <url>] [--worker-url <url>] [--reuse-listing-drafts]
   node scripts/taku_creator.mjs publish --json --draft <file> [--worker-url <url>] [--site-url <url>]
   node scripts/taku_creator.mjs center-list --json [--type <type>] [--status <status>] [--search <text>] [--limit <n>] [--offset <n>]
   node scripts/taku_creator.mjs center-show --json --item-id <id>

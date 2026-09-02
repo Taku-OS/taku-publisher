@@ -376,10 +376,15 @@ export class TakuStaxClient {
     const result = await this.fetchJson(path, init, options);
     if (!result.parsedJson) {
       const preview = result.rawText.slice(0, 160).replace(/\s+/g, ' ').trim();
-      throw new Error(`Expected JSON from ${path}, got ${result.response.status} ${result.response.statusText}: ${preview}`);
+      const error = new Error(`Expected JSON from ${path}, got ${result.response.status} ${result.response.statusText}: ${preview}`);
+      error.status = result.response.status;
+      throw error;
     }
     if (!result.response.ok) {
-      throw new Error(result.data?.error || result.data?.message || `HTTP ${result.response.status}`);
+      const error = new Error(result.data?.error || result.data?.message || `HTTP ${result.response.status}`);
+      error.status = result.response.status;
+      error.data = result.data;
+      throw error;
     }
     return result.data;
   }
@@ -466,6 +471,25 @@ export class TakuStaxClient {
     return await this.requestJson('/stax/cards/import-inventory', {
       method: 'POST',
       body: JSON.stringify(body),
+    }, { token: this.requireToken() });
+  }
+
+  async getMyStudioDraft() {
+    return await this.requestJson('/stax/studio/cards/me', {
+      method: 'GET',
+    }, { token: this.requireToken() });
+  }
+
+  async saveMyStudioDraft(body) {
+    return await this.requestJson('/stax/studio/cards/me', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }, { token: this.requireToken() });
+  }
+
+  async publishMyStudioDraft() {
+    return await this.requestJson('/stax/studio/cards/me/publish', {
+      method: 'POST',
     }, { token: this.requireToken() });
   }
 }

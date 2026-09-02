@@ -7,6 +7,7 @@ export const STAGING_WORKER_URL = 'https://taku-workers-staging.takuos.workers.d
 export const DEFAULT_WORKER_URL = 'https://worker.taku.ai';
 export const DEFAULT_SITE_URL = 'https://taku.ai';
 export const STAX_CREATOR_PUBLISH_CONTRACT_VERSION = 'taku.stax.creator-publish.2026-06-19';
+export const CREATOR_CLOUD_DRAFT_STATE_SCHEMA = 'taku.publisher.creator-cloud-draft.v1';
 
 const TRUSTED_WORKER_HOSTNAMES = new Set([
   'worker.taku.ai',
@@ -54,8 +55,8 @@ function assertTrustedWorkerUrl(workerUrl, parsed) {
   );
 }
 
-export function resolveWorkerUrl(parsed) {
-  const explicitWorkerUrl = trimUrl(
+function resolveConfiguredWorkerUrl(parsed) {
+  return trimUrl(
     getFlag(parsed, 'worker-url')
     || process.env.TAKU_WORKER_URL
     || process.env.VITE_WORKER_URL
@@ -63,6 +64,10 @@ export function resolveWorkerUrl(parsed) {
     || process.env.NEXT_PUBLIC_WORKER_URL
     || ''
   );
+}
+
+export function resolveWorkerUrl(parsed) {
+  const explicitWorkerUrl = resolveConfiguredWorkerUrl(parsed);
   if (explicitWorkerUrl) {
     assertTrustedWorkerUrl(explicitWorkerUrl, parsed);
     return explicitWorkerUrl;
@@ -75,19 +80,49 @@ export function resolveWorkerUrl(parsed) {
   return workerUrl;
 }
 
-export function resolveSiteUrl(parsed) {
+export function resolveStudioWorkerUrl(parsed) {
+  const explicitWorkerUrl = resolveConfiguredWorkerUrl(parsed);
+  const workerUrl = explicitWorkerUrl || trimUrl(DEFAULT_WORKER_URL);
+  assertTrustedWorkerUrl(workerUrl, parsed);
+  return workerUrl;
+}
+
+function resolveConfiguredSiteUrl(parsed) {
   return trimUrl(
     getFlag(parsed, 'site-url')
     || process.env.TAKU_SITE_URL
     || process.env.TAKU_WEB_URL
     || process.env.NEXT_PUBLIC_SITE_URL
+    || ''
+  );
+}
+
+export function resolveSiteUrl(parsed) {
+  return resolveConfiguredSiteUrl(parsed) || DEFAULT_SITE_URL;
+}
+
+export function resolveStudioSiteUrl(parsed) {
+  return resolveConfiguredSiteUrl(parsed) || DEFAULT_SITE_URL;
+}
+
+export function resolveAuthSiteUrl(parsed) {
+  return trimUrl(
+    getFlag(parsed, 'auth-site-url')
+    || process.env.TAKU_AUTH_SITE_URL
     || DEFAULT_SITE_URL
   );
 }
 
 export function readPublishToken(parsed) {
-  return readAuthorizedTakuToken(parsed, 'creator.card.write')
-    || readAuthorizedTakuToken(parsed, 'publisher.drafts.write');
+  return readAuthorizedTakuToken(parsed, 'creator.card.write');
+}
+
+export function readStudioDraftToken(parsed) {
+  return readAuthorizedTakuToken(parsed, 'creator.studio-draft.write');
+}
+
+export function readCreatorProfileToken(parsed) {
+  return readAuthorizedTakuToken(parsed, 'creator.profile.read');
 }
 
 export function readAuthorizedTakuToken(parsed, requiredScope) {
@@ -198,12 +233,12 @@ export function buildPublisherSessionFromAuthResult(data = {}) {
   );
   const scopes = Array.isArray(data.scopes)
     ? data.scopes.map((scope) => String(scope || '').trim()).filter(Boolean)
-    : ['creator.card.write'];
+    : [];
   const account = normalizePublisherAccount(data.account);
   return {
     ...(accessToken ? { accessToken } : {}),
     expiresAt,
-    scopes: scopes.includes('creator.card.write') ? scopes : [...scopes, 'creator.card.write'],
+    scopes,
     ...(iconToken ? { iconToken, iconExpiresAt } : {}),
     ...(account ? { account } : {}),
     updatedAt: new Date(now).toISOString(),
@@ -281,12 +316,43 @@ function publisherSessionPath() {
   return sessionPath;
 }
 
+export function creatorCloudDraftStatePath() {
+  const root = process.env.TAKU_PUBLISHER_HOME
+    ? path.resolve(process.env.TAKU_PUBLISHER_HOME)
+    : path.join(os.homedir(), '.taku', 'publisher');
+  return path.join(root, 'creator-cloud-draft.json');
+}
+
+export function rememberCreatorCloudDraft(value = {}) {
+  const draftPath = String(value.draftPath || '').trim();
+  const workerUrl = trimUrl(value.workerUrl);
+  const siteUrl = trimUrl(value.siteUrl);
+  if (!draftPath || !workerUrl || !siteUrl) return null;
+  const target = creatorCloudDraftStatePath();
+  const temporary = `${target}.${process.pid}.tmp`;
+  const payload = {
+    schemaVersion: CREATOR_CLOUD_DRAFT_STATE_SCHEMA,
+    draftPath: path.resolve(draftPath),
+    workerUrl,
+    siteUrl,
+    accountHint: String(value.accountHint || '').trim().slice(0, 160) || null,
+    updatedAt: new Date().toISOString(),
+  };
+  fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(temporary, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+  fs.renameSync(temporary, target);
+  return payload;
+}
+
 export function buildTakuLoginUrl(parsed, context = {}) {
-  const siteUrl = resolveSiteUrl(parsed);
+  const siteUrl = resolveAuthSiteUrl(parsed);
   const url = new URL('/profile', siteUrl || DEFAULT_SITE_URL);
   url.searchParams.set('source', 'taku_creator');
   url.searchParams.set('intent', context.intent || 'publish_stax_card');
   url.searchParams.set('worker_url', resolveWorkerUrl(parsed));
+  if (context.accountMode === 'confirm' || context.accountMode === 'switch') {
+    url.searchParams.set('account_mode', context.accountMode);
+  }
   if (context.editorUrl) url.searchParams.set('return_to', context.editorUrl);
   if (context.localAuthChallenge?.state && context.localAuthChallenge?.codeChallenge) {
     url.searchParams.set('auth_flow', 'local_code');

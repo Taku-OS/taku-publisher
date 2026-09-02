@@ -1219,7 +1219,7 @@ export async function startEditorServer(parsed, draftResult) {
       }
 
       if (request.method === 'POST' && requestUrl.pathname === '/api/publish') {
-        const body = await readRequestJson(request);
+        const body = await readRequestJson(request, PUBLISH_REQUEST_BODY_BYTES);
         const staxCardSnapshot = sanitizeStaxCardSnapshot(body.staxCardSnapshot || body.stax_card_snapshot);
         if (staxCardSnapshot) {
           state.draft = applyStaxCardSnapshotToDraft(state.draft, staxCardSnapshot);
@@ -1970,12 +1970,14 @@ function sanitizeStaxCardSnapshot(value) {
     .slice(0, 32);
   if (!blocks.length || !blocks.some((block) => block.key === 'hero')) return null;
   const imageDataUrl = sanitizePngDataUrl(value.imageDataUrl || value.image_data_url);
+  const ogImageDataUrl = sanitizePngDataUrl(value.ogImageDataUrl || value.og_image_data_url);
   return {
     schemaVersion: 'taku.stax.card-snapshot.v1',
     capturedAt: typeof value.capturedAt === 'string' ? value.capturedAt.slice(0, 80) : new Date().toISOString(),
     canvas,
     blocks,
     ...(imageDataUrl ? { imageDataUrl } : {}),
+    ...(ogImageDataUrl ? { ogImageDataUrl } : {}),
   };
 }
 

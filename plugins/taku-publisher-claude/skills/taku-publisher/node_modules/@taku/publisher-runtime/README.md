@@ -10,12 +10,18 @@ included in generated user plugins.
 
 ## Unified creator initialization
 
-`creator-init` returns login state, an editable Stax Card, Creator Profile
-links, and recent Codex/Claude Code projects in one response. Multi-project
+`creator-init` authorizes the Publisher account before the Stax Card scan, saves
+an editable private draft to the production Worker Cloud Studio, and returns
+the durable Studio URL, Creator Profile links, and recent Codex/Claude Code
+projects in one response. Multi-project
 selection is persisted with `creator-plan --select
 <project-id=skill|subapp,...>`. The plan reviews the Stax Card first, then routes
 projects through the existing single-project flows sequentially, so SubApp
 conversion never delays the card.
+
+Cloud Studio requires only `creator.profile.read` and
+`creator.studio-draft.write`; it does not grant public card publishing. The
+legacy loopback editor is available only through explicit `--local-editor`.
 
 ## Codex and Claude Code project import
 

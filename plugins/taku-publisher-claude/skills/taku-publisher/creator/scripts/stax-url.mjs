@@ -42,6 +42,16 @@ export function buildStaxOgImageUrl(siteUrl, username) {
   return `${normalizeStaxPublicSiteOrigin(siteUrl)}/api/og/stax/${encodeURIComponent(slug)}`;
 }
 
+export function buildStaxStudioUrl(siteUrl, options = {}) {
+  const url = new URL('/studio/stax-card', `${normalizeStaxPublicSiteOrigin(siteUrl)}/`);
+  const launchContextId = cleanText(
+    options.launchContextId || options.launch_context_id,
+    240,
+  );
+  if (launchContextId) url.searchParams.set('launch', launchContextId);
+  return url.toString();
+}
+
 export function buildStaxPublishedLinks(siteUrl, resultData) {
   const slug = cleanText(resultData?.username || resultData?.card?.username, 160);
   const profilePageUrl = slug
@@ -53,10 +63,12 @@ export function buildStaxPublishedLinks(siteUrl, resultData) {
   const staxCardImageUrl = slug
     ? buildStaxOgImageUrl(siteUrl, slug)
     : resultData?.staxCardImageUrl || resultData?.card?.staxCardImageUrl;
+  const studioUrl = resultData?.studioUrl || resultData?.studio_url || buildStaxStudioUrl(siteUrl);
   return {
     ...(slug ? { slug } : {}),
     ...(profilePageUrl ? { profilePageUrl, creatorPageUrl: profilePageUrl } : {}),
     ...(staxCardPageUrl ? { staxCardPageUrl, staxCardShareUrl: staxCardPageUrl } : {}),
     ...(staxCardImageUrl ? { staxCardImageUrl } : {}),
+    ...(studioUrl ? { studioUrl } : {}),
   };
 }
