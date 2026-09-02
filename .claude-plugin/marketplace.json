@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "taku-publisher",
-      "description": "Authorize first, create a private cloud Stax Card draft, and publish selected projects safely.",
+      "description": "Generate a Stax Card, choose recent local projects, and publish them through a safe Skill/SubApp queue.",
       "author": {
         "name": "Taku"
       },
