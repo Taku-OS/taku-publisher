@@ -2,8 +2,8 @@
 
 Install Taku Publisher directly from this GitHub marketplace.
 
-Current release: **0.3.12**. It confirms the Taku account before scanning and
-opens the generated Stax Card as a private cloud Studio draft.
+Current release: **0.3.14**. It keeps the 0.3.12 feature set and retries a
+timed-out SubApp dependency prefetch once before stopping runtime validation.
 
 ## Codex
 
