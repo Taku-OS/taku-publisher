@@ -49,6 +49,8 @@ const REQUIRED_COMMANDS = [
   ['build', ['run', 'build']],
 ] as const;
 const PREFETCH_TIMEOUT_MS = 10 * 60_000;
+const PREFETCH_MAX_ATTEMPTS = 2;
+const PREFETCH_RETRY_DELAY_MS = 1_000;
 const MAX_COPY_ENTRIES = 50_000;
 const MAX_COPY_BYTES = 512 * 1024 * 1024;
 const RUNTIME_GENERATED_FILES = ['next-env.d.ts', 'tsconfig.tsbuildinfo'];
@@ -91,13 +93,7 @@ export interface TrustedRuntimeResult {
     profileDigest: string;
     probes: Record<string, string>;
   };
-  dependencyPrefetch: {
-    ok: boolean;
-    exitCode: number | null;
-    timedOut: boolean;
-    stdout: OutputSummary;
-    stderr: OutputSummary;
-  };
+  dependencyPrefetch: DependencyPrefetchEvidence;
   commands: TrustedRuntimeCommandEvidence[];
   failurePhase: string | null;
   originalCandidateUnchanged: boolean;
@@ -122,12 +118,34 @@ interface OutputSummary {
   sha256: `sha256:${string}`;
 }
 
-interface ProcessResult {
+export interface ProcessResult {
   exitCode: number | null;
   signal: NodeJS.Signals | null;
   stdout: string;
   stderr: string;
   timedOut: boolean;
+}
+
+export interface DependencyPrefetchAttemptEvidence {
+  attempt: number;
+  ok: boolean;
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+  timedOut: boolean;
+  stdout: OutputSummary;
+  stderr: OutputSummary;
+  diagnostic?: string;
+}
+
+export interface DependencyPrefetchEvidence {
+  ok: boolean;
+  exitCode: number | null;
+  timedOut: boolean;
+  stdout: OutputSummary;
+  stderr: OutputSummary;
+  attemptCount: number;
+  retried: boolean;
+  attempts: DependencyPrefetchAttemptEvidence[];
 }
 
 export async function runTrustedRuntimeValidation(
@@ -180,6 +198,9 @@ export async function runTrustedRuntimeValidation(
     timedOut: false,
     stdout: summarizeOutput(''),
     stderr: summarizeOutput(''),
+    attemptCount: 0,
+    retried: false,
+    attempts: [],
   };
   const commands: TrustedRuntimeCommandEvidence[] = [];
   let buildArtifact: TrustedBuildArtifact | null = null;
@@ -196,28 +217,29 @@ export async function runTrustedRuntimeValidation(
     await assertSafeLockfile(disposableWorkspace);
     await mkdir(dependencyStore, { recursive: true, mode: 0o700 });
 
-    const prefetch = await runProcess(
-      [
-        process.execPath,
-        pnpmCli,
-        'fetch',
-        '--frozen-lockfile',
-        '--ignore-scripts',
-        '--store-dir',
-        dependencyStore,
-        '--registry=https://registry.npmjs.org/',
-      ],
-      disposableWorkspace,
-      trustedEnvironment(runRoot),
-      PREFETCH_TIMEOUT_MS,
+    const prefetchCommand = [
+      process.execPath,
+      pnpmCli,
+      'fetch',
+      '--frozen-lockfile',
+      '--ignore-scripts',
+      '--store-dir',
+      dependencyStore,
+      '--registry=https://registry.npmjs.org/',
+    ];
+    const prefetchAttempts = await runDependencyPrefetchAttempts(
+      () => runProcess(
+        prefetchCommand,
+        disposableWorkspace,
+        trustedEnvironment(runRoot),
+        PREFETCH_TIMEOUT_MS,
+      ),
+      {
+        maxAttempts: PREFETCH_MAX_ATTEMPTS,
+        retryDelayMs: PREFETCH_RETRY_DELAY_MS,
+      },
     );
-    dependencyPrefetch = {
-      ok: prefetch.exitCode === 0 && !prefetch.timedOut && prefetch.signal === null,
-      exitCode: prefetch.exitCode,
-      timedOut: prefetch.timedOut,
-      stdout: summarizeOutput(prefetch.stdout),
-      stderr: summarizeOutput(prefetch.stderr),
-    };
+    dependencyPrefetch = buildDependencyPrefetchEvidence(prefetchAttempts);
     if (!dependencyPrefetch.ok) {
       failurePhase = 'dependency-prefetch';
     } else {
@@ -607,6 +629,74 @@ function runProcess(
       }
     }, timeoutMs);
   });
+}
+
+export async function runDependencyPrefetchAttempts(
+  runAttempt: (attempt: number) => Promise<ProcessResult>,
+  options: { maxAttempts?: number; retryDelayMs?: number } = {},
+): Promise<ProcessResult[]> {
+  const maxAttempts = options.maxAttempts ?? PREFETCH_MAX_ATTEMPTS;
+  const retryDelayMs = options.retryDelayMs ?? PREFETCH_RETRY_DELAY_MS;
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 3) {
+    throw new Error('dependency prefetch attempts must be between 1 and 3');
+  }
+  if (!Number.isInteger(retryDelayMs) || retryDelayMs < 0 || retryDelayMs > 30_000) {
+    throw new Error('dependency prefetch retry delay must be between 0 and 30000 milliseconds');
+  }
+
+  const attempts: ProcessResult[] = [];
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const result = await runAttempt(attempt);
+    attempts.push(result);
+    const passed = result.exitCode === 0 && result.signal === null && !result.timedOut;
+    if (passed || !result.timedOut || attempt === maxAttempts) break;
+    if (retryDelayMs > 0) {
+      await new Promise(resolvePromise => setTimeout(resolvePromise, retryDelayMs));
+    }
+  }
+  return attempts;
+}
+
+export function buildDependencyPrefetchEvidence(
+  attempts: ProcessResult[],
+): DependencyPrefetchEvidence {
+  const finalAttempt = attempts.at(-1);
+  if (!finalAttempt) throw new Error('dependency prefetch must run at least once');
+  return {
+    ok:
+      finalAttempt.exitCode === 0 &&
+      finalAttempt.signal === null &&
+      !finalAttempt.timedOut,
+    exitCode: finalAttempt.exitCode,
+    timedOut: finalAttempt.timedOut,
+    stdout: summarizeOutput(finalAttempt.stdout),
+    stderr: summarizeOutput(finalAttempt.stderr),
+    attemptCount: attempts.length,
+    retried: attempts.length > 1,
+    attempts: attempts.map((attempt, index) =>
+      dependencyPrefetchAttemptEvidence(attempt, index + 1),
+    ),
+  };
+}
+
+function dependencyPrefetchAttemptEvidence(
+  result: ProcessResult,
+  attempt: number,
+): DependencyPrefetchAttemptEvidence {
+  const ok = result.exitCode === 0 && result.signal === null && !result.timedOut;
+  const diagnostic = ok
+    ? ''
+    : sanitizeDiagnostic(`${result.stdout}\n${result.stderr}`).slice(-8_000).trim();
+  return {
+    attempt,
+    ok,
+    exitCode: result.exitCode,
+    signal: result.signal,
+    timedOut: result.timedOut,
+    stdout: summarizeOutput(result.stdout),
+    stderr: summarizeOutput(result.stderr),
+    ...(diagnostic ? { diagnostic } : {}),
+  };
 }
 
 function commandEvidence(
