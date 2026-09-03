@@ -1,22 +1,18 @@
 ---
 name: taku-publisher
-description: Discover recent Codex and Claude Code projects, route a selected local project to Taku SubApp conversion, existing Skill publishing, or bounded Skill generation; generate a Taku Stax Card or AI Builder Profile; assess and convert an existing local App or GitHub repository into a Taku SubApp; safely package and publish one installable Taku Skill; manage Creator Center items; and search or install compatible Marketplace items. Public SubApp release remains a separate unsupported confirmation phase.
+description: Discover recent Codex and Claude Code projects or public repositories owned by the creator's Taku-connected GitHub account, route a selected project to Taku SubApp conversion, existing Skill publishing, or bounded Skill generation; generate a Taku Stax Card or AI Builder Profile; assess and convert an existing local App or GitHub repository into a Taku SubApp; safely package and publish one installable Taku Skill; manage Creator Center items; and search or install compatible Marketplace items. Public SubApp release remains a separate unsupported confirmation phase.
 ---
 
 # Taku Publisher
 
 Run every command from this skill directory with `node scripts/taku-publisher.mjs`. Treat CLI JSON as the workflow authority. Parse `ok`, `status`, `requires_action`, and `action_type` before responding.
 
-When the user asks generally to open the Taku Publisher creator workspace without already choosing one exact source, start with `creator-init`. It confirms the Taku Publisher account before scanning, saves an editable private Stax Card draft to Taku Cloud Studio, and returns the durable Studio URL, Creator Profile links, and recent local projects in one response. Present projects as a numbered multi-select list with the recommended `skill` or `subapp` target, then ask which projects to process and whether to accept or change each recommendation.
-
-After the creator selects projects, create one persistent plan with `creator-plan --select <project-id=skill|subapp,...>`. Lead with Stax Card review/publishing, then process selected projects sequentially through the existing single-project import flows. Never make the Stax Card wait for SubApp migration, runtime validation, packaging, or registration. After a project receives an authoritative Taku item identity, offer to sync it into the Stax Card; never expose a selected local project publicly before that point.
-
 In Claude Code or Codex shell calls, always change into the directory that contains this `SKILL.md` in the same command before invoking the CLI, for example `cd <this-skill-directory> && node scripts/taku-publisher.mjs ...`. Never run `node scripts/taku-publisher.mjs ...` from the user's project or workspace directory.
 
 This skill has six product surfaces:
 
 - Project import flow: discover recent Codex and Claude Code workspaces from local session metadata, let the creator select one exact project, assess it locally, and route it to existing Skill publishing, SubApp migration, bounded Skill generation, or reference-only handling.
-- Creator profile flow: confirm the Taku account, scan local AI tooling and behavior, generate the public-safe persona summary, save a private cloud Stax Card / Creator Page draft, and open its durable Worker Studio URL. The local loopback editor is an explicit development fallback only.
+- Creator profile flow: authorize and confirm the Taku account first, then scan local AI tooling and behavior, generate the public-safe persona summary, save an owner-scoped private Stax Card cloud draft, and open the stable Worker-hosted Studio URL.
 - Creator Center flow: list and search the signed-in creator's Taku items, read trusted server-side stats, inspect one owned item, and edit the listing metadata of a private draft.
 - Marketplace consumer flow: search and inspect public community Apps, Skills, Tools, and Bundles; show an install preflight and safely install one compatible confirmed Skill into Codex.
 - Marketplace publisher flow: package and publish one installable Skill with staged files, deterministic scan, semantic review, and remote artifact verification. Action, Agent, and Plugin publishing are not currently available.
@@ -49,10 +45,6 @@ Field translation:
 
 | Internal field / command | Say to the creator |
 |---|---|
-| `creator-init` / `creator_ready` | "Your creator workspace is ready; choose one or more local projects and confirm Skill/SubApp for each." |
-| `creator-init` / `login_required` | "Taku account confirmation did not complete, so I did not start a new Stax Card scan. Finish sign-in and retry." |
-| `creator-plan` / `creator_publish_plan_ready` | "Your publishing plan is ready. Review/publish the Stax Card first; selected projects will continue one at a time." |
-| `creator-plan-next` | "Here is the next Stax Card, Skill, or SubApp step in your publishing plan." |
 | `discover` / `needs_selection` | "I found publishable items; choose which one to publish." |
 | `init` / `draft_id` | "I created a local publishing draft." |
 | `stage` | "I prepared the files that will be reviewed." |
@@ -73,7 +65,10 @@ Field translation:
 | `marketplace-open` / `taku_opened` | "Taku Desktop is open. Confirm the selected App there." |
 | `marketplace-install` / `confirmation_required` | "This Skill is ready to install after you confirm the exact item." |
 | `marketplace-install` / `installed` | "The Skill is installed. Start a new Codex task to use it." |
-| `project-discover` / `project_selection_required` | "I found recent local projects; choose one before I inspect its source." |
+| `project-discover` / `project_selection_required` | "I found recent local projects. Choose one, or choose GitHub to look for another project." |
+| `github-project-discover` / `github_authorization_required` | "I opened GitHub authorization. Finish it in the browser, then tell me to continue." |
+| `github-project-discover` / `github_project_selection_required` | "I found your public GitHub repositories; choose one before I inspect its source." |
+| `github-disconnect` / `github_disconnected` | "I disconnected GitHub from this Taku account." |
 | `project-assess` / `project_route_ready` | "This project has a supported Taku conversion route. Review the proposed route before I prepare anything." |
 | `skill-prepare` / `skill_candidate_prepared` | "I prepared an isolated Skill candidate. The source project was not changed or executed." |
 | `skill-convert` / `skill_agent_handoff_ready` | "The candidate is ready for bounded Skill migration inside the returned editable scope." |
@@ -112,7 +107,8 @@ Examples:
 
 - Publish exactly one Skill per workflow. If discovery finds only an Action, Agent, or Plugin source, explain that its publishing type is not available yet and do not initialize a draft. Treat any existing draft of those unopened types as read-only: status inspection is allowed, but staging, scanning, packaging, metadata changes, and uploads are blocked.
 - Project discovery may inspect only Codex/Claude Code session metadata needed to recover absolute workspace paths and activity times, plus bounded root metadata such as `SKILL.md`, `README.md`, and dependency names for a lightweight route hint. It must not recursively scan source code or summarize, expose, upload, or semantically analyze prompt/message bodies before the creator selects one exact project.
-- Never auto-select a discovered project. Project assessment accepts only one explicit existing absolute local directory; reject filesystem roots, the whole home directory, symlinks, files, and arbitrary URLs.
+- Never auto-select a discovered project or GitHub repository. Project assessment accepts only one explicit existing absolute local directory; reject filesystem roots, the whole home directory, symlinks, files, and arbitrary URLs. Route one repository URL returned by authenticated GitHub discovery through the existing public-GitHub SubApp assessment boundary.
+- GitHub project discovery may read only connection/account state and public repository metadata. Never ask for a GitHub token in chat, never include private repositories, and never imply that choosing a repository publishes, clones, or scans it.
 - Treat project assessment as read-only. Route `existing-skill` to the normal Skill publishing flow, `subapp-migration` to the existing SubApp flow, `skill-generation` to the bounded Skill candidate flow, and `reference-only` to a stop/reference response. Do not reinterpret an unsupported runtime as a Skill merely because it contains code.
 - Skill candidate preparation requires the exact confirmation token from the current eligible project assessment. It may create only one new child under an explicit existing output root, must not modify or execute the source, and must not upload, publish, install, or register anything.
 - Run `skill-convert` only after the creator explicitly asks to start or continue the exact candidate. Read every returned required file, edit only the returned editable scope, keep the source and `.taku` conversion record read-only, and do not copy credentials, environment files, caches, build output, or absolute local paths.
@@ -245,8 +241,45 @@ node scripts/taku-publisher.mjs project-discover --host all
 ```
 
 Show project name, source host, last activity, and the lightweight route hint.
-Do not show raw session paths or content. Ask the creator to choose exactly one
-project and stop until they do. Discovery is not source assessment.
+Do not show raw session paths or content. Also show the returned GitHub source
+as the final numbered choice. Ask the creator to choose exactly one source and
+stop until they do. Discovery is not source assessment.
+
+If the creator chooses GitHub, run:
+
+```bash
+node scripts/taku-publisher.mjs github-project-discover
+```
+
+When the creator asks for "my GitHub projects", "repositories in my GitHub
+account", or otherwise wants to choose one of their own GitHub repositories,
+run `github-project-discover` directly. Do not substitute the host's `gh` CLI,
+local Git credentials, Codex or Claude project history, or public GitHub/Web
+search. Those sources do not test or prove the Taku-connected GitHub account.
+
+When the creator asks to disconnect GitHub or restart the complete sign-in test,
+run `github-disconnect` before `auth-logout`. Disconnecting removes the GitHub
+binding from the current Taku account; logging out then removes only the local
+standalone Publisher session. Do not describe `auth-logout` by itself as a
+GitHub disconnect.
+
+This command may first open Taku sign-in/authorization and then GitHub OAuth.
+GitHub discovery must use the standalone Publisher account and must not inherit
+the Taku Desktop session as a compatibility fallback. `auth-logout` therefore
+switches only the plugin account and leaves Taku Desktop signed in.
+If it returns `github_authorization_required`, ask the creator to finish in the
+browser and reply when ready; then rerun the same command. Once it returns
+`github_project_selection_required`, show a numbered list of repository name,
+description, language, and recent activity. Ask for exactly one choice. Do not
+auto-select, clone, scan, or publish a repository. The current repository list
+contains only public repositories owned by the connected GitHub account.
+
+After one GitHub repository is selected, pass its exact returned HTTPS source
+URL to the existing read-only SubApp assessment flow:
+
+```bash
+node scripts/taku-publisher.mjs subapp-assess --source <selected-github-url>
+```
 
 After selection, assess the exact absolute local directory:
 
@@ -430,47 +463,32 @@ packaged-client App Store installation remain separate later phases.
 Use these commands when the creator asks to generate a Stax Card, AI Builder Profile, builder persona, public creator page, or scan the tools they use:
 
 ```bash
-node scripts/taku-publisher.mjs creator-init [--host codex|claude-code|all] [--max-projects <n>]
-node scripts/taku-publisher.mjs creator-plan --select <project-id=skill|subapp,...> [--host codex|claude-code|all]
-node scripts/taku-publisher.mjs creator-plan-show --plan-id <plan-id>
-node scripts/taku-publisher.mjs creator-plan-next --plan-id <plan-id>
-node scripts/taku-publisher.mjs creator-plan-update --plan-id <plan-id> [--card-status <ready_for_review|published|skipped>] [--project-id <id> --project-status <queued|in_progress|completed|blocked>] [--remote-item-id <id>]
 node scripts/taku-publisher.mjs creator-doctor --json
 node scripts/taku-publisher.mjs creator-scan --json --compact [--workspace <workspace>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal] [--max-usage-files <n>] [--include-creation-candidates] [--include-github-metrics] [--include-prompt-style]
 node scripts/taku-publisher.mjs creator-draft --json --editor [--workspace <workspace>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal] [--include-creation-candidates] [--worker-url <url>] [--site-url <url>]
 node scripts/taku-publisher.mjs creator-editor --json --draft <draft.json> [--worker-url <url>] [--site-url <url>]
-node scripts/taku-publisher.mjs creator-switch-account
 node scripts/taku-publisher.mjs creator-publish --json --draft <draft.json> [--worker-url <url>] [--site-url <url>]
 ```
 
-Use `creator-init` for the first response when the request needs a Stax Card plus local project choices. Show each project name, recommended target, and a note that eligibility is validated after selection. Accept replies such as "1 and 3 as Skill, 2 as SubApp; publish my Stax Card first", map the displayed numbers to project IDs, and create the persistent plan.
-
-For a creator publish plan:
-
-- Treat `projectChoices.recommendedTarget` as a recommendation, not proof of eligibility. Skill selection must still pass `project-assess` and the existing Skill route; SubApp selection must still pass assessment.
-- Once the creator publishes or explicitly skips the Stax Card, record that status and request `creator-plan-next`.
-- Mark only the current project `in_progress`. Run the existing single-project flow and mark it `completed` only after authoritative success; use `blocked` when validation or review stops it.
-- Continue queued projects without delaying the already-published Stax Card/Profile for a long SubApp conversion.
-- Never describe the plan itself as publication. All existing confirmations and authoritative status checks remain required.
-
-Default to `creator-draft --json --editor` for any creator-facing generation request, including "make my Stax Card", "generate persona labels", "generate Creator Profile", "summarize my builder persona", "generate a Creator Profile summary", or similar. The CLI must finish Taku Web account confirmation before it starts that scan. Its default usage window is the recent 90-day local scan; pass `--usage-period thisMonth` only when the creator explicitly asks for this-month stats. The cloud Studio is the only normal user-facing review surface; do not present raw JSON paths, local HTML paths, command names, or `previewPath` / `previewUrl` as the main call to action unless the creator asks for debugging details.
+Default to `creator-draft --json --editor` for any creator-facing generation request, including "make my Stax Card", "generate persona labels", "generate Creator Profile", "summarize my builder persona", "generate a Creator Profile summary", or similar. The CLI must finish Taku Web authorization before it starts the local scan. The default usage window is the recent 90-day local scan; pass `--usage-period thisMonth` only when the creator explicitly asks for this-month stats. Do not present raw JSON paths, local HTML paths, command names, or `previewPath` / `previewUrl` as the main call to action unless the creator asks for debugging details.
 
 Only use `creator-scan --compact` when the creator explicitly asks for a text-only scan/report, says they do not want a preview/editor, or asks for debugging metrics. Keep the compact host result as the default so local paths and scan previews stay out of the model context. If the request could reasonably mean "generate something I can review", use `creator-draft --json --editor`, not `creator-scan`.
 
-After `creator-draft --json --editor`, the CLI must return an `editorUrl` under the trusted Worker Studio route, normally `https://worker.taku.ai/stax/studio/editor?...`. Treat a result without `editorUrl` as a failed Creator Profile draft unless the user explicitly asked for scan-only output. The user-facing next step should be "open this private cloud draft" and include only `editorUrl` for ordinary users. Never replace a missing Worker Studio URL with an LP/Profile page. Mention local `previewUrl` or `previewPath` only as an explicit debugging fallback.
+After `creator-draft --json --editor`, the CLI must save the owner-scoped private draft and return the stable Worker-hosted `editorUrl`, normally `https://worker.taku.ai/stax/studio/editor` after its one-time launch handoff is redeemed. Treat a result without `editorUrl` as a failed Creator Profile draft unless the user explicitly asked for scan-only output. The launch value is an opaque one-time credential; never display or log it as an account token.
 
 For creator profile scans:
 
-- Before a new scan or draft, authorize through Taku Web. Reuse an unexpired scoped Publisher session only when it has `creator.profile.read` and `creator.studio-draft.write`; do not fall back to an unrelated Desktop session.
-- Saving the sanitized result as the creator's private Worker Studio draft is part of generation. It is not public publication and does not grant `creator.card.write`.
+- Before scanning for an editable cloud Stax Card, reuse the valid standalone Publisher session or authorize once through Taku Web. Do not begin the scan while browser authorization is still pending.
+- After authorization, upload only the sanitized owner-scoped private Studio draft. Generation never auto-publishes; public release still requires the creator to click Publish in Studio.
+- Reuse an unexpired Publisher session on later saves without opening another authorization page.
 - Default public tools and works to hidden/unselected. The creator chooses what appears on the Stax Card or Creator Page.
 - Prompt-style/personality badges that read local prompt metadata require explicit opt-in via `--include-prompt-style`; raw prompt text must never be uploaded.
 - Publishing sends only sanitized profile/card fields, public profile snapshot, compact usage summary, and selected public inventory. It must not upload prompts, source content, command arguments, raw logs, env vars, tokens, secrets, or local filesystem paths.
-- The cloud Studio can publish only after a separate, explicit public-card action. It does not require Taku Desktop. If auth is missing, open the provided Web login URL once; never ask the creator to paste tokens into chat or loop through authorization attempts.
-- `creator-switch-account` clears the bound Publisher session, confirms a different Taku account, and saves the existing local draft again without rescanning. Do not regenerate unless the source changed.
-- Use `--local-editor` only when the creator explicitly asks for local development/debugging. The static `.html` preview remains read-only.
+- Cloud Studio opens after Taku Web authorization and does not require Taku Desktop. If auth is missing, open the provided Web login URL and wait before scanning; never ask the creator to paste tokens into chat.
+- Authorization uses the stable Taku Web origin by default, independently of the Studio Worker or editor origin. A loopback authorization site is allowed only through the explicit developer `--auth-site-url` option.
+- The Worker-hosted cloud Studio is the normal review surface while the LP Studio route is unavailable. Its one-time launch handoff must become an HttpOnly owner-scoped Studio session and immediately redirect to the fixed editor URL.
 
-When responding after `creator-draft --editor`, lead with the generated public-facing summary: persona code/title, short persona description, whether tools/works are selected, and the private cloud Studio URL. Keep scan counts secondary and omit local paths unless the creator asks for technical details.
+When responding after `creator-draft --editor`, lead with the generated public-facing summary: persona code/title, short persona description, whether tools/works are selected, the masked `publisherAccountHint`, and the cloud Studio URL. Say naturally that authorization completed before scanning and the private draft belongs to that account. Keep scan counts secondary and omit local paths unless the creator asks for technical details.
 
 ## Creator Center Flow
 

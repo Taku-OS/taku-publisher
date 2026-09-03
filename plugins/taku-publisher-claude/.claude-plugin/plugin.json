@@ -1,7 +1,7 @@
 {
   "name": "taku-publisher",
-  "version": "0.3.14",
-  "description": "Authorize first, generate a private cloud Stax Card draft, and publish selected Codex and Claude Code projects safely.",
+  "version": "0.3.15",
+  "description": "Discover Codex and Claude Code projects, convert them into Taku SubApps or Skills, and safely publish tools.",
   "author": {
     "name": "Taku",
     "url": "https://taku.ai/"

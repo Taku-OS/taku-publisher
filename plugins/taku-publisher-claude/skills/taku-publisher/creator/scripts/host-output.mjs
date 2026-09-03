@@ -64,16 +64,9 @@ export function createCloudStudioCommandResult(draft = {}, studioUrl = '', extra
       publisherAccountHint: accountHint,
       savedToAccount: accountHint,
     } : {}),
-    switchAccount: {
-      supported: true,
-      actionType: 'switch_taku_account_and_resave_local_draft',
-      command: 'creator-switch-account',
-      reusesLocalDraft: true,
-      rescansWorkspace: false,
-    },
     message: accountHint
-      ? `The private Studio draft was saved to Taku account ${accountHint}. Open editorUrl to review it, or switch accounts without regenerating the card.`
-      : 'The private Studio draft was saved to the selected Taku account. Open editorUrl to review it, or switch accounts without regenerating the card.',
+      ? `The private Studio draft was saved to Taku account ${accountHint}. Open editorUrl to review it.`
+      : 'The private Studio draft was saved to the current Taku account. Open editorUrl to review it.',
   };
 }
 

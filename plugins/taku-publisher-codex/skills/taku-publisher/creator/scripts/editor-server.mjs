@@ -73,7 +73,8 @@ const EXPORT_PNG_MAX_REQUEST_BODY_BYTES = 24 * 1024 * 1024;
 const EXPORT_PNG_TIMEOUT_MS = 90000;
 const ICON_GENERATE_TIMEOUT_MS = 60000;
 export const LISTING_ICON_GENERATE_PATH = '/marketplace/icons/generate';
-export const LOCAL_AUTH_REDEEM_PATH = '/marketplace/local-auth/redeem';
+const LOCAL_CODE_REDEEM_PATH = '/marketplace/local-auth/redeem';
+export const LOCAL_AUTH_REDEEM_PATH = LOCAL_CODE_REDEEM_PATH;
 
 function base64Url(buffer) {
   return Buffer.from(buffer)
@@ -544,8 +545,8 @@ export async function startEditorServer(parsed, draftResult) {
           sendJsonResponse(response, { ok: false, error: 'Missing export payload.' }, 400);
           return;
         }
-        const width = clampInteger(body.width, 320, 2400, 940);
-        const height = clampInteger(body.height, 240, 2400, 796);
+        const width = clampInteger(body.width, 320, 2400, 980);
+        const height = clampInteger(body.height, 240, 2400, 660);
         const scale = clampInteger(body.scale, 1, 4, 2);
         const filename = sanitizeDownloadFilename(body.filename || 'taku-stax.png');
         const png = await renderExportPngWithChrome({
@@ -1723,9 +1724,26 @@ function isListingReady(listing, options = {}) {
   );
 }
 
+function selectedCommunityToolsFromDraft(draft) {
+  const stats = isRecord(draft?.stats) ? draft.stats : {};
+  const sectionTools = getDraftSectionItemsByCanonicalId(draft, 'creator-tools');
+  const hasExplicitSelection = Object.hasOwn(stats, 'creatorToolIds')
+    || stats.creatorToolSelectionMode === 'custom'
+    || stats.creatorToolSelectionMode === 'default-none';
+  const selectedIds = new Set(
+    hasExplicitSelection
+      ? (Array.isArray(stats.creatorToolIds) ? stats.creatorToolIds : [])
+      : sectionTools.filter((tool) => tool?.selected === true).map((tool) => tool?.id),
+  );
+  return sectionTools.filter((tool) =>
+    typeof tool?.id === 'string'
+    && selectedIds.has(tool.id)
+    && isCommunityPublishCandidate(tool)
+  );
+}
+
 function isSelectedCommunityTool(draft, toolId) {
-  return getDraftSectionItemsByCanonicalId(draft, 'creator-tools')
-    .some((tool) => tool?.id === toolId);
+  return selectedCommunityToolsFromDraft(draft).some((tool) => tool.id === toolId);
 }
 
 export function communitySkillPublishError(error) {
@@ -1748,7 +1766,7 @@ export async function prepareCommunitySkillsForPublish({
   iconToken,
   generateIcon = fetchListingIconGenerate,
 }) {
-  const selectedTools = getDraftSectionItemsByCanonicalId(draft, 'creator-tools');
+  const selectedTools = selectedCommunityToolsFromDraft(draft);
   if (!selectedTools.length) return draft;
 
   const nextDraft = structuredClone(draft);
@@ -1817,7 +1835,7 @@ export async function prepareCommunitySkillsForPublish({
 }
 
 export function pendingLocalToolListingReviews(state) {
-  const candidates = getDraftSectionItemsByCanonicalId(state.draft, 'creator-tools');
+  const candidates = selectedCommunityToolsFromDraft(state.draft);
   const reviews = [];
   const seen = new Set();
   for (const tool of candidates) {
@@ -1947,10 +1965,10 @@ function sanitizeStaxCardSnapshot(value) {
   if (value.schemaVersion !== 'taku.stax.card-snapshot.v1') return null;
   const rawCanvas = isRecord(value.canvas) ? value.canvas : {};
   const canvas = {
-    width: clampInteger(rawCanvas.width, 320, 2000, 940),
-    height: clampInteger(rawCanvas.height, 320, 2000, 796),
+    width: clampInteger(rawCanvas.width, 320, 2000, 980),
+    height: clampInteger(rawCanvas.height, 320, 2000, 660),
     columns: clampInteger(rawCanvas.columns, 1, 16, 8),
-    rows: clampInteger(rawCanvas.rows, 1, 16, 6),
+    rows: clampInteger(rawCanvas.rows, 1, 16, 5),
     cellSize: clampInteger(rawCanvas.cellSize, 24, 240, 104),
     gap: clampInteger(rawCanvas.gap, 0, 48, 8),
   };
@@ -1970,14 +1988,12 @@ function sanitizeStaxCardSnapshot(value) {
     .slice(0, 32);
   if (!blocks.length || !blocks.some((block) => block.key === 'hero')) return null;
   const imageDataUrl = sanitizePngDataUrl(value.imageDataUrl || value.image_data_url);
-  const ogImageDataUrl = sanitizePngDataUrl(value.ogImageDataUrl || value.og_image_data_url);
   return {
     schemaVersion: 'taku.stax.card-snapshot.v1',
     capturedAt: typeof value.capturedAt === 'string' ? value.capturedAt.slice(0, 80) : new Date().toISOString(),
     canvas,
     blocks,
     ...(imageDataUrl ? { imageDataUrl } : {}),
-    ...(ogImageDataUrl ? { ogImageDataUrl } : {}),
   };
 }
 
@@ -2088,7 +2104,12 @@ async function runChromeScreenshot({ chromePath, htmlPath, pngPath, width, heigh
     pathToFileURL(htmlPath).href,
   ];
   await new Promise((resolve, reject) => {
-    const child = spawn(chromePath, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    const chromeEnv = { ...process.env };
+    delete chromeEnv.MallocNanoZone;
+    const child = spawn(chromePath, args, {
+      env: chromeEnv,
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
     let stderr = '';
     const timer = setTimeout(() => {
       child.kill('SIGKILL');

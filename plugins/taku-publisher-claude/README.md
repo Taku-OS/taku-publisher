@@ -27,7 +27,7 @@ open Claude Code in the project or workspace you want Taku Publisher to scan.
 Ask Claude Code:
 
 ```text
-打开 Taku Publisher 创作者工作台，生成我的 Stax Card，并让我选择要发布的本地项目。
+Use Taku Publisher to generate an editable Creator Profile preview.
 ```
 
 Other useful prompts:
@@ -44,8 +44,10 @@ Publish the tool in this workspace to Taku.
 - Project import first lists recent workspaces from local session metadata. It
   inspects source only after you choose one exact project, then routes it to
   SubApp conversion, existing Skill publishing, or bounded Skill generation.
-- Creator Profile requests confirm the Taku account first, then create a private
-  cloud draft and return its durable Studio editing URL.
+- If the project is not local, choose the GitHub option in the same conversation.
+  The plugin opens authorization when needed, then shows your public repositories
+  as a numbered list; no separate plugin button is required.
+- Creator Profile requests save a private draft and open its stable cloud Studio page.
 - Creator Center requests may ask you to sign in to Taku.
 - Publishing requests scan and package the selected workspace before opening
   the Taku review flow.

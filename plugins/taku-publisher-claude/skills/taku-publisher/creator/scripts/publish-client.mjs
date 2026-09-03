@@ -376,15 +376,17 @@ export class TakuStaxClient {
     const result = await this.fetchJson(path, init, options);
     if (!result.parsedJson) {
       const preview = result.rawText.slice(0, 160).replace(/\s+/g, ' ').trim();
-      const error = new Error(`Expected JSON from ${path}, got ${result.response.status} ${result.response.statusText}: ${preview}`);
-      error.status = result.response.status;
-      throw error;
+      throw createRequestError(
+        `Expected JSON from ${path}, got ${result.response.status} ${result.response.statusText}: ${preview}`,
+        result.response.status,
+      );
     }
     if (!result.response.ok) {
-      const error = new Error(result.data?.error || result.data?.message || `HTTP ${result.response.status}`);
-      error.status = result.response.status;
-      error.data = result.data;
-      throw error;
+      throw createRequestError(
+        result.data?.error || result.data?.message || `HTTP ${result.response.status}`,
+        result.response.status,
+        result.data,
+      );
     }
     return result.data;
   }
@@ -496,6 +498,14 @@ export class TakuStaxClient {
 
 export function createTakuStaxClient(options = {}) {
   return new TakuStaxClient(options);
+}
+
+function createRequestError(message, status, data) {
+  const error = new Error(message);
+  error.name = 'TakuStaxRequestError';
+  error.status = Number(status) || 0;
+  if (data !== undefined) error.data = data;
+  return error;
 }
 
 export function createWorkerPublishError({ response, data, parsedJson, endpoint }) {
