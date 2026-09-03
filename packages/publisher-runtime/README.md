@@ -8,21 +8,6 @@ The runtime preserves the `taku.publisher.v1` JSON command contract. The legacy
 Python entrypoint remains a compatibility shim during migration and is not
 included in generated user plugins.
 
-## Unified creator initialization
-
-`creator-init` authorizes the Publisher account before the Stax Card scan, saves
-an editable private draft to the production Worker Cloud Studio, and returns
-the durable Studio URL, Creator Profile links, and recent Codex/Claude Code
-projects in one response. Multi-project
-selection is persisted with `creator-plan --select
-<project-id=skill|subapp,...>`. The plan reviews the Stax Card first, then routes
-projects through the existing single-project flows sequentially, so SubApp
-conversion never delays the card.
-
-Cloud Studio requires only `creator.profile.read` and
-`creator.studio-draft.write`; it does not grant public card publishing. The
-legacy loopback editor is available only through explicit `--local-editor`.
-
 ## Codex and Claude Code project import
 
 `project-discover` reads bounded local session metadata to recover recent
@@ -30,6 +15,16 @@ workspace paths, deduplicates them, and returns lightweight root signals without
 analyzing prompt bodies or recursively scanning source code. The creator must
 select one project before `project-assess` routes it to `existing-skill`,
 `subapp-migration`, `skill-generation`, or `reference-only`.
+
+Its response also exposes GitHub as an explicit alternate source.
+`github-project-discover` uses a narrow Publisher authorization to check or
+start GitHub OAuth and then returns only public repository metadata from the
+connected account. Authorization and repository selection are represented in
+the same JSON action contract, so Codex or Claude Code can present both steps
+directly in conversation without adding a separate UI button.
+`github-disconnect` removes the current Taku account's GitHub binding. Follow it
+with `auth-logout` when testing the complete Taku sign-in and GitHub OAuth path
+from a clean Publisher state.
 
 An eligible `skill-generation` route uses `skill-prepare`, `skill-convert`, and
 `skill-conversion-check`. Preparation writes only an isolated candidate;

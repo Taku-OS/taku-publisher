@@ -10,9 +10,11 @@ import {
   prepareSubAppCandidate,
   projectConverterAssessment,
   runRepoToStaxAssessment,
+  runRepoToStaxPreparation,
   setTreeWritable,
   subAppAssessmentConfirmationToken,
   subAppAssessmentReviewTemplate,
+  TAKU_USER_JWT_KIND,
   validateSubAppAssessmentReview,
 } from '../dist/index.js';
 
@@ -480,6 +482,79 @@ test('reassesses and prepares an isolated candidate without starting an Agent', 
   assert.equal(convertedCheck.publish_started, false);
 });
 
+test('accepts only the credential-risk projection produced by a confirmed service mapping', async (t) => {
+  const root = await temporaryDirectory(t);
+  const source = path.join(root, 'mapped-app');
+  const outputRoot = path.join(root, 'candidates');
+  await fs.mkdir(path.join(source, 'app'), { recursive: true });
+  await fs.mkdir(outputRoot);
+  await fs.writeFile(
+    path.join(source, 'package.json'),
+    JSON.stringify({ name: 'mapped-app', dependencies: { next: '15.0.0' } }),
+  );
+  await fs.writeFile(
+    path.join(source, 'README.md'),
+    '# Mapped App\n\nThis app uses an API key supplied by an external provider.\n',
+  );
+  await fs.writeFile(path.join(source, 'LICENSE'), 'MIT License\n');
+  await fs.writeFile(
+    path.join(source, 'app', 'page.tsx'),
+    'export default function Page() { return <main>Mapped</main>; }\n',
+  );
+  const serviceMappings = {
+    schema_version: 'taku.subapp-service-mappings.v1',
+    mappings: [
+      {
+        requirement_id: 'external-service-review',
+        service_id: 'mapped-provider',
+        endpoint_ids: ['read'],
+      },
+    ],
+  };
+  const loadServiceCatalog = async () => mappedServiceCatalog();
+  const assessmentOptions = { serviceMappings, loadServiceCatalog };
+  const assessed = await assessSubAppSource({ source }, assessmentOptions);
+
+  assert.equal(assessed.assessment.eligibility, 'eligible');
+  assert.equal(
+    assessed.assessment.analysis.risks.includes(
+      'Credential/API key handling must be server-side or explicit BYOK',
+    ),
+    false,
+  );
+  const confirmationToken = subAppAssessmentConfirmationToken(assessed);
+  const prepared = await prepareSubAppCandidate(
+    {
+      source,
+      outputRoot,
+      confirmationToken,
+      name: 'mapped-candidate',
+    },
+    assessmentOptions,
+  );
+  assert.equal(path.basename(prepared.workspaceRoot), 'mapped-candidate');
+
+  await assert.rejects(
+    prepareSubAppCandidate(
+      {
+        source,
+        outputRoot,
+        confirmationToken,
+        name: 'changed-candidate',
+      },
+      {
+        ...assessmentOptions,
+        runPrepare: async (request) => {
+          const output = await runRepoToStaxPreparation(request);
+          output.analysis.risks.push('An unrelated candidate-only risk');
+          return output;
+        },
+      },
+    ),
+    (error) => error?.code === 'subapp_candidate_assessment_changed',
+  );
+});
+
 test('rejects a stale confirmation when local source changes after assessment', async (t) => {
   const root = await temporaryDirectory(t);
   const source = path.join(root, 'sample-app');
@@ -596,6 +671,42 @@ function converterOutput(options = {}) {
         ? 'Create a versioned Taku SubApp migration workspace.'
         : 'Use native import.',
     },
+  };
+}
+
+function mappedServiceCatalog() {
+  return {
+    schemaVersion: 'taku.service-catalog.v1',
+    digest: `sha256:${'d'.repeat(64)}`,
+    authentication: {
+      required: true,
+      scheme: 'bearer',
+      credential: TAKU_USER_JWT_KIND,
+    },
+    services: [
+      {
+        id: 'mapped-provider',
+        title: 'Mapped Provider',
+        description: 'Mapped provider used by the regression fixture.',
+        basePath: '/service/mapped-provider',
+        docsPath: '/service/docs/mapped-provider.md',
+        status: 'active',
+        endpoints: [
+          {
+            id: 'read',
+            method: 'GET',
+            path: '/service/mapped-provider/read',
+            summary: 'Read provider data.',
+            inputSchema: 'query string',
+            status: 'active',
+            pricing: {
+              billingMode: 'invocation',
+              price: { unitUsd: 0.01 },
+            },
+          },
+        ],
+      },
+    ],
   };
 }
 

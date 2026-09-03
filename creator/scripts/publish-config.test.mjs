@@ -26,6 +26,13 @@ import {
   writePublisherSession,
 } from './publish-config.mjs';
 
+test('does not trust the retired Stax Studio preview Worker by default', () => {
+  assert.equal(
+    isTrustedWorkerUrl('https://taku-workers-studio-preview.takuos.workers.dev'),
+    false,
+  );
+});
+
 test('cloud Studio defaults to the production Worker and stable Taku Web', () => {
   const parsed = parseArgs([]);
   assert.equal(resolveWorkerUrl(parsed), 'https://worker.taku.ai');
@@ -33,19 +40,27 @@ test('cloud Studio defaults to the production Worker and stable Taku Web', () =>
   assert.equal(resolveStudioWorkerUrl(parsed), 'https://worker.taku.ai');
   assert.equal(resolveStudioSiteUrl(parsed), 'https://taku.ai');
   assert.equal(resolveAuthSiteUrl(parsed), 'https://taku.ai');
-  assert.equal(isTrustedWorkerUrl('https://taku-workers-studio-preview.takuos.workers.dev'), false);
+});
+
+test('cloud Studio keeps explicit trusted Worker overrides', () => {
+  const parsed = parseArgs([
+    '--site-url',
+    'http://localhost:3100',
+    '--worker-url',
+    'http://127.0.0.1:7049',
+  ]);
+  assert.equal(resolveStudioWorkerUrl(parsed), 'http://127.0.0.1:7049');
+  assert.equal(resolveStudioSiteUrl(parsed), 'http://localhost:3100');
+  assert.equal(resolveAuthSiteUrl(parsed), 'https://taku.ai');
 });
 
 test('authorization localhost requires an explicit auth-site development flag', () => {
   const parsed = parseArgs([
     '--site-url',
     'http://localhost:3100',
-    '--worker-url',
-    'http://127.0.0.1:7049',
     '--auth-site-url',
     'http://localhost:3200',
   ]);
-  assert.equal(resolveStudioWorkerUrl(parsed), 'http://127.0.0.1:7049');
   assert.equal(resolveStudioSiteUrl(parsed), 'http://localhost:3100');
   assert.equal(resolveAuthSiteUrl(parsed), 'http://localhost:3200');
 });
@@ -166,7 +181,11 @@ test('does not invent broader scopes when persisting Studio authorization', () =
     expiresIn: 60,
     scopes: ['creator.profile.read', 'creator.studio-draft.write'],
   });
-  assert.deepEqual(session.scopes, ['creator.profile.read', 'creator.studio-draft.write']);
+
+  assert.deepEqual(session.scopes, [
+    'creator.profile.read',
+    'creator.studio-draft.write',
+  ]);
   assert.equal(session.scopes.includes('creator.card.write'), false);
   assert.equal(session.scopes.includes('publisher.drafts.write'), false);
 });
@@ -176,6 +195,7 @@ test('treats an auth result without declared scopes as unprivileged', () => {
     token: 'test-scope-less-token',
     expiresIn: 60,
   });
+
   assert.deepEqual(session.scopes, []);
 });
 

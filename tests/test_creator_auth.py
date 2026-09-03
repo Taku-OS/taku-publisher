@@ -63,7 +63,10 @@ class CreatorAuthTests(unittest.TestCase):
             patch("taku_publisher.cli.login_with_browser") as login,
             patch("taku_publisher.cli.subprocess.run", return_value=completed),
         ):
-            result = _run_creator_command("editor", ["--draft", "/tmp/card.json"])
+            result = _run_creator_command(
+                "editor",
+                ["--draft", "/tmp/card.json", "--local-editor"],
+            )
 
         resolve_auth.assert_not_called()
         login.assert_not_called()

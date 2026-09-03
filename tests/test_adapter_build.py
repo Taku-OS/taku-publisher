@@ -227,7 +227,7 @@ if ('localPath' in publicValue) {
         )
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-        self.assertEqual("0.3.14", manifest["version"])
+        self.assertEqual("0.3.15", manifest["version"])
         self.assertLessEqual(len(manifest["interface"]["defaultPrompt"]), 3)
 
     def test_claude_marketplace_points_to_packaged_plugin(self) -> None:
@@ -253,7 +253,7 @@ if ('localPath' in publicValue) {
             ),
         )
 
-        self.assertEqual("0.3.14", manifest["version"])
+        self.assertEqual("0.3.15", manifest["version"])
         self.assertTrue(
             (
                 plugin_root

@@ -20,7 +20,7 @@ const REQUIRED_BUILD_FILES = [
 ];
 
 test('plans and creates deterministic Desktop-compatible SubApp archives', async t => {
-  const fixture = await packageFixture(t);
+  const fixture = await packageFixture(t, { largeExcludedArtifacts: true });
   const options = fixture.options;
   const plan = await planSubAppPackage(
     { candidate: fixture.candidate, runtimeEvidence: fixture.evidenceRoot },
@@ -59,6 +59,8 @@ test('plans and creates deterministic Desktop-compatible SubApp archives', async
   assert.equal(first.manifest.schemaVersion, 'taku.publisher.subapp-package.v1');
   assert.deepEqual(first.manifest.serviceAuthorizations, []);
   assert.equal(first.manifest.publishStarted, false);
+  assert.ok(first.source.size <= 20 * 1024 * 1024);
+  assert.ok(first.build.size <= 20 * 1024 * 1024);
 
   const sourceEntries = readZip(
     await fs.readFile(path.join(first.packageRoot, 'source.zip')),
@@ -69,6 +71,10 @@ test('plans and creates deterministic Desktop-compatible SubApp archives', async
   assert.equal(sourceEntries.some(name => name.startsWith('.taku/')), false);
   assert.equal(sourceEntries.some(name => name.startsWith('.next-preview/')), false);
   assert.equal(sourceEntries.some(name => name.startsWith('.env')), false);
+  assert.equal(sourceEntries.includes('UPSTREAM_CREDITS.md'), true);
+  assert.equal(sourceEntries.includes('upstream-source/LICENSE'), true);
+  assert.equal(sourceEntries.includes('upstream-source/src/legacy.ts'), false);
+  assert.equal(sourceEntries.includes('ignored-by-gitignore.txt'), false);
 
   const buildEntries = readZip(
     await fs.readFile(path.join(first.packageRoot, 'build.zip')),
@@ -77,6 +83,8 @@ test('plans and creates deterministic Desktop-compatible SubApp archives', async
     assert.ok(buildEntries.includes(`.next-preview/${required}`));
   }
   assert.ok(buildEntries.includes('.next-preview/server/app.js'));
+  assert.equal(buildEntries.some(name => name.startsWith('.next-preview/cache/')), false);
+  assert.equal(buildEntries.includes('.next-preview/trace'), false);
 });
 
 test('rejects stale confirmation before creating package output', async t => {
@@ -141,7 +149,7 @@ test('rejects package output that overlaps the candidate', async t => {
   );
 });
 
-async function packageFixture(t) {
+async function packageFixture(t, { largeExcludedArtifacts = false } = {}) {
   const root = await fs.realpath(
     await fs.mkdtemp(path.join(os.tmpdir(), 'taku-subapp-package-test-')),
   );
@@ -153,7 +161,9 @@ async function packageFixture(t) {
   await fs.mkdir(path.join(candidate, 'src'), { recursive: true });
   await fs.mkdir(path.join(candidate, '.taku'), { recursive: true });
   await fs.mkdir(path.join(candidate, '.next-preview'), { recursive: true });
+  await fs.mkdir(path.join(candidate, 'upstream-source', 'src'), { recursive: true });
   await fs.mkdir(path.join(buildRoot, 'server'), { recursive: true });
+  await fs.mkdir(path.join(buildRoot, 'cache'), { recursive: true });
   await fs.writeFile(
     path.join(candidate, 'package.json'),
     `${JSON.stringify({
@@ -174,6 +184,16 @@ async function packageFixture(t) {
     })}\n`,
   );
   await fs.writeFile(path.join(candidate, 'src', 'page.tsx'), 'export default 1;\n');
+  await fs.writeFile(path.join(candidate, 'UPSTREAM_CREDITS.md'), 'Upstream credits.\n');
+  await fs.writeFile(path.join(candidate, 'upstream-source', 'LICENSE'), 'MIT License\n');
+  await fs.writeFile(
+    path.join(candidate, 'upstream-source', 'src', 'legacy.ts'),
+    largeExcludedArtifacts
+      ? Buffer.alloc((20 * 1024 * 1024) + 1, 'x')
+      : 'export const legacy = true;\n',
+  );
+  await fs.writeFile(path.join(candidate, '.gitignore'), 'ignored-by-gitignore.txt\n');
+  await fs.writeFile(path.join(candidate, 'ignored-by-gitignore.txt'), 'ignored\n');
   await fs.writeFile(path.join(candidate, '.env'), 'SHOULD_NOT_SHIP=1\n');
   await fs.writeFile(path.join(candidate, '.taku', 'migration.json'), '{}\n');
   await fs.writeFile(path.join(candidate, '.next-preview', 'ignored'), 'ignored\n');
@@ -181,6 +201,11 @@ async function packageFixture(t) {
     await fs.writeFile(path.join(buildRoot, file), `${file}\n`);
   }
   await fs.writeFile(path.join(buildRoot, 'server', 'app.js'), 'server build\n');
+  await fs.writeFile(
+    path.join(buildRoot, 'cache', 'webpack.bin'),
+    largeExcludedArtifacts ? Buffer.alloc((20 * 1024 * 1024) + 1, 'x') : 'cache\n',
+  );
+  await fs.writeFile(path.join(buildRoot, 'trace'), 'trace\n');
   const buildArtifact = {
     schemaVersion: 'taku.subapp-runtime-build.v1',
     buildOutputDir: '.next-preview',

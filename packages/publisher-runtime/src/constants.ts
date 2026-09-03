@@ -8,6 +8,7 @@ export const UNAVAILABLE_PUBLISH_TYPES = ['action', 'agent', 'plugin'] as const;
 export const SUPPORTED_MODES = ['create', 'update'] as const;
 export const SUPPORTED_RUNTIME_PLATFORMS = ['taku', 'codex', 'claude-code'] as const;
 export const DEFAULT_WORKER_URL = 'https://worker.taku.ai';
+export const MAX_APP_STORE_PACKAGE_BYTES = 20 * 1024 * 1024;
 
 export const MAX_FILES = 1_000;
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
