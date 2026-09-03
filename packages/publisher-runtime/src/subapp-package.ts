@@ -15,6 +15,7 @@ import {
   readSubAppServiceAuthorizations,
   type SubAppServiceAuthorizationV1,
 } from './subapp-services.js';
+import { MAX_APP_STORE_PACKAGE_BYTES } from './constants.js';
 import type { JsonObject } from './types.js';
 import {
   atomicWriteBytes,
@@ -29,8 +30,9 @@ const PACKAGE_SCHEMA = 'taku.publisher.subapp-package.v1';
 const BUILD_ARTIFACT_SCHEMA = 'taku.subapp-runtime-build.v1';
 const BUILD_EVIDENCE_RELATIVE_PATH = 'build-output/.next-preview';
 const MAX_FILES = 50_000;
-const MAX_SOURCE_BYTES = 512 * 1024 * 1024;
-const MAX_BUILD_BYTES = 512 * 1024 * 1024;
+const MAX_SOURCE_BYTES = MAX_APP_STORE_PACKAGE_BYTES;
+const MAX_BUILD_BYTES = MAX_APP_STORE_PACKAGE_BYTES;
+const MAX_BUILD_EVIDENCE_BYTES = 512 * 1024 * 1024;
 const SOURCE_EXCLUDED_DIRECTORIES = new Set([
   '.git',
   '.next',
@@ -50,6 +52,12 @@ const REQUIRED_BUILD_FILES = [
   'build-manifest.json',
   'required-server-files.json',
 ] as const;
+const UPSTREAM_ATTRIBUTION_FILE = /^(?:licen[cs]e|notice)(?:[._-].*)?$/i;
+
+interface GitIgnoreRule {
+  ignored: boolean;
+  matcher: RegExp;
+}
 
 export interface SubAppPackagePlan {
   workspaceRoot: string;
@@ -199,6 +207,8 @@ export async function packageSubApp(
     );
     const sourceArtifact = buildPublisherPackageArtifact(sourceEntries);
     const buildArtifact = buildPublisherPackageArtifact(buildEntries);
+    assertAppStoreArtifactSize(sourceArtifact.size, 'source');
+    assertAppStoreArtifactSize(buildArtifact.size, 'build');
     const sourcePath = path.join(packageRoot, SUBAPP_SOURCE_ARCHIVE_FILE);
     const buildPath = path.join(packageRoot, SUBAPP_BUILD_ARCHIVE_FILE);
     await atomicWriteBytes(sourcePath, sourceArtifact.bytes);
@@ -380,7 +390,7 @@ async function summarizeBuildTree(root: string): Promise<{
       if (!metadata.isFile()) throw new Error('build artifact contains an unsupported entry');
       fileCount += 1;
       sizeBytes += metadata.size;
-      if (fileCount > MAX_FILES || sizeBytes > MAX_BUILD_BYTES) {
+      if (fileCount > MAX_FILES || sizeBytes > MAX_BUILD_EVIDENCE_BYTES) {
         throw new Error('build artifact exceeds the package limit');
       }
       const content = await fs.readFile(absolutePath);
@@ -403,6 +413,7 @@ async function summarizeBuildTree(root: string): Promise<{
 }
 
 async function collectSourceEntries(root: string): Promise<PublisherPackageEntry[]> {
+  const gitIgnoreRules = await readGitIgnoreRules(root);
   return collectEntries(root, {
     prefix: '',
     maxBytes: MAX_SOURCE_BYTES,
@@ -411,7 +422,14 @@ async function collectSourceEntries(root: string): Promise<PublisherPackageEntry
       if (parts.includes('.taku')) return false;
       if (isDirectory && SOURCE_EXCLUDED_DIRECTORIES.has(parts.at(-1) ?? '')) return false;
       const base = parts.at(-1) ?? '';
-      return !(base === '.env' || base.startsWith('.env.'));
+      if (base === '.env' || base.startsWith('.env.')) return false;
+      if (parts[0] === 'upstream-source') {
+        if (parts.length === 1) return isDirectory;
+        if (isDirectory || parts.length !== 2) return false;
+        return UPSTREAM_ATTRIBUTION_FILE.test(base);
+      }
+      if (isRequiredSourceEvidence(relativePath)) return true;
+      return isDirectory || !isGitIgnored(relativePath, gitIgnoreRules);
     },
   });
 }
@@ -420,8 +438,84 @@ async function collectBuildEntries(root: string): Promise<PublisherPackageEntry[
   return collectEntries(root, {
     prefix: `${SUBAPP_BUILD_OUTPUT_DIRECTORY}/`,
     maxBytes: MAX_BUILD_BYTES,
-    include: () => true,
+    include(relativePath) {
+      return relativePath !== 'trace' && relativePath !== 'cache' && !relativePath.startsWith('cache/');
+    },
   });
+}
+
+async function readGitIgnoreRules(root: string): Promise<GitIgnoreRule[]> {
+  const content = await fs.readFile(path.join(root, '.gitignore'), 'utf8').catch(error => {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return '';
+    throw error;
+  });
+  const rules: GitIgnoreRule[] = [];
+  for (const rawLine of content.split(/\r?\n/)) {
+    let line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    let ignored = true;
+    if (line.startsWith('!')) {
+      ignored = false;
+      line = line.slice(1);
+    } else if (line.startsWith('\\#') || line.startsWith('\\!')) {
+      line = line.slice(1);
+    }
+    if (!line) continue;
+    const directoryOnly = line.endsWith('/');
+    if (directoryOnly) line = line.slice(0, -1);
+    const anchored = line.startsWith('/');
+    if (anchored) line = line.slice(1);
+    if (!line) continue;
+    const hasSlash = line.includes('/');
+    const glob = gitIgnoreGlobPattern(line);
+    const prefix = anchored || hasSlash ? '^' : '(?:^|/)';
+    const suffix = directoryOnly || !hasSlash ? '(?:$|/)' : '$';
+    rules.push({ ignored, matcher: new RegExp(`${prefix}${glob}${suffix}`) });
+  }
+  return rules;
+}
+
+function gitIgnoreGlobPattern(pattern: string): string {
+  let output = '';
+  for (let index = 0; index < pattern.length; index += 1) {
+    const character = pattern[index] ?? '';
+    if (character === '*' && pattern[index + 1] === '*') {
+      while (pattern[index + 1] === '*') index += 1;
+      if (pattern[index + 1] === '/') {
+        index += 1;
+        output += '(?:.*/)?';
+      } else {
+        output += '.*';
+      }
+      continue;
+    }
+    if (character === '*') output += '[^/]*';
+    else if (character === '?') output += '[^/]';
+    else output += character.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
+  }
+  return output;
+}
+
+function isGitIgnored(relativePath: string, rules: GitIgnoreRule[]): boolean {
+  let ignored = false;
+  for (const rule of rules) {
+    if (rule.matcher.test(relativePath)) ignored = rule.ignored;
+  }
+  return ignored;
+}
+
+function isRequiredSourceEvidence(relativePath: string): boolean {
+  if (relativePath.includes('/')) return false;
+  return relativePath === 'UPSTREAM_CREDITS.md' || UPSTREAM_ATTRIBUTION_FILE.test(relativePath);
+}
+
+function assertAppStoreArtifactSize(size: number, label: string): void {
+  if (size <= MAX_APP_STORE_PACKAGE_BYTES) return;
+  throw new PublisherError(
+    `SubApp ${label} archive exceeds the ${MAX_APP_STORE_PACKAGE_BYTES} byte App Store limit.`,
+    'subapp_package_too_large',
+    { archive: label, size, max_bytes: MAX_APP_STORE_PACKAGE_BYTES },
+  );
 }
 
 async function collectEntries(

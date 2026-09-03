@@ -42,7 +42,6 @@ import {
   readIconAuthToken,
   readPublishToken,
   readStudioDraftToken,
-  rememberCreatorCloudDraft,
   resolveSiteUrl,
   resolveStudioSiteUrl,
   resolveStudioWorkerUrl,
@@ -495,10 +494,7 @@ async function saveDraftResultToCloudStudio(parsed, draftResult) {
       schemaVersion: 'taku.creator.editor-result.v1',
       needsAuth: true,
       primaryAction: 'sign_in_for_cloud_studio',
-      loginUrl: buildTakuLoginUrl(parsed, {
-        intent: 'publish_stax_card',
-        accountMode: 'confirm',
-      }),
+      loginUrl: buildTakuLoginUrl(parsed, { intent: 'publish_stax_card' }),
       draftPath,
       message: 'Sign in to Taku first, then run the command again. The local draft has been kept.',
     };
@@ -524,17 +520,17 @@ async function saveDraftResultToCloudStudio(parsed, draftResult) {
     };
   }
 
-  if (saved.draft) await writeJson(draftPath, saved.draft);
-  rememberCreatorCloudDraft({
-    draftPath,
-    workerUrl,
-    siteUrl,
-    accountHint: saved.accountHint,
-  });
-  return createCloudStudioCommandResult(saved.draft || draftResult.draft, saved.studioUrl, {
-    workerUrl,
-    accountHint: saved.accountHint,
-  });
+  if (saved.draft) {
+    await writeJson(draftPath, saved.draft);
+  }
+  return createCloudStudioCommandResult(
+    saved.draft || draftResult.draft,
+    saved.studioUrl,
+    {
+      workerUrl,
+      accountHint: saved.accountHint,
+    },
+  );
 }
 
 async function runPublish(parsed) {

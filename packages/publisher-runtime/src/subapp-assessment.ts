@@ -50,6 +50,7 @@ const CONVERTER_PREPARE_PROTOCOL = 'repo-to-stax.prepare.v1';
 const SUPPORTED_CONVERTER_VERSIONS = new Set(['0.2.0']);
 const CREDENTIAL_RISK =
   'Credential/API key handling must be server-side or explicit BYOK';
+const EXTERNAL_SERVICE_REQUIREMENT_ID = 'external-service-review';
 const SUBAPP_ASSESSMENT_REVIEW_SCHEMA =
   'taku.subapp-assessment-review.v1' as const;
 const MANUAL_RECOMMENDATION_FINDING = {
@@ -1024,8 +1025,7 @@ async function validatePreparedCandidate(
     requireRecord(envelope.route, 'Prepared candidate route is missing.'),
   );
   if (
-    canonicalSubAppJson(candidateAnalysis) !==
-      canonicalSubAppJson(assessed.assessment.analysis) ||
+    !preparedCandidateAnalysisMatches(candidateAnalysis, assessed) ||
     canonicalSubAppJson(candidateRoute) !==
       canonicalSubAppJson(assessed.assessment.route)
   ) {
@@ -1054,6 +1054,55 @@ async function validatePreparedCandidate(
       commit: templateCommit,
     },
   };
+}
+
+function preparedCandidateAnalysisMatches(
+  candidateAnalysis: SubAppAnalysisV1,
+  assessed: AssessedSubAppSource,
+): boolean {
+  const confirmedAnalysis = assessed.assessment.analysis;
+  if (
+    canonicalSubAppJson(candidateAnalysis) ===
+    canonicalSubAppJson(confirmedAnalysis)
+  ) {
+    return true;
+  }
+
+  const requiredServicesMapped =
+    assessed.assessment.serviceRequirements.length > 0 &&
+    assessed.assessment.serviceRequirements.every(
+      (requirement) =>
+        !requirement.required || requirement.mapping.status === 'mapped',
+    );
+  const credentialRequirementMapped =
+    assessed.serviceCatalog?.status === 'validated' &&
+    assessed.serviceMappingReview?.requirementIds.includes(
+      EXTERNAL_SERVICE_REQUIREMENT_ID,
+    ) === true &&
+    assessed.assessment.serviceRequirements.some(
+      (requirement) =>
+        requirement.id === EXTERNAL_SERVICE_REQUIREMENT_ID &&
+        requirement.required &&
+        requirement.mapping.status === 'mapped',
+    );
+  if (
+    !requiredServicesMapped ||
+    !credentialRequirementMapped ||
+    confirmedAnalysis.risks.includes(CREDENTIAL_RISK) ||
+    candidateAnalysis.risks.filter((risk) => risk === CREDENTIAL_RISK)
+      .length !== 1
+  ) {
+    return false;
+  }
+
+  const projectedCandidateAnalysis: SubAppAnalysisV1 = {
+    ...candidateAnalysis,
+    risks: candidateAnalysis.risks.filter((risk) => risk !== CREDENTIAL_RISK),
+  };
+  return (
+    canonicalSubAppJson(projectedCandidateAnalysis) ===
+    canonicalSubAppJson(confirmedAnalysis)
+  );
 }
 
 function recreateAssessment(
@@ -1274,7 +1323,7 @@ function converterServiceRequirements(
   if (!risks.includes(CREDENTIAL_RISK)) return [];
   return [
     {
-      id: 'external-service-review',
+      id: EXTERNAL_SERVICE_REQUIREMENT_ID,
       capability: 'source-defined external provider API',
       required: true,
       operations: ['source-defined-provider-call'],

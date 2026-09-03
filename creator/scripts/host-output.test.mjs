@@ -99,27 +99,6 @@ test('compact scan output removes paths and scan previews from host context', ()
   assert.equal(serialized.includes('private source content'), false);
 });
 
-test('cloud Studio host result returns the durable Studio URL', () => {
-  const studioUrl = 'https://worker.taku.ai/stax/studio/editor?launch=test';
-  const result = createCloudStudioCommandResult(
-    {
-      personaV2: { code: 'EILW', archetype: { title: 'Mad Inventor' } },
-      stats: { displayedToolCount: 3 },
-    },
-    studioUrl,
-    {
-      workerUrl: 'https://worker.taku.ai',
-      accountHint: 'ow***@example.com',
-    },
-  );
-  assert.equal(result.editorUrl, studioUrl);
-  assert.equal(result.primaryAction, 'open_cloud_studio');
-  assert.equal(result.cloudDraft, true);
-  assert.equal(result.savedToAccount, 'ow***@example.com');
-  assert.equal(result.switchAccount.command, 'creator-switch-account');
-  assert.equal(result.switchAccount.rescansWorkspace, false);
-});
-
 test('editor host result returns only the actionable URL and compact summary', () => {
   const privatePath = path.join(path.sep, 'Users', 'example', 'private');
   const editorUrl = `http:${'//'}${['127', '0', '0', '1'].join('.')}:7331/?token=local-editor-token`;
@@ -156,4 +135,28 @@ test('editor host result returns only the actionable URL and compact summary', (
   assert.equal(serialized.includes(privatePath), false);
   assert.equal(serialized.includes('scanPreview'), false);
   assert.equal(serialized.includes('large nested payload'), false);
+});
+
+test('cloud Studio host result returns the durable Studio URL', () => {
+  const studioUrl = 'https://taku.ai/studio/stax-card';
+  const result = createCloudStudioCommandResult(
+    {
+      personaV2: { code: 'EILW', archetype: { title: 'Mad Inventor' } },
+      stats: { displayedToolCount: 3 },
+    },
+    studioUrl,
+    {
+      workerUrl: 'https://worker.taku.ai',
+      accountHint: 'ow***@example.com',
+    },
+  );
+
+  assert.equal(result.editorUrl, studioUrl);
+  assert.equal(result.primaryUrl, studioUrl);
+  assert.equal(result.primaryAction, 'open_cloud_studio');
+  assert.equal(result.cloudDraft, true);
+  assert.equal(result.workerUrl, 'https://worker.taku.ai');
+  assert.equal(result.savedToAccount, 'ow***@example.com');
+  assert.equal('switchAccount' in result, false);
+  assert.match(result.message, /ow\*\*\*@example\.com/);
 });

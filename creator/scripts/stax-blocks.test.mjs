@@ -45,6 +45,10 @@ function fixtureDraft() {
     ],
     staxProfile: {
       handle: 'ldx',
+      social: {
+        x: 'https://x.com/ldx_builds',
+        github: { username: 'ldx' },
+      },
       serialNumber: 'TAKU-000417',
       serial: { display: 'No. 000417' },
       daysOnTaku: 12,
@@ -148,6 +152,11 @@ test('maps publisher profile data into the full Stax block contract', () => {
   assert.deepEqual(blockByKey(result, 'team').value.team, ['CODEX', 'codex']);
   assert.equal(blockByKey(result, 'team').value.identityBasis, 'invoking-host');
   assert.deepEqual(blockByKey(result, 'team').value.options.map((item) => item.id), ['codex', 'claude-code']);
+  assert.deepEqual(blockByKey(result, 'tier1').value, {
+    tier: 'SWEEP',
+    topPercent: 0.04,
+    topPercentLabel: '4%',
+  });
   assert.equal(blockByKey(result, 'basic').source, 'server.profile');
   assert.equal(blockByKey(result, 'heat').status, 'partial');
   assert.equal(blockByKey(result, 'heat').quality.label, '部分样本');
@@ -179,6 +188,12 @@ test('maps publisher profile data into the full Stax block contract', () => {
   assert.deepEqual(blockByKey(result, 'qr').value, {
     target: 'stax',
     username: 'ldx',
+  });
+  assert.equal(blockByKey(result, 'social').status, 'supported');
+  assert.equal(blockByKey(result, 'social').source, 'server.profile');
+  assert.deepEqual(blockByKey(result, 'social').value, {
+    x: '@ldx_builds',
+    github: 'ldx',
   });
   assert.equal(blockByKey(result, 'trend').status, 'partial');
   assert.equal(blockByKey(result, 'trend').source, 'publisher.local_activity');
@@ -252,12 +267,11 @@ test('maps publisher profile data into the full Stax block contract', () => {
   assert.equal(blockByKey(result, 'node').status, 'partial');
   assert.equal(blockByKey(result, 'node').source, 'publisher.inventory');
   assert.equal(blockByKey(result, 'node').quality.label, '本地扫描');
-  assert.equal(blockByKey(result, 'node').value.totalCount, 3);
-  assert.deepEqual(blockByKey(result, 'node').value.categories, [
-    { id: 'skill', label: 'SKILLS', count: 2 },
-    { id: 'agent', label: 'AGENTS', count: 1 },
+  assert.deepEqual(blockByKey(result, 'node').value.integrations, [
+    { name: 'YOUTUBE-TO-EBOOK', color: '#C9F24C' },
+    { name: 'DRAFT-SYNC', color: '#2BD4C0' },
+    { name: 'RELEASE-CHECKER', color: '#7C6CF6' },
   ]);
-  assert.equal(blockByKey(result, 'node').value.otherCount, 0);
   assert.equal(blockByKey(result, 'splitring').status, 'partial');
   assert.equal(blockByKey(result, 'splitring').estimated, true);
   assert.equal(blockByKey(result, 'splitring').value.sessionCount, 60);
@@ -340,6 +354,25 @@ test('maps publisher profile data into the full Stax block contract', () => {
     periodId: 'allTimeLocal',
     periodLabel: 'All Time',
   });
+});
+
+test('maps trusted Top percent into the four tier ladder finishes', () => {
+  const cases = [
+    [0.25, 'STANDARD', '25%'],
+    [0.1, 'SWEEP', '10%'],
+    [0.01, 'NEON', '1%'],
+    [0.001, 'LASER', '.1%'],
+  ];
+
+  for (const [topPercent, tier, topPercentLabel] of cases) {
+    const draft = fixtureDraft();
+    draft.staxProfile.rank.rankGrade.topPercent = topPercent;
+    assert.deepEqual(blockByKey(buildStaxBlocks(draft), 'tier1').value, {
+      tier,
+      topPercent,
+      topPercentLabel,
+    });
+  }
 });
 
 test('does not present a partial API-list equivalent as total spend', () => {
@@ -429,8 +462,8 @@ test('keeps community rank and provider quota dimensions unsupported until trust
     .filter((block) => block.status === 'unsupported')
     .map((block) => block.key);
 
-  assert.deepEqual(unsupported, ['tier1', 'aura', 'social', 'cgauge', 'water', 'tier4']);
-  assert.equal(result.summary.unsupported, 6);
+  assert.deepEqual(unsupported, ['tier1', 'aura', 'cgauge', 'water', 'tier4']);
+  assert.equal(result.summary.unsupported, 5);
   assert.equal(blockByKey(result, 'tier1').lockLabel, 'GROW ON TAKU');
   assert.match(blockByKey(result, 'tier1').reason, /Publish a tool or gain subscribers/);
   assert.match(blockByKey(result, 'cgauge').reason, /monthly quota/);
@@ -514,4 +547,16 @@ test('keeps the shipped Stax tally locked without a trusted Taku count', () => {
   assert.equal(tally.status, 'unsupported');
   assert.equal(tally.source, 'unavailable');
   assert.match(tally.reason, /not available from Taku/);
+});
+
+test('keeps Social unavailable instead of inventing public handles', () => {
+  const draft = fixtureDraft();
+  delete draft.staxProfile.social;
+
+  const social = blockByKey(buildStaxBlocks(draft), 'social');
+
+  assert.equal(social.status, 'unsupported');
+  assert.equal(social.source, 'unavailable');
+  assert.equal(social.value, undefined);
+  assert.match(social.reason, /public X or GitHub handles/);
 });

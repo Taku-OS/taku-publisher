@@ -93,7 +93,7 @@ test('excludes private runtime state under .temp from a Community Skill package'
   await fs.mkdir(path.join(root, '.temp'));
   await fs.writeFile(
     path.join(root, '.temp', 'publish-work-state.json'),
-    JSON.stringify({ sourcePath: path.join(path.sep, 'Users', 'example', 'private-project') }),
+    JSON.stringify({ sourcePath: '/tmp/private-project' }),
   );
   const item = { id: 'safe-publisher', name: 'safe-publisher', type: 'skill' };
   const privateInventory = { items: [{ id: item.id, localPath: root }] };

@@ -602,8 +602,9 @@ def _run_creator_command(command: str, creator_args: list[str]) -> dict[str, Any
             details={"expected_script": str(script)},
         )
 
+    local_editor = "--local-editor" in creator_args
     creates_persona = command in {"scan", "draft"} or (
-        command == "editor" and _creator_argument(creator_args, "draft") is None
+        command == "editor" and not local_editor
     )
     creator_center_scope = {
         "center-list": "creator.items.read",
@@ -621,7 +622,11 @@ def _run_creator_command(command: str, creator_args: list[str]) -> dict[str, Any
             site_url = _creator_argument(creator_args, "site-url") or DEFAULT_SITE_URL
             allow_custom_worker = (
                 "--allow-custom-worker-url" in creator_args
-                or worker_url == "https://worker.taku.ai"
+                or worker_url in {
+                    "https://worker.taku.ai",
+                    "https://taku-workers-staging.takuos.workers.dev",
+                    "https://taku-workers-studio-preview.takuos.workers.dev",
+                }
             )
             TakuPublisherClient(
                 worker_url=worker_url,
@@ -651,7 +656,9 @@ def _run_creator_command(command: str, creator_args: list[str]) -> dict[str, Any
             auth = refreshed_auth
 
     forwarded = ["node", str(script), command, *creator_args]
-    passthrough = command == "editor" or (command == "draft" and "--editor" in creator_args)
+    passthrough = local_editor and (
+        command == "editor" or (command == "draft" and "--editor" in creator_args)
+    )
     env = _creator_subprocess_env()
     if auth and auth.token and not env.get("TAKU_PUBLISH_TOKEN"):
         env["TAKU_PUBLISH_TOKEN"] = auth.token

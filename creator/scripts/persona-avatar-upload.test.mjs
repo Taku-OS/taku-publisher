@@ -80,13 +80,17 @@ test('publishes the local Persona avatar that matches the scanned Persona code',
     }
     if (request.method === 'GET' && request.url === '/stax/studio/cards/me') {
       response.end(JSON.stringify({
-        ok: true,
-        data: { saveContract: 'revision-v1', draft: null },
+        data: { draft: null, saveContract: 'revision-v1' },
       }));
       return;
     }
     if (request.method === 'PUT' && request.url === '/stax/studio/cards/me') {
-      response.end(JSON.stringify({ ok: true, data: { draft: { revision: 1 } } }));
+      response.end(JSON.stringify({
+        data: {
+          draft: { id: 'draft-1' },
+          studioUrl: 'https://taku.ai/studio/stax-card',
+        },
+      }));
       return;
     }
     if (request.method === 'POST' && request.url === '/stax/cards/import-inventory') {
@@ -179,13 +183,17 @@ test('publishes Stax when a local Persona avatar exists but the publisher token 
     }
     if (request.method === 'GET' && request.url === '/stax/studio/cards/me') {
       response.end(JSON.stringify({
-        ok: true,
-        data: { saveContract: 'revision-v1', draft: null },
+        data: { draft: null, saveContract: 'revision-v1' },
       }));
       return;
     }
     if (request.method === 'PUT' && request.url === '/stax/studio/cards/me') {
-      response.end(JSON.stringify({ ok: true, data: { draft: { revision: 1 } } }));
+      response.end(JSON.stringify({
+        data: {
+          draft: { id: 'draft-1' },
+          studioUrl: 'https://taku.ai/studio/stax-card',
+        },
+      }));
       return;
     }
     if (request.method === 'POST' && request.url === '/stax/cards/import-inventory') {

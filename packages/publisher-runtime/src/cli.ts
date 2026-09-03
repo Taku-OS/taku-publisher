@@ -37,7 +37,6 @@ import {
 } from './creator-plan.js';
 import {
   DEFAULT_WORKER_URL,
-  publisherHome,
   SUPPORTED_TYPES,
   UNAVAILABLE_PUBLISH_TYPES,
 } from './constants.js';
@@ -171,9 +170,6 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
 }
 
 export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
-  if (args.command === 'creator-switch-account') {
-    return runCreatorSwitchAccount(args.rest);
-  }
   const creatorCommand = CREATOR_COMMANDS.get(args.command);
   if (creatorCommand) return runCreatorCommand(creatorCommand, args.rest);
 
@@ -361,7 +357,7 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
       maxProjects: numberFlag(args, 'max-projects', 20),
       maxSessionFiles: numberFlag(args, 'max-session-files', 200),
     });
-    return jsonOutput(projects.length ? 'project_selection_required' : 'no_projects_found', {
+    return jsonOutput('project_selection_required', {
       projects: projects as unknown as JsonValue,
       project_choices: projects.map(creatorProjectChoice) as unknown as JsonValue,
       project_count: projects.length,
@@ -372,10 +368,100 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
         project_root_metadata_inspected: true,
         source_code_scanned: false,
       },
+      additional_sources: [{
+        id: 'github',
+        label: 'Find another project on GitHub',
+        command: 'github-project-discover',
+      }],
       selection_rule: 'Select one or more projects and choose skill or subapp for each before validation begins.',
     }, {
       requiresAction: true,
       actionType: projects.length ? 'select_local_projects_and_targets' : 'choose_an_explicit_project_directory',
+    });
+  }
+  if (args.command === 'github-status') {
+    const client = await githubClient(args);
+    const status = githubAuthStatus(await client.getGitHubAuthStatus());
+    return jsonOutput(status.connected ? 'github_connected' : 'github_connection_required', {
+      github: status,
+    }, {
+      requiresAction: !status.connected,
+      actionType: status.connected ? null : 'connect_github',
+    });
+  }
+  if (args.command === 'github-connect') {
+    const client = await githubClient(args);
+    const status = githubAuthStatus(await client.getGitHubAuthStatus());
+    if (status.connected) return jsonOutput('github_connected', { github: status });
+    const connection = githubConnectResult(await client.startGitHubAuth());
+    const browserOpened = connection.url && !booleanFlag(args, 'no-open-browser')
+      ? await openExternalUrl(connection.url)
+      : false;
+    return jsonOutput('github_authorization_required', {
+      github: status,
+      authorization_url: connection.url,
+      browser_opened: browserOpened,
+      next_command: 'github-project-discover',
+    }, {
+      requiresAction: true,
+      actionType: 'complete_github_authorization',
+    });
+  }
+  if (args.command === 'github-disconnect') {
+    const client = await githubClient(args);
+    const response = await client.disconnectGitHub();
+    const data = record(response.data);
+    return jsonOutput('github_disconnected', {
+      github: {
+        connected: false,
+        status: String(data.status ?? 'disconnected'),
+        username: nullableText(data.username),
+        message: nullableText(data.message),
+      },
+      authorization_revoked: data.revoked === true,
+      revocation_attempted: data.revokeAttempted === true,
+    });
+  }
+  if (args.command === 'github-project-discover') {
+    const limit = numberFlag(args, 'limit', 20);
+    if (limit < 1 || limit > 100) throw new PublisherError('GitHub repository limit must be 1-100.', 'invalid_github_repo_limit');
+    const client = await githubClient(args);
+    const status = githubAuthStatus(await client.getGitHubAuthStatus());
+    if (!status.connected || !status.username) {
+      const connection = githubConnectResult(await client.startGitHubAuth());
+      const browserOpened = connection.url && !booleanFlag(args, 'no-open-browser')
+        ? await openExternalUrl(connection.url)
+        : false;
+      return jsonOutput('github_authorization_required', {
+        github: status,
+        authorization_url: connection.url,
+        browser_opened: browserOpened,
+        next_command: 'github-project-discover',
+      }, {
+        requiresAction: true,
+        actionType: 'complete_github_authorization',
+      });
+    }
+    const response = await client.listGitHubRepositories(status.username, {
+      limit,
+      includeForks: booleanFlag(args, 'include-forks'),
+      includeArchived: booleanFlag(args, 'include-archived'),
+      sort: stringFlag(args, 'sort', 'updated') === 'created' ? 'created' : 'updated',
+    });
+    const projects = githubProjects(response);
+    return jsonOutput(projects.length ? 'github_project_selection_required' : 'no_github_projects_found', {
+      github: status,
+      projects,
+      project_count: projects.length,
+      privacy: {
+        repository_metadata_only: true,
+        source_code_scanned: false,
+        private_repositories_included: false,
+      },
+      selection_rule: 'Select exactly one GitHub repository before source assessment begins.',
+    }, {
+      requiresAction: projects.length > 0,
+      actionType: projects.length ? 'select_one_github_project' : null,
     });
   }
   if (args.command === 'project-assess') {
@@ -1180,7 +1266,6 @@ async function runCreatorCommand(command: string, creatorArgs: string[]): Promis
   const effectiveCreatorArgs = cloudStudio && !configuredCreatorWorkerUrl
     ? [...creatorArgs, '--worker-url', workerUrl]
     : creatorArgs;
-  const switchingAccount = creatorArgs.includes('--switch-account');
   const centerScope: Record<string, string> = {
     'center-list': 'creator.items.read',
     'center-show': 'creator.items.read',
@@ -1188,16 +1273,7 @@ async function runCreatorCommand(command: string, creatorArgs: string[]): Promis
     'center-update': 'creator.items.write',
     'center-unpublish': 'creator.items.unpublish',
   };
-  if (switchingAccount) {
-    if (creatorExplicitToken()) {
-      throw new PublisherError(
-        'Account switching is unavailable while an explicit Taku token environment variable is set.',
-        'creator_account_switch_env_token',
-      );
-    }
-    await clearPublisherSession();
-  }
-  const strictPublisherBinding = cloudStudio || switchingAccount;
+  const strictPublisherBinding = cloudStudio;
   let auth = (requiresAuth || centerScope[command])
     ? await resolveAuth({ allowDesktopSession: !strictPublisherBinding })
     : null;
@@ -1222,7 +1298,6 @@ async function runCreatorCommand(command: string, creatorArgs: string[]): Promis
         workerUrl,
         siteUrl: creatorAuthorizationSiteUrl(effectiveCreatorArgs),
         intent: command === 'center-unpublish' ? 'creator_center_unpublish' : centerScope[command] ? 'creator_center' : 'publish_stax_card',
-        accountMode: creatorAuthorizationAccountMode(switchingAccount, cloudStudio),
       });
       auth = await resolveAuth({ allowDesktopSession: !strictPublisherBinding });
       if (creatorAuthorizationRequired(auth, requiredScopes)) throw new PublisherError(
@@ -1233,12 +1308,11 @@ async function runCreatorCommand(command: string, creatorArgs: string[]): Promis
   };
   if (
     (requiresAuth || Boolean(centerScope[command]))
-    && creatorAuthorizationRequired(auth, requiredScopes, switchingAccount)
+    && creatorAuthorizationRequired(auth, requiredScopes)
   ) {
     await authorizeOnce();
   }
-  const passthrough = localEditor
-    && (command === 'editor' || (command === 'draft' && effectiveCreatorArgs.includes('--editor')));
+  const passthrough = localEditor && (command === 'editor' || (command === 'draft' && effectiveCreatorArgs.includes('--editor')));
   const env = creatorEnvironment();
   if (auth?.token && !env.TAKU_PUBLISH_TOKEN) env.TAKU_PUBLISH_TOKEN = auth.token;
   let result = await spawnNode(script, [command, ...effectiveCreatorArgs], env, passthrough);
@@ -1268,13 +1342,9 @@ async function runCreatorCommand(command: string, creatorArgs: string[]): Promis
       payload.publisherAccountHint = accountHint;
       payload.savedToAccount = accountHint;
     }
-    payload.switchAccount = {
-      supported: true,
-      actionType: 'switch_taku_account_and_resave_local_draft',
-      command: 'creator-switch-account',
-      reusesLocalDraft: true,
-      rescansWorkspace: false,
-    };
+    payload.message = accountHint
+      ? `The private Studio draft was saved to Taku account ${accountHint}. Open editorUrl to review it.`
+      : 'The private Studio draft was saved to the current Taku account. Open editorUrl to review it.';
   }
   payload._process_exit_code = result.code;
   return payload;
@@ -1326,10 +1396,8 @@ export function creatorCommandMode(command: string, creatorArgs: string[]) {
 export function creatorAuthorizationRequired(
   auth: ResolvedAuth | null,
   requiredScopes: string[],
-  switchingAccount = false,
 ): boolean {
-  return switchingAccount
-    || auth === null
+  return auth === null
     || requiredScopes.some((scope) => !authHasScope(auth, scope));
 }
 
@@ -1343,64 +1411,8 @@ export async function attemptCreatorBrowserAuthorization(
   return true;
 }
 
-export function creatorAuthorizationAccountMode(
-  switchingAccount: boolean,
-  cloudStudio: boolean,
-): 'confirm' | 'switch' | undefined {
-  if (switchingAccount) return 'switch';
-  return cloudStudio ? 'confirm' : undefined;
-}
-
 function creatorExplicitToken(env: NodeJS.ProcessEnv = process.env): string {
   return String(env.TAKU_BEARER_TOKEN || env.TAKU_PUBLISH_TOKEN || '').trim();
-}
-
-async function runCreatorSwitchAccount(creatorArgs: string[]): Promise<JsonObject> {
-  const reserved = ['draft', 'workspace', 'output', 'worker-url', 'site-url', 'auth-site-url', 'local-editor'];
-  const overridden = reserved.find((name) => creatorArgs.includes(`--${name}`)
-    || creatorArgs.some((value) => value.startsWith(`--${name}=`)));
-  if (overridden) {
-    throw new PublisherError(
-      `creator-switch-account reuses the saved draft and does not accept --${overridden}.`,
-      'creator_account_switch_override',
-    );
-  }
-  const statePath = path.join(publisherHome(), 'creator-cloud-draft.json');
-  const state = await readJson(statePath).catch(() => null);
-  if (!isRecord(state) || state.schemaVersion !== 'taku.publisher.creator-cloud-draft.v1') {
-    throw new PublisherError(
-      'No reusable local Stax Card draft was found. Generate a cloud Studio draft first.',
-      'creator_cloud_draft_missing',
-    );
-  }
-  return runCreatorCommand('editor', creatorSwitchResumeArguments(state, creatorArgs));
-}
-
-export function creatorSwitchResumeArguments(
-  state: JsonObject,
-  creatorArgs: string[] = [],
-  pathExists: (target: string) => boolean = fs.existsSync,
-): string[] {
-  const draftPath = String(state.draftPath ?? '').trim();
-  const workerUrl = String(state.workerUrl ?? '').trim();
-  const siteUrl = String(state.siteUrl ?? '').trim();
-  if (!draftPath || !pathExists(draftPath) || !workerUrl || !siteUrl) {
-    throw new PublisherError(
-      'The reusable local Stax Card draft is no longer available.',
-      'creator_cloud_draft_unavailable',
-    );
-  }
-  return [
-    '--json',
-    '--draft',
-    draftPath,
-    '--worker-url',
-    workerUrl,
-    '--site-url',
-    siteUrl,
-    '--switch-account',
-    ...creatorArgs,
-  ];
 }
 
 async function createCreatorInitEditor(args: ParsedArguments): Promise<JsonObject> {
@@ -1467,6 +1479,41 @@ async function marketplaceInstallClient(args: ParsedArguments): Promise<TakuPubl
   return client;
 }
 
+async function githubClient(args: ParsedArguments): Promise<TakuPublisherClient> {
+  const tokenEnv = stringFlag(args, 'token-env', 'TAKU_BEARER_TOKEN');
+  const workerUrl = stringFlag(args, 'worker-url', DEFAULT_WORKER_URL);
+  const requiredScopes = [
+    'github.connection.read',
+    'github.connection.write',
+    'github.repositories.read',
+  ];
+  let auth = await resolveAuth({ tokenEnv, allowDesktopSession: false });
+  let client = new TakuPublisherClient({
+    workerUrl,
+    token: auth.token,
+    timeoutMs: numberFlag(args, 'timeout', 30) * 1000,
+    allowCustomWorkerUrl: booleanFlag(args, 'allow-custom-worker-url'),
+  });
+  if (requiredScopes.every((scope) => authHasScope(auth, scope)) || booleanFlag(args, 'no-browser-login')) return client;
+  await loginWithBrowser({
+    workerUrl: client.workerUrl,
+    siteUrl: stringFlag(args, 'site-url', DEFAULT_SITE_URL),
+    intent: 'github_connect',
+    timeoutMs: numberFlag(args, 'auth-timeout', 300) * 1000,
+  });
+  auth = await resolveAuth({ tokenEnv, allowDesktopSession: false });
+  if (!requiredScopes.every((scope) => authHasScope(auth, scope))) {
+    throw new PublisherError('Taku authorization did not grant GitHub project access.', 'github_auth_scope_missing');
+  }
+  client = new TakuPublisherClient({
+    workerUrl: client.workerUrl,
+    token: auth.token,
+    timeoutMs: numberFlag(args, 'timeout', 30) * 1000,
+    allowCustomWorkerUrl: true,
+  });
+  return client;
+}
+
 async function authenticatedClient(args: ParsedArguments): Promise<TakuPublisherClient> {
   const tokenEnv = stringFlag(args, 'token-env', 'TAKU_BEARER_TOKEN');
   let auth = await resolveAuth({ tokenEnv });
@@ -1496,6 +1543,72 @@ function publicMarketplaceClient(args: ParsedArguments): TakuPublisherClient {
     workerUrl: stringFlag(args, 'worker-url', DEFAULT_WORKER_URL),
     timeoutMs: numberFlag(args, 'timeout', 30) * 1000,
     allowCustomWorkerUrl: booleanFlag(args, 'allow-custom-worker-url'),
+  });
+}
+
+function githubAuthStatus(response: JsonObject): {
+  connected: boolean;
+  status: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  profile_url: string | null;
+  message: string | null;
+} {
+  const data = record(response.data);
+  const account = record(data.account ?? response.account);
+  const status = String(data.status ?? response.status ?? 'disconnected');
+  return {
+    connected: data.connected === true || response.connected === true || status === 'connected',
+    status,
+    username: nullableText(account.username ?? account.login ?? data.username ?? response.username),
+    display_name: nullableText(account.displayName ?? account.display_name ?? account.name),
+    avatar_url: nullableText(account.avatarUrl ?? account.avatar_url),
+    profile_url: nullableText(account.profileUrl ?? account.profile_url ?? account.htmlUrl ?? account.html_url),
+    message: nullableText(data.message ?? response.message),
+  };
+}
+
+function githubConnectResult(response: JsonObject): { url: string | null } {
+  const data = record(response.data);
+  const url = nullableText(response.url ?? response.authUrl ?? response.auth_url ?? data.url ?? data.authUrl ?? data.auth_url);
+  if (!url) throw new PublisherError('GitHub authorization URL was not returned.', 'github_auth_url_missing');
+  return { url };
+}
+
+function githubProjects(response: JsonObject): JsonObject[] {
+  const data = Array.isArray(response.data) ? response.data : [];
+  return data.filter(isRecord).map((repo) => ({
+    id: `github:${String(repo.fullName ?? repo.full_name ?? repo.name ?? '')}`,
+    name: String(repo.name ?? ''),
+    full_name: String(repo.fullName ?? repo.full_name ?? ''),
+    source: String(repo.htmlUrl ?? repo.html_url ?? ''),
+    description: nullableText(repo.description),
+    language: nullableText(repo.language),
+    stars: Number(repo.stars ?? 0),
+    updated_at: nullableText(repo.updatedAt ?? repo.updated_at),
+    suggested_type: nullableText(repo.suggestedType ?? repo.suggested_type),
+    recommended: repo.recommended === true,
+  }));
+}
+
+function nullableText(value: JsonValue | undefined): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function openExternalUrl(url: string): Promise<boolean> {
+  const command = process.platform === 'darwin'
+    ? { file: 'open', args: [url] }
+    : process.platform === 'win32'
+      ? { file: 'cmd', args: ['/c', 'start', '', url] }
+      : { file: 'xdg-open', args: [url] };
+  return new Promise((resolve) => {
+    const child = spawn(command.file, command.args, { detached: true, stdio: 'ignore', windowsHide: true });
+    child.once('error', () => resolve(false));
+    child.once('spawn', () => {
+      child.unref();
+      resolve(true);
+    });
   });
 }
 
@@ -1829,30 +1942,36 @@ function creatorConfiguredWorkerUrl(
   args: string[],
   env: NodeJS.ProcessEnv = process.env,
 ): string | undefined {
-  return creatorArgument(args, 'worker-url')
-    ?? (String(
-      env.TAKU_WORKER_URL
-      || env.VITE_WORKER_URL
-      || env.NEXT_PUBLIC_TAKU_WORKER_URL
-      || env.NEXT_PUBLIC_WORKER_URL
-      || '',
-    ).trim() || undefined);
+  const explicit = creatorArgument(args, 'worker-url');
+  if (explicit) return explicit;
+  const configured = String(
+    env.TAKU_WORKER_URL
+    || env.VITE_WORKER_URL
+    || env.NEXT_PUBLIC_TAKU_WORKER_URL
+    || env.NEXT_PUBLIC_WORKER_URL
+    || '',
+  ).trim();
+  return configured || undefined;
 }
 
 export function creatorWorkerUrl(
-  _command: string,
+  command: string,
   args: string[],
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  return creatorConfiguredWorkerUrl(args, env) ?? DEFAULT_WORKER_URL;
+  const configured = creatorConfiguredWorkerUrl(args, env);
+  if (configured) return configured;
+  return DEFAULT_WORKER_URL;
 }
 
 export function creatorAuthorizationSiteUrl(
   args: string[],
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  return creatorArgument(args, 'auth-site-url')
-    ?? (String(env.TAKU_AUTH_SITE_URL || '').trim() || DEFAULT_SITE_URL);
+  const explicit = creatorArgument(args, 'auth-site-url');
+  if (explicit) return explicit;
+  const configured = String(env.TAKU_AUTH_SITE_URL ?? '').trim();
+  return configured || DEFAULT_SITE_URL;
 }
 
 function creatorEnvironment(): NodeJS.ProcessEnv {
@@ -1888,6 +2007,10 @@ Commands:
   creator-plan-next --plan-id <creator-plan-id>
   creator-plan-update --plan-id <creator-plan-id> [--card-status <ready_for_review|published|skipped>] [--project-id <id> --project-status <queued|in_progress|completed|blocked>] [--remote-item-id <id>]
   project-discover [--host codex|claude-code|all] [--max-projects <n>]
+  github-status
+  github-connect [--no-open-browser]
+  github-disconnect
+  github-project-discover [--limit <n>] [--include-forks] [--include-archived] [--sort updated|created]
   project-assess --source <absolute-local-directory>
   skill-prepare --source <same-source> --output-root <absolute-dir> --confirm-assessment <token> [--name <candidate-name>]
   skill-convert --candidate <absolute-candidate-path>
@@ -1908,7 +2031,6 @@ Commands:
   subapp-register-plan --package-root <release-dir> --metadata <json> --mode <create|update> [--app-id <required-for-update>]
   subapp-register --package-root <same-release-dir> --metadata <same-json> --mode <same-mode> --confirm-registration <token> [--app-id <same-update-id>] [--upload-timeout <seconds>]
   creator-doctor, creator-scan, creator-draft, creator-editor, creator-publish
-  creator-switch-account
   creator-center-list, creator-center-show, creator-center-stats
   creator-center-update, creator-center-unpublish
 `;

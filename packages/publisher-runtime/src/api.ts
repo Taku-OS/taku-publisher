@@ -58,6 +58,13 @@ export type Transport = (
   timeoutMs: number,
 ) => Promise<TransportResponse>;
 
+export interface AppSignedUploadRequest extends JsonObject {
+  bucket: string;
+  path: string;
+  upsert: boolean;
+  sizeBytes: number;
+}
+
 export class TakuPublisherClient {
   readonly workerUrl: string;
   readonly token: string;
@@ -138,6 +145,30 @@ export class TakuPublisherClient {
   getMarketplaceItem(id: string): Promise<JsonObject> { return this.json('GET', `/stax/items/${segment(id)}`, undefined, '', false); }
   getStaxProfile(): Promise<JsonObject> { return this.json('GET', '/stax/profile'); }
   getOrCreateCreatorProfile(): Promise<JsonObject> { return this.json('GET', '/stax/creators/me'); }
+  getGitHubAuthStatus(): Promise<JsonObject> { return this.json('GET', '/stax/github/auth/status'); }
+  startGitHubAuth(returnTo?: string): Promise<JsonObject> {
+    return this.json('POST', '/stax/github/auth/connect', returnTo ? { return_to: returnTo } : {});
+  }
+  disconnectGitHub(): Promise<JsonObject> {
+    return this.json('DELETE', '/stax/github/auth/connection');
+  }
+  listGitHubRepositories(
+    username: string,
+    options: {
+      limit?: number;
+      includeForks?: boolean;
+      includeArchived?: boolean;
+      sort?: 'updated' | 'created';
+    } = {},
+  ): Promise<JsonObject> {
+    const query = new URLSearchParams();
+    if (options.limit !== undefined) query.set('limit', String(options.limit));
+    if (options.includeForks) query.set('include_forks', 'true');
+    if (options.includeArchived) query.set('include_archived', 'true');
+    if (options.sort) query.set('sort', options.sort);
+    const suffix = query.size ? `?${query}` : '';
+    return this.json('GET', `/stax/github/repos/${segment(username)}${suffix}`);
+  }
   getMarketplaceInstallPackage(id: string): Promise<JsonObject> { return this.json('GET', `/stax/installs/package/${segment(id)}`); }
   recordMarketplaceInstall(id: string, versionNumber: number): Promise<JsonObject> {
     return this.json('POST', '/stax/installs', { item_id: id, installed_version: versionNumber });
@@ -151,7 +182,7 @@ export class TakuPublisherClient {
   createAppVersion(payload: JsonObject): Promise<JsonObject> {
     return this.json('POST', '/app-store/versions', payload);
   }
-  createAppSignedUpload(payload: JsonObject): Promise<JsonObject> {
+  createAppSignedUpload(payload: AppSignedUploadRequest): Promise<JsonObject> {
     return this.json('POST', '/app-store/storage/signed-upload', payload);
   }
   getAppDownload(appId: string, versionNumber?: number): Promise<JsonObject> {

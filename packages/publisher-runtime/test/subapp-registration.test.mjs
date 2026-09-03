@@ -69,6 +69,8 @@ test('uploads both archives and registers only a private App draft version', asy
   assert.equal(calls[0].payload.appId, undefined);
   assert.equal(calls[2].payload.path, 'apps/app_test_123/versions/4/source.zip');
   assert.equal(calls[4].payload.path, 'apps/app_test_123/versions/4/build.zip');
+  assert.equal(calls[2].payload.sizeBytes, fixture.sourceSize);
+  assert.equal(calls[4].payload.sizeBytes, fixture.buildSize);
   assert.equal(calls[3].headers['x-upsert'], 'true');
   assert.equal(calls[6].payload.publishManifest.buildOutputDir, '.next-preview');
   assert.deepEqual(calls[6].payload.publishManifest.serviceAuthorizations, [{
@@ -168,7 +170,7 @@ test('rejects incomplete source rights and duplicate registration state', async 
   );
 });
 
-test('resumes an interrupted upload without allocating a duplicate App version', async t => {
+test('resumes an interrupted build upload without re-uploading source or allocating a duplicate version', async t => {
   const fixture = await registrationFixture(t);
   const initialPlan = await planSubAppRegistration({
     packageRoot: fixture.packageRoot,
@@ -199,7 +201,7 @@ test('resumes an interrupted upload without allocating a duplicate App version',
   const interruptedState = await readJsonFile(
     path.join(fixture.packageRoot, 'registration-state.json'),
   );
-  assert.equal(interruptedState.status, 'uploading');
+  assert.equal(interruptedState.status, 'source-uploaded');
   assert.equal(interruptedState.appId, 'app_test_123');
   assert.equal(interruptedState.versionNumber, 4);
 
@@ -209,11 +211,10 @@ test('resumes an interrupted upload without allocating a duplicate App version',
     mode: 'create',
   });
   assert.equal(resumePlan.confirmationToken, initialPlan.confirmationToken);
-  assert.equal(resumePlan.resumeState.status, 'uploading');
+  assert.equal(resumePlan.resumeState.status, 'source-uploaded');
   assert.equal(resumePlan.uploadStarted, true);
   assert.equal(resumePlan.registrationStarted, true);
   assert.deepEqual(resumePlan.remoteOperations, [
-    'upload-source-archive',
     'upload-build-archive',
     'register-private-app-version',
   ]);
@@ -241,10 +242,97 @@ test('resumes an interrupted upload without allocating a duplicate App version',
   assert.deepEqual(resumedCalls.map(call => call.kind), [
     'presign',
     'upload',
+    'version',
+  ]);
+});
+
+test('records presign-pending truthfully and resumes without duplicating the catalog draft', async t => {
+  const fixture = await registrationFixture(t);
+  const initialPlan = await planSubAppRegistration({
+    packageRoot: fixture.packageRoot,
+    metadata: fixture.metadata,
+    mode: 'create',
+  });
+  const firstCalls = [];
+  const interruptedClient = fakeRegistrationClient(firstCalls);
+  interruptedClient.createAppSignedUpload = async payload => {
+    firstCalls.push({ kind: 'presign', payload });
+    throw new Error('fixture presign rejection');
+  };
+
+  await assert.rejects(
+    registerSubAppDraft(
+      {
+        packageRoot: fixture.packageRoot,
+        metadata: fixture.metadata,
+        mode: 'create',
+        confirmationToken: initialPlan.confirmationToken,
+      },
+      interruptedClient,
+    ),
+    /fixture presign rejection/,
+  );
+  assert.deepEqual(firstCalls.map(call => call.kind), ['catalog', 'next-version', 'presign']);
+  assert.equal(firstCalls[2].payload.sizeBytes, fixture.sourceSize);
+  const interruptedState = await readJsonFile(
+    path.join(fixture.packageRoot, 'registration-state.json'),
+  );
+  assert.equal(interruptedState.status, 'presign-pending');
+
+  const resumePlan = await planSubAppRegistration({
+    packageRoot: fixture.packageRoot,
+    metadata: fixture.metadata,
+    mode: 'create',
+  });
+  assert.equal(resumePlan.resumeState.status, 'presign-pending');
+  assert.equal(resumePlan.uploadStarted, false);
+  const resumedCalls = [];
+  const resumedClient = fakeRegistrationClient(resumedCalls);
+  resumedClient.upsertAppCatalog = async () => {
+    throw new Error('resume must not create another catalog row');
+  };
+  resumedClient.getNextAppVersionNumber = async () => {
+    throw new Error('resume must not allocate another version number');
+  };
+  await registerSubAppDraft(
+    {
+      packageRoot: fixture.packageRoot,
+      metadata: fixture.metadata,
+      mode: 'create',
+      confirmationToken: resumePlan.confirmationToken,
+    },
+    resumedClient,
+  );
+  assert.deepEqual(resumedCalls.map(call => call.kind), [
+    'presign',
+    'upload',
     'presign',
     'upload',
     'version',
   ]);
+});
+
+test('rejects an archive above the App Store limit before mutating remote state', async t => {
+  const fixture = await registrationFixture(t);
+  const manifestPath = path.join(fixture.packageRoot, 'package-manifest.json');
+  const manifest = await readJsonFile(manifestPath);
+  manifest.source.size = (20 * 1024 * 1024) + 1;
+  await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  const calls = [];
+
+  await assert.rejects(
+    registerSubAppDraft(
+      {
+        packageRoot: fixture.packageRoot,
+        metadata: fixture.metadata,
+        mode: 'create',
+        confirmationToken: 'test-not-reached',
+      },
+      fakeRegistrationClient(calls),
+    ),
+    error => error?.code === 'subapp_registration_package_too_large',
+  );
+  assert.deepEqual(calls, []);
 });
 
 test('rejects resume when package metadata no longer matches the interrupted upload', async t => {
@@ -395,6 +483,8 @@ async function registrationFixture(t) {
   return {
     root,
     packageRoot,
+    sourceSize: source.size,
+    buildSize: build.size,
     metadata: {
       catalog: {
         name: 'Calculator',

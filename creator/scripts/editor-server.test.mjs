@@ -6,14 +6,25 @@ import test from 'node:test';
 
 import {
   bindDraftToDesktopAccount,
+  communitySkillPublishError,
   LISTING_ICON_GENERATE_PATH,
+  LOCAL_AUTH_REDEEM_PATH,
   inspectLocalPackagePath,
   pendingLocalToolListingReviews,
+  prepareCommunitySkillsForPublish,
   publisherAccountFromDraft,
   publisherAccountFromProfileResult,
   publisherAccountsMismatch,
   securityHeaders,
 } from './editor-server.mjs';
+
+test('accepts the full Stax snapshot payload on the publish route', async () => {
+  const source = await fs.readFile(new URL('./editor-server.mjs', import.meta.url), 'utf8');
+  assert.match(
+    source,
+    /requestUrl\.pathname === '\/api\/publish'[\s\S]*?readRequestJson\(request, PUBLISH_REQUEST_BODY_BYTES\)/,
+  );
+});
 
 test('accepts a skill directory whose definition filename uses lowercase', async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-publisher-skill-dir-'));
@@ -29,6 +40,19 @@ test('accepts a skill directory whose definition filename uses lowercase', async
 
 test('uses the canonical Marketplace icon generation endpoint', () => {
   assert.equal(LISTING_ICON_GENERATE_PATH, '/marketplace/icons/generate');
+});
+
+test('uses the canonical Marketplace local auth redeem endpoint', () => {
+  assert.equal(LOCAL_AUTH_REDEEM_PATH, '/marketplace/local-auth/redeem');
+});
+
+test('shows Community Skill publishing preflight errors in English', () => {
+  assert.equal(
+    communitySkillPublishError(
+      new Error('Skill package file: references/terminal_display.md may contain private data'),
+    ),
+    'The file references/terminal_display.md in this Skill may contain a local path or private data. Publishing was stopped. Remove the sensitive data and try again.',
+  );
 });
 
 test('detects when Taku authorizes a different account than the bound draft', () => {
@@ -112,7 +136,7 @@ test('allows bundled Stax preview fonts under the editor CSP', () => {
   assert.match(securityHeaders()['Content-Security-Policy'], /font-src 'self' data:/);
 });
 
-test('does not block profile publishing while an icon is generated after authorization', () => {
+test('requires listing copy for selected Community tools but generates the icon at publish time', () => {
   const tool = {
     id: 'local-tool-1',
     name: 'youtube-to-ebook',
@@ -123,7 +147,7 @@ test('does not block profile publishing while an icon is generated after authori
   const state = {
     toolChoices: { displayedTools: [tool] },
     draft: {
-      sections: [],
+      sections: [{ id: 'creator-tools', items: [{ ...tool, selected: true }] }],
       listingDrafts: {
         [tool.id]: {
           status: 'ready',
@@ -139,6 +163,78 @@ test('does not block profile publishing while an icon is generated after authori
   };
 
   assert.deepEqual(pendingLocalToolListingReviews(state), []);
+  state.draft.listingDrafts[tool.id].listing.shortDescription = '';
+  assert.deepEqual(pendingLocalToolListingReviews(state)[0]?.missing, ['shortDescription']);
+  state.draft.listingDrafts[tool.id].listing.shortDescription = 'Turn a video into an ebook.';
   state.draft.listingDrafts[tool.id].listing.coverImageUrl = 'https://cdn.taku.ai/icon.png';
   assert.deepEqual(pendingLocalToolListingReviews(state), []);
+
+  state.draft.sections = [];
+  state.draft.listingDrafts[tool.id].listing.coverImageUrl = '';
+  assert.deepEqual(pendingLocalToolListingReviews(state), []);
+});
+
+test('does not block Stax Card publishing for unselected Profile tools', async () => {
+  const profileTools = [
+    { id: 'product-manager', name: 'product-manager', type: 'subagent' },
+    { id: 'taku-qa-reviewer', name: 'taku-qa-reviewer', type: 'subagent' },
+    { id: 'browser', name: 'browser', type: 'plugin' },
+    { id: 'aihot', name: 'aihot', type: 'skill', publishable: true },
+  ];
+  const draft = {
+    sections: [{ id: 'creator-tools', items: profileTools }],
+    listingDrafts: {},
+    stats: {
+      creatorToolSelectionMode: 'default-none',
+      creatorToolIds: [],
+    },
+  };
+
+  assert.deepEqual(pendingLocalToolListingReviews({ draft }), []);
+  assert.deepEqual(
+    await prepareCommunitySkillsForPublish({ draft }),
+    draft,
+  );
+});
+
+test('prepares a selected Community Skill with an installable package and generated HTTPS icon', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-community-publish-preflight-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.writeFile(path.join(root, 'SKILL.md'), '# Capafy publisher\n');
+  await fs.mkdir(path.join(root, '.temp'));
+  await fs.writeFile(
+    path.join(root, '.temp', 'publish-work-state.json'),
+    JSON.stringify({ sourcePath: '/tmp/private-project' }),
+  );
+  const tool = {
+    id: 'capafy-publisher',
+    name: 'capafy-publisher',
+    description: 'Publish and manage Capafy Skills.',
+    type: 'skill',
+    source: 'codex',
+    publishable: true,
+  };
+  const draft = {
+    sections: [{ id: 'creator-tools', items: [{ ...tool, selected: true }] }],
+    listingDrafts: {},
+    stats: {},
+  };
+
+  const prepared = await prepareCommunitySkillsForPublish({
+    draft,
+    toolChoices: { displayedTools: [tool] },
+    privateInventory: { items: [{ id: tool.id, localPath: root }] },
+    workerUrl: 'https://worker.example.test',
+    iconToken: 'icon-token',
+    generateIcon: async () => ({
+      response: { ok: true },
+      data: { imageUrl: 'https://cdn.taku.ai/capafy-publisher.png' },
+    }),
+  });
+
+  assert.equal(prepared.listingDrafts[tool.id].status, 'ready');
+  assert.equal(
+    prepared.listingDrafts[tool.id].listing.coverImageUrl,
+    'https://cdn.taku.ai/capafy-publisher.png',
+  );
 });

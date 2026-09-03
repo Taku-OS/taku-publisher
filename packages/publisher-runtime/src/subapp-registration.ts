@@ -7,7 +7,8 @@ import {
   SUBAPP_BUILD_OUTPUT_DIRECTORY,
   SUBAPP_SOURCE_ARCHIVE_FILE,
 } from '@taku/subapp-contract';
-import { responseCandidates } from './api.js';
+import { responseCandidates, type AppSignedUploadRequest } from './api.js';
+import { MAX_APP_STORE_PACKAGE_BYTES } from './constants.js';
 import { assertPublicPayload } from './scanner.js';
 import type { JsonObject, JsonValue } from './types.js';
 import {
@@ -26,16 +27,21 @@ const REGISTRATION_STATE_SCHEMA = 'taku.publisher.subapp-registration-state.v1';
 const REGISTRATION_STATE_FILE = 'registration-state.json';
 const REGISTRATION_RECEIPT_FILE = 'registration-receipt.json';
 const APP_PACKAGES_BUCKET = 'app-packages';
-const MAX_PACKAGE_BYTES = 2 * 1024 * 1024 * 1024;
 
 type RegistrationMode = 'create' | 'update';
+type RegistrationResumeStatus =
+  | 'draft-created'
+  | 'presign-pending'
+  | 'source-uploaded'
+  | 'build-uploaded'
+  | 'uploading';
 type AuthorshipKind = 'original' | 'derived' | 'third_party';
 type RightsBasis = 'self_owned' | 'open_source_license' | 'explicit_permission';
 
 export interface SubAppRegistrationClient {
   upsertAppCatalog(payload: JsonObject): Promise<JsonObject>;
   getNextAppVersionNumber(appId: string): Promise<JsonObject>;
-  createAppSignedUpload(payload: JsonObject): Promise<JsonObject>;
+  createAppSignedUpload(payload: AppSignedUploadRequest): Promise<JsonObject>;
   uploadSigned(
     uploadUrl: string,
     file: string,
@@ -118,7 +124,9 @@ export async function planSubAppRegistration(request: {
     confirmationToken,
     remoteOperations,
     ...(resumeState ? { resumeState } : {}),
-    uploadStarted: resumeState?.status === 'uploading',
+    uploadStarted: ['uploading', 'source-uploaded', 'build-uploaded'].includes(
+      String(resumeState?.status ?? ''),
+    ),
     registrationStarted: Boolean(resumeState),
     publishStarted: false,
   };
@@ -149,6 +157,7 @@ export async function registerSubAppDraft(
   let versionNumber: number;
   let sourceStoragePath: string;
   let buildStoragePath: string;
+  const resumeStatus = String(plan.resumeState?.status ?? '') as RegistrationResumeStatus | '';
 
   if (plan.resumeState) {
     appId = safeRemoteIdentifier(String(plan.resumeState.appId), 'App ID');
@@ -175,14 +184,14 @@ export async function registerSubAppDraft(
     });
   }
 
-  if (plan.resumeState?.status === 'uploading') {
-    versionNumber = requireStateVersionNumber(plan.resumeState.versionNumber);
+  if (['uploading', 'presign-pending', 'source-uploaded', 'build-uploaded'].includes(resumeStatus)) {
+    versionNumber = requireStateVersionNumber(plan.resumeState?.versionNumber);
     sourceStoragePath = requireStateStoragePath(
-      plan.resumeState.sourceStoragePath,
+      plan.resumeState?.sourceStoragePath,
       storagePath(appId, versionNumber, SUBAPP_SOURCE_ARCHIVE_FILE),
     );
     buildStoragePath = requireStateStoragePath(
-      plan.resumeState.buildStoragePath,
+      plan.resumeState?.buildStoragePath,
       storagePath(appId, versionNumber, SUBAPP_BUILD_ARCHIVE_FILE),
     );
   } else {
@@ -194,7 +203,7 @@ export async function registerSubAppDraft(
     sourceStoragePath = storagePath(appId, versionNumber, SUBAPP_SOURCE_ARCHIVE_FILE);
     buildStoragePath = storagePath(appId, versionNumber, SUBAPP_BUILD_ARCHIVE_FILE);
     await writeRegistrationState(stateFile, plan, {
-      status: 'uploading',
+      status: 'presign-pending',
       appId,
       versionNumber,
       sourceStoragePath,
@@ -202,16 +211,36 @@ export async function registerSubAppDraft(
     });
   }
 
-  await uploadArchive(
-    client,
-    path.join(plan.packageRoot, SUBAPP_SOURCE_ARCHIVE_FILE),
-    sourceStoragePath,
-  );
-  await uploadArchive(
-    client,
-    path.join(plan.packageRoot, SUBAPP_BUILD_ARCHIVE_FILE),
-    buildStoragePath,
-  );
+  if (!['source-uploaded', 'build-uploaded'].includes(resumeStatus)) {
+    await uploadArchive(
+      client,
+      path.join(plan.packageRoot, SUBAPP_SOURCE_ARCHIVE_FILE),
+      sourceStoragePath,
+      Number(source.size),
+    );
+    await writeRegistrationState(stateFile, plan, {
+      status: 'source-uploaded',
+      appId,
+      versionNumber,
+      sourceStoragePath,
+      buildStoragePath,
+    });
+  }
+  if (resumeStatus !== 'build-uploaded') {
+    await uploadArchive(
+      client,
+      path.join(plan.packageRoot, SUBAPP_BUILD_ARCHIVE_FILE),
+      buildStoragePath,
+      Number(build.size),
+    );
+    await writeRegistrationState(stateFile, plan, {
+      status: 'build-uploaded',
+      appId,
+      versionNumber,
+      sourceStoragePath,
+      buildStoragePath,
+    });
+  }
   await writeRegistrationState(stateFile, plan, {
     status: 'version-creating',
     appId,
@@ -484,11 +513,13 @@ async function uploadArchive(
   client: SubAppRegistrationClient,
   file: string,
   storagePathValue: string,
+  sizeBytes: number,
 ): Promise<void> {
   const signed = await client.createAppSignedUpload({
     bucket: APP_PACKAGES_BUCKET,
     path: storagePathValue,
     upsert: true,
+    sizeBytes,
   });
   const uploadUrl = responseString(signed, ['signedUrl', 'signed_url', 'uploadUrl', 'upload_url'], true) as string;
   const returnedPath = responseString(signed, ['path', 'storagePath', 'storage_path'], false);
@@ -548,7 +579,7 @@ async function loadRegistrationResumeState(
       { state_file: REGISTRATION_STATE_FILE },
     );
   }
-  if (!['draft-created', 'uploading'].includes(status)) {
+  if (!['draft-created', 'presign-pending', 'source-uploaded', 'build-uploaded', 'uploading'].includes(status)) {
     registrationStateExists(REGISTRATION_STATE_FILE);
   }
   const appId = safeRemoteIdentifier(String(state.appId ?? ''), 'App ID');
@@ -564,7 +595,7 @@ async function loadRegistrationResumeState(
       { state_file: REGISTRATION_STATE_FILE },
     );
   }
-  if (status === 'uploading') {
+  if (status !== 'draft-created') {
     const versionNumber = requireStateVersionNumber(state.versionNumber);
     requireStateStoragePath(
       state.sourceStoragePath,
@@ -587,9 +618,14 @@ function registrationStateExists(fileName: string): never {
 }
 
 function resumeRemoteOperations(status: string): string[] {
-  return status === 'uploading'
-    ? ['upload-source-archive', 'upload-build-archive', 'register-private-app-version']
-    : ['allocate-next-version', 'upload-source-archive', 'upload-build-archive', 'register-private-app-version'];
+  if (status === 'build-uploaded') return ['register-private-app-version'];
+  if (status === 'source-uploaded') {
+    return ['upload-build-archive', 'register-private-app-version'];
+  }
+  if (status === 'uploading' || status === 'presign-pending') {
+    return ['upload-source-archive', 'upload-build-archive', 'register-private-app-version'];
+  }
+  return ['allocate-next-version', 'upload-source-archive', 'upload-build-archive', 'register-private-app-version'];
 }
 
 function requireStateVersionNumber(value: JsonValue | undefined): number {
@@ -611,7 +647,7 @@ async function verifyArchive(file: string, expectedHash: string, expectedSize: n
     metadata.isSymbolicLink() ||
     metadata.size !== expectedSize ||
     metadata.size <= 0 ||
-    metadata.size > MAX_PACKAGE_BYTES ||
+    metadata.size > MAX_APP_STORE_PACKAGE_BYTES ||
     await sha256File(file) !== expectedHash
   ) {
     throw new PublisherError(
@@ -624,11 +660,18 @@ async function verifyArchive(file: string, expectedHash: string, expectedSize: n
 
 function requireArchiveRecord(value: JsonValue | undefined, label: string): JsonObject {
   const record = requireObject(value, `${label} archive`);
+  if (Number(record.size) > MAX_APP_STORE_PACKAGE_BYTES) {
+    throw new PublisherError(
+      `SubApp ${label} archive exceeds the ${MAX_APP_STORE_PACKAGE_BYTES} byte App Store limit.`,
+      'subapp_registration_package_too_large',
+      { archive: label, size: record.size, max_bytes: MAX_APP_STORE_PACKAGE_BYTES },
+    );
+  }
   if (
     !/^[a-f0-9]{64}$/.test(String(record.sha256 ?? '')) ||
     !Number.isSafeInteger(record.size) ||
     Number(record.size) <= 0 ||
-    Number(record.size) > MAX_PACKAGE_BYTES
+    Number(record.size) > MAX_APP_STORE_PACKAGE_BYTES
   ) {
     throw new PublisherError(
       `SubApp ${label} archive record is invalid.`,
