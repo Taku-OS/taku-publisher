@@ -80,7 +80,7 @@ export function buildStaxBlocks(draft = {}) {
   const hidden = record(identity.hidden);
   const badges = pickBadges(persona, staxProfile);
   const capabilityItems = inventoryItems(draft, ['creator-tools']);
-  const capabilityCategories = capabilityTypeMix(capabilityItems);
+  const capabilityIntegrations = integrationNodes(capabilityItems);
   const tools = inventoryItems(draft, ['creator-tools', 'using-tools']).slice(0, 3);
   const madeItems = inventoryItems(draft, ['made-items']);
   const dailyHeatmap = array(localActivity.dailyHeatmap);
@@ -201,6 +201,8 @@ export function buildStaxBlocks(draft = {}) {
     }, 'persona type is not available yet'),
     tier1: serverOrFallback(serverBlocks, 'tier1', supportedIf(topPercent > 0, 'server.rank', {
       tier: ladderTier(topPercent),
+      topPercent,
+      topPercentLabel: formatTierTopPercent(topPercent),
     }, COMMUNITY_RANK_LOCK_REASON, 'supported', {
       lockLabel: COMMUNITY_RANK_LOCK_LABEL,
     })),
@@ -366,7 +368,7 @@ export function buildStaxBlocks(draft = {}) {
     vsavg: serverOrFallback(
       serverBlocks,
       'vsavg',
-      unsupported('community token median is not available from the Worker yet'),
+      unsupported('Publish or sync a Last 90 Days local summary to join the community comparison.'),
     ),
     trend: supportedIf(buildMomentum, 'publisher.local_activity', buildMomentum, 'two comparable observed build periods are required', 'partial', qualityMeta(
       'local_log',
@@ -477,15 +479,16 @@ export function buildStaxBlocks(draft = {}) {
       'Token stat is computed from local scanned logs.',
     )),
     tier4: serverOrFallback(serverBlocks, 'tier4', rankBlock(topPercent, 0.001, 'REACH TOP .1%')),
-    node: supportedIf(capabilityItems.length > 0, 'publisher.inventory', {
-      totalCount: capabilityItems.length,
-      categories: capabilityCategories.slice(0, 4),
-      otherCount: capabilityCategories.slice(4).reduce((sum, category) => sum + category.count, 0),
-    }, 'no local capabilities were detected for the stack overview', 'partial', qualityMeta(
+    node: supportedIf(capabilityIntegrations.length >= 3, 'publisher.inventory', {
+      integrations: capabilityIntegrations,
+    }, 'wire at least 3 tools to unlock the stack overview', 'partial', {
+      lockLabel: 'WIRE 3+ TOOLS',
+      ...qualityMeta(
       'local_inventory',
       '本地扫描',
-      'Capability mix is aggregated from locally detected tools without exposing local paths.',
-    )),
+      'Tool connections use public-safe names from locally detected creator tools without exposing local paths.',
+      ),
+    }),
     splitring: supportedIf(sessionSplit.sessionCount, 'publisher.local_activity', {
       chatShare: ratio(sessionSplit.chatShare || sessionSplit.chatTimeShare),
       buildShare: ratio(sessionSplit.buildShare || sessionSplit.buildTimeShare),
@@ -707,6 +710,14 @@ function capabilityTypeMix(items) {
       count,
     }))
     .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+}
+
+function integrationNodes(items) {
+  const colors = ['#C9F24C', '#2BD4C0', '#7C6CF6', '#FFC93D', '#F0641E'];
+  return items.slice(0, 5).map((item, index) => ({
+    name: clean(item?.name || item?.title || item?.id || capabilityCategoryLabel(item?.type), 48).toUpperCase(),
+    color: colors[index % colors.length],
+  })).filter((item) => item.name);
 }
 
 function capabilityCategoryLabel(id) {
@@ -958,6 +969,25 @@ function aiOption(value) {
   }[family];
 }
 
+function aiFamily(value) {
+  const raw = clean(value, 160).toLowerCase();
+  if (!raw) return '';
+  if (/(claude|sonnet|opus|haiku|anthropic)/.test(raw)) return 'claude';
+  if (/(gemini|google)/.test(raw)) return 'gemini';
+  if (/(cursor|composer)/.test(raw)) return 'cursor';
+  if (/(codex|openai|gpt|\bo[134]\b)/.test(raw)) return 'codex';
+  return '';
+}
+
+function aiTeam(family) {
+  return {
+    claude: ['CLAUDE', 'claude'],
+    cursor: ['CURSOR', 'cursor'],
+    gemini: ['GEMINI', 'gemini'],
+    codex: ['CODEX', 'codex'],
+  }[family];
+}
+
 function publicSocialProfiles(staxProfile) {
   const profile = record(staxProfile);
   const social = firstRecord(
@@ -1030,25 +1060,6 @@ function socialHandle(values, hostnames, prefixAt = false) {
   return '';
 }
 
-function aiFamily(value) {
-  const raw = clean(value, 160).toLowerCase();
-  if (!raw) return '';
-  if (/(claude|sonnet|opus|haiku|anthropic)/.test(raw)) return 'claude';
-  if (/(gemini|google)/.test(raw)) return 'gemini';
-  if (/(cursor|composer)/.test(raw)) return 'cursor';
-  if (/(codex|openai|gpt|\bo[134]\b)/.test(raw)) return 'codex';
-  return '';
-}
-
-function aiTeam(family) {
-  return {
-    claude: ['CLAUDE', 'claude'],
-    cursor: ['CURSOR', 'cursor'],
-    gemini: ['GEMINI', 'gemini'],
-    codex: ['CODEX', 'codex'],
-  }[family];
-}
-
 function birdLabel(workPattern) {
   const peakHour = integer(workPattern?.peakHour);
   if (peakHour >= 22 || peakHour <= 4) return 'OWL';
@@ -1097,6 +1108,12 @@ function quotaPercent(value) {
   if (!Number.isFinite(number) || number < 0) return null;
   const percent = number > 0 && number <= 1 ? number * 100 : number;
   return Math.max(0, Math.min(100, round(percent, 1)));
+}
+
+function formatTierTopPercent(value) {
+  const percent = quotaPercent(value);
+  const label = String(percent ?? 0);
+  return `${percent > 0 && percent < 1 ? label.replace(/^0/, '') : label}%`;
 }
 
 function compactNumber(value) {

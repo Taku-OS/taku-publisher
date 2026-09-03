@@ -66,6 +66,10 @@ export async function saveDraftToTakuStudio({
   canReadCreatorProfile = !String(token || '').startsWith('taku_pub_'),
   context = {},
 }) {
+  // A narrow creator.studio-draft.write grant can save an owner-scoped private
+  // Studio draft but intentionally cannot read or publish the Creator Profile.
+  // Enrich when broader creator auth is available; otherwise keep the local
+  // public-safe snapshot and let the Studio draft route bind it to the user.
   const profile = canReadCreatorProfile
     ? await fetchTakuCreatorProfile({ workerUrl, token }).catch(() => null)
     : null;
@@ -82,7 +86,10 @@ export async function saveDraftToTakuStudio({
   const studioPayload = createStudioDraftPayload(payload);
   studioPayload.studioRenderer = createStaxStudioRendererPayload(cloudDraft, {
     editor: {
-      publish: { siteUrl, workerUrl },
+      publish: {
+        siteUrl,
+        workerUrl,
+      },
     },
   });
 
@@ -101,12 +108,8 @@ export async function saveDraftToTakuStudio({
     const account = responseData.account && typeof responseData.account === 'object'
       ? responseData.account
       : {};
-    const launchContextId = String(
-      launchContext.id || launchContext.contextId || launchContext.context_id || '',
-    ).trim();
-    const accountHint = String(
-      account.hint || account.accountHint || account.account_hint || '',
-    ).trim();
+    const launchContextId = String(launchContext.id || launchContext.contextId || launchContext.context_id || '').trim();
+    const accountHint = String(account.hint || account.accountHint || account.account_hint || '').trim();
     const workerStudioUrl = String(responseData.studioUrl || responseData.studio_url || '').trim();
     return {
       ok: true,
@@ -234,7 +237,10 @@ export async function publishDraftToTaku({
   const studioPayload = createStudioDraftPayload(publishPayload);
   studioPayload.studioRenderer = createStaxStudioRendererPayload(draft, {
     editor: {
-      publish: { siteUrl, workerUrl },
+      publish: {
+        siteUrl,
+        workerUrl,
+      },
     },
   });
   try {

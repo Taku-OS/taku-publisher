@@ -2,6 +2,7 @@ import { createInlineActionDefinition, sanitizeActionDefinition } from './action
 import { createInlineAgentDefinition } from './agent-package.mjs';
 import { createInlinePluginBundle } from './plugin-package.mjs';
 import { createInlineSkillPackage } from './skill-package.mjs';
+import { buildPersonaProfileV1 } from '#taku-passport-core';
 export { STAX_CREATOR_PUBLISH_CONTRACT_VERSION } from './publish-config.mjs';
 import { stableId } from './cli.mjs';
 import { readJsonFile } from './draft-state.mjs';
@@ -677,7 +678,23 @@ function sanitizeBuilderProfileSnapshotForPublish(profileSnapshot, options = {})
   if (!sanitized) {
     throw new Error('Invalid builderProfileSnapshot schema; refusing to publish.');
   }
-  return sanitized;
+  return canonicalizePublicPersonaLabel(sanitized);
+}
+
+function canonicalizePublicPersonaLabel(profileSnapshot) {
+  const persona = asRecord(profileSnapshot.persona);
+  const code = stringValue(persona.code, 12).toUpperCase();
+  const profile = buildPersonaProfileV1({ code }, { locale: 'en-US' });
+  const hasCanonicalProfile = profile.code === code;
+
+  return {
+    ...profileSnapshot,
+    persona: {
+      ...persona,
+      title: hasCanonicalProfile ? profile.family.label : 'AI Builder',
+      subtitle: hasCanonicalProfile ? profile.basePersona.title : 'AI Builder',
+    },
+  };
 }
 
 function sanitizeBuilderProfileSnapshot(value, schemaVersion) {
@@ -836,10 +853,10 @@ function sanitizeStaxCardSnapshot(value) {
   if (raw.schemaVersion !== 'taku.stax.card-snapshot.v1') return undefined;
   const rawCanvas = asRecord(raw.canvas);
   const canvas = {
-    width: boundedInteger(rawCanvas.width, 320, 2000, 940),
-    height: boundedInteger(rawCanvas.height, 320, 2000, 796),
+    width: boundedInteger(rawCanvas.width, 320, 2000, 980),
+    height: boundedInteger(rawCanvas.height, 320, 2000, 660),
     columns: boundedInteger(rawCanvas.columns, 1, 16, 8),
-    rows: boundedInteger(rawCanvas.rows, 1, 16, 6),
+    rows: boundedInteger(rawCanvas.rows, 1, 16, 5),
     cellSize: boundedInteger(rawCanvas.cellSize, 24, 240, 104),
     gap: boundedInteger(rawCanvas.gap, 0, 48, 8),
   };
@@ -849,14 +866,12 @@ function sanitizeStaxCardSnapshot(value) {
     .slice(0, 32);
   if (!blocks.length || !blocks.some((block) => block.key === 'hero')) return undefined;
   const imageDataUrl = sanitizePngDataUrl(raw.imageDataUrl ?? raw.image_data_url);
-  const ogImageDataUrl = sanitizePngDataUrl(raw.ogImageDataUrl ?? raw.og_image_data_url);
   return {
     schemaVersion: 'taku.stax.card-snapshot.v1',
     capturedAt: optionalString(raw.capturedAt ?? raw.captured_at, 80),
     canvas,
     blocks,
     ...(imageDataUrl ? { imageDataUrl } : {}),
-    ...(ogImageDataUrl ? { ogImageDataUrl } : {}),
   };
 }
 

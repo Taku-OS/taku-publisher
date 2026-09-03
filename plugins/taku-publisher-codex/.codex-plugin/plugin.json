@@ -1,7 +1,7 @@
 {
   "name": "taku-publisher",
-  "version": "0.3.14",
-  "description": "Authorize first, generate a private cloud Stax Card draft, and publish selected Codex and Claude Code projects safely.",
+  "version": "0.3.15",
+  "description": "Discover Codex and Claude Code projects, convert them into Taku SubApps or Skills, and safely publish tools.",
   "author": {
     "name": "Taku",
     "url": "https://taku.ai/"
@@ -19,8 +19,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Taku Publisher",
-    "shortDescription": "Create a Stax Card and import AI coding projects.",
-    "longDescription": "Confirm the Taku account before scanning, save an editable private Stax Card draft to Taku Cloud Studio, discover recent Codex and Claude Code workspaces from local metadata, and process selected Skill or SubApp targets safely.",
+    "shortDescription": "Import AI coding projects into Taku.",
+    "longDescription": "Discover recent Codex and Claude Code workspaces or repositories owned by the creator's Taku-connected GitHub account, route one selected project to verified SubApp conversion or bounded Skill generation, install SubApps locally, publish Skills, search community tools, and manage creator works.",
     "developerName": "Taku",
     "category": "Productivity",
     "websiteURL": "https://taku.ai/",
@@ -28,8 +28,8 @@
     "termsOfServiceURL": "https://taku.ai/terms",
     "capabilities": [
       "Local discovery",
-      "Private cloud Stax Card drafts",
       "Codex and Claude Code project import",
+      "Taku-connected GitHub repository discovery",
       "Repository to SubApp conversion",
       "Repository to Skill conversion",
       "Local Taku Desktop installation",
@@ -40,7 +40,7 @@
       "Creator Center management"
     ],
     "defaultPrompt": [
-      "打开 Taku Publisher 创作者工作台，生成我的 Stax Card，并让我选择要发布的本地项目。",
+      "List repositories owned by my Taku-connected GitHub account and let me choose one to import.",
       "Find my recent Codex and Claude Code projects and import one into Taku.",
       "Publish the tool in this workspace to Taku."
     ]

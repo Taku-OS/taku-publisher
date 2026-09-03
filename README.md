@@ -2,8 +2,9 @@
 
 Install Taku Publisher directly from this GitHub marketplace.
 
-Current release: **0.3.14**. It keeps the 0.3.12 feature set and retries a
-timed-out SubApp dependency prefetch once before stopping runtime validation.
+Current release: **0.3.15**. It adds Taku-connected GitHub project discovery,
+keeps Creator initialization and multi-project publishing plans, and fixes
+Cloud Studio authorization, scanner false positives, and legacy Worker saves.
 
 ## Codex
 

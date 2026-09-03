@@ -18,7 +18,7 @@ import {
   hiddenPersonaImageDataUrl,
   traitPersonaImageDataUrl,
 } from './persona-assets.mjs';
-import { getBuilderProfileSnapshotForDisplay as getPublishBuilderProfileSnapshotForDisplay } from './publish-flow.mjs';
+import { getBuilderProfileSnapshotForDisplay as getPublishBuilderProfileSnapshotForDisplay } from './publish-payload.mjs';
 import { round } from './usage.mjs';
 import { formatEstimatedUsd } from './usage-pricing.mjs';
 import {
@@ -55,7 +55,8 @@ const STAX_BLOCK_SIZES = {
   aura: [1, 1],
   basic: [1, 1],
   seal: [2, 2],
-  qr: [2, 2],
+  qr: [1, 1],
+  social: [1, 1],
   bars90: [2, 1],
   pie: [2, 2],
   modelcost: [2, 2],
@@ -92,6 +93,7 @@ const STAX_BLOCK_LABELS = {
   basic: 'Basic Stats',
   seal: 'Serial Seal',
   qr: 'QR Code',
+  social: 'Social',
   bars90: '90-Day Bars',
   pie: 'Model Mix',
   modelcost: 'Model Cost',
@@ -119,7 +121,7 @@ const STAX_BLOCK_LABELS = {
   splitring: 'Session Mix',
 };
 
-const STAX_DEFAULT_BLOCKS = ['hero', 'team', 'type', 'basic', 'seal', 'bars90', 'pie', 'modelcost', 'cgauge', 'ctxring', 'clock', 'heat', 'trend', 'tools'];
+const STAX_DEFAULT_BLOCKS = ['hero', 'social', 'team', 'type', 'basic', 'seal', 'bars90', 'pie', 'modelcost', 'cgauge', 'ctxring', 'clock', 'heat', 'trend', 'tools'];
 const STAX_INLINE_BLOCK_KEYS = new Set(['badges', 'qr']);
 const STAX_APP_TEMPLATE_URL = new URL('../templates/stax-app.html', import.meta.url);
 const COMMUNITY_RANK_LOCK_LABEL = 'GROW ON TAKU';
@@ -148,10 +150,10 @@ const STAX_ART_ASSETS = Object.freeze([
   { key: 'ic_llama', file: 'llama-color.svg', mime: 'image/svg+xml' },
 ]);
 const STAX_FAMILY_META = Object.freeze({
-  architect: { label: 'ARCHITECTS', color: '#8A5CFF' },
-  craftsman: { label: 'CRAFTSMEN', color: '#2E9BFF' },
-  hacker: { label: 'HACKERS', color: '#FF7A1F' },
-  'vibe-maker': { label: 'VIBE MAKERS', color: '#9EDD16' },
+  architect: { label: 'ARCHITECTS', color: '#5F3794' },
+  craftsman: { label: 'CRAFTSMEN', color: '#AECDE0' },
+  hacker: { label: 'HACKERS', color: '#F0641E' },
+  'vibe-maker': { label: 'VIBE MAKERS', color: '#A8B184' },
 });
 
 let staxLocalFontCssCache = '';
@@ -2522,6 +2524,15 @@ function displayPercent(value) {
   return `${round(percent, 1)}%`;
 }
 
+function staxCardFinish(topPercent) {
+  const number = Number(topPercent);
+  if (!Number.isFinite(number) || number <= 0) return 'ink';
+  const percent = number <= 1 ? number * 100 : number;
+  if (percent <= 5) return 'gold';
+  if (percent <= 30) return 'silver';
+  return 'ink';
+}
+
 function displayTopPercent(topPercent, percentile) {
   const explicit = Number(topPercent);
   if (Number.isFinite(explicit) && explicit > 0) return `Top ${displayPercent(explicit)}`;
@@ -2761,6 +2772,8 @@ function staxBlockDisplayText(block, key) {
     value.basicVal,
     value.type,
     value.team,
+    value.x,
+    value.github,
     value.shipped,
     value.score,
     value.usedPercent !== undefined && value.usedPercent !== null ? `${value.usedPercent}%` : '',
@@ -2815,7 +2828,7 @@ function qrOptionForStax(id, label, url) {
   };
 }
 
-function buildStaxAppModel(draft = {}, options = {}) {
+export function buildStaxAppModel(draft = {}, options = {}) {
   const snapshot = getBuilderProfileSnapshotForDisplay(draft);
   const card = cardSettingsForDraft(draft);
   const persona = recordValue(snapshot.persona || draft.personaV2);
@@ -2861,7 +2874,6 @@ function buildStaxAppModel(draft = {}, options = {}) {
     40,
   );
   const handle = cleanDisplayText(trustedHandle || draft.creator?.handle || draft.creator?.username, '@builder', 40);
-  const connectedDisplayName = cleanDisplayText(draft.creator?.name || draft.creator?.displayName || card.name, '', 40);
   const canonicalCode = canonicalPersonaCode(persona.code || draft.personaV2?.code);
   const code = canonicalCode || cleanDisplayText(persona.code || draft.personaV2?.code, 'AI', 16).toUpperCase();
   const personaTitle = personaTitleForStax(canonicalCode, persona.title || draft.personaV2?.archetype?.title);
@@ -2919,11 +2931,14 @@ function buildStaxAppModel(draft = {}, options = {}) {
   const teamLabel = teamIdentity.label;
   const teamOptions = teamOptionsForStax(teamBlock, teamIdentity);
   const tokenLabel = formatCompactMetric(usage.totalTokens || usage.modelUsage?.totalTokens || 0);
-  const rankTopPercent = isTakuAuthorized ? metricValue(
-    staxRank.topPercent,
-    staxRank.rankGrade?.topPercent,
+  const canUsePublishedFinish = publishedStaxSource.published === true;
+  const finishRank = isTakuAuthorized ? staxRank : (canUsePublishedFinish ? recordValue(staxProfile.rank) : {});
+  const rankTopPercent = (isTakuAuthorized || canUsePublishedFinish) ? metricValue(
+    finishRank.topPercent,
+    finishRank.rankGrade?.topPercent,
     draft.personaSignals?.external?.rankGrade?.topPercent,
   ) : 0;
+  const cardFinish = staxCardFinish(rankTopPercent);
   const publicHandle = handle.startsWith('@') ? handle : `@${handle}`;
   const confirmedGitHubHandle = cleanDisplayText(card.confirmedSocial?.github, '', 40).replace(/^@+/, '');
   const confirmedSocialHandle = confirmedGitHubHandle ? `@${confirmedGitHubHandle}` : '';
@@ -2932,7 +2947,7 @@ function buildStaxAppModel(draft = {}, options = {}) {
   const hasDisplayableTakuIdentity = Boolean(hasTrustedTakuIdentity || (isTakuAuthorized && trustedHandle) || publishedStaxUsername);
   const cardDisplayHandle = hasDisplayableTakuIdentity
     ? publicHandle
-    : (confirmedSocialHandle || (isTakuAuthorized ? (connectedDisplayName || 'SIGNED IN DRAFT') : 'LOCAL DRAFT'));
+    : (confirmedSocialHandle || (isTakuAuthorized ? 'SIGNED IN DRAFT' : 'LOCAL DRAFT'));
   const cardDisplaySerial = hasTrustedTakuIdentity ? serial : 'UNMINTED';
   const publishedProfilePageUrl = publishedStaxUsername
     ? buildStaxProfilePageUrl(options.editor?.publish?.siteUrl, publishedStaxUsername)
@@ -3073,7 +3088,7 @@ function buildStaxAppModel(draft = {}, options = {}) {
     heroBadge,
     heroTags,
     heroBadgeColor,
-    shareTitle: `${personaTitle}.`,
+    shareTitle: 'Certified flex.',
     family: familyMeta?.label || cleanDisplayText(staxProfile.family || persona.basePersona?.title || persona.basePersona?.label, 'BUILDERS', 40),
     familyColor: familyMeta?.color || cleanDisplayText(staxProfile.familyColor || staxProfile.family_color, '#F0641E', 16),
     art: artKey,
@@ -3084,6 +3099,9 @@ function buildStaxAppModel(draft = {}, options = {}) {
     qrOptions,
     qrTarget: activeQrOption?.id || qrTarget,
     socialCandidate,
+    staxCardPageUrl: qrUsername
+      ? buildStaxCardPageUrl(options.editor?.publish?.siteUrl, qrUsername)
+      : publishedCardPageUrl,
     axes: Array.isArray(persona.axes)
       ? persona.axes.slice(0, 4).map((axis, index) => staxAxisForDisplay(axis, index))
       : [],
@@ -3117,6 +3135,7 @@ function buildStaxAppModel(draft = {}, options = {}) {
     usageLabel: cleanDisplayText(usage.label || usage.periodId, 'This Month', 40),
     rankTopPercent,
     rankTopPercentLabel: rankTopPercent > 0 ? displayPercent(rankTopPercent) : '',
+    cardFinish,
     tokenLabel,
     apiListEquivalentLabel: formatUsableApiListEquivalent(usage),
     basicValue: formatCompactMetric(usage.sessionCount || usage.eventCount || 0),
@@ -3128,7 +3147,7 @@ function buildStaxAppModel(draft = {}, options = {}) {
       ['FIRING UP THE KITCHEN ...', 'LIT'],
       [`TOSSING IN ${teamLabel.toUpperCase()} ...`, 'IN THE POT'],
       ['READING LOCAL USAGE ...', `${tokenLabel} TOKENS`],
-      ['READING AVG INPUT ...', cleanDisplayText(ctxringBlock?.display, 'N/A', 24)],
+      ['READING CONTEXT ...', cleanDisplayText(ctxringBlock?.display, 'N/A', 24)],
       ['MAPPING PERSONA ...', code],
       ['MARKING ESTIMATED BLOCKS ...', `${estimatedCount}`],
       ['CHECKING PARTIAL BLOCKS ...', `${partialCount}`],
@@ -3148,7 +3167,7 @@ function buildStaxAppModel(draft = {}, options = {}) {
   };
 }
 
-function renderStaxAppPreview(draft, options = {}) {
+export function renderStaxAppPreview(draft, options = {}) {
   const model = buildStaxAppModel(draft, options);
   const bootstrap = renderStaxAppBootstrapScript(model);
   let template = readFileSync(STAX_APP_TEMPLATE_URL, 'utf8')
@@ -3165,16 +3184,14 @@ function renderStaxAppPreview(draft, options = {}) {
     template = template.replace(
       /\/\* __TAKU_PUBLICATION_CODE_START__ \*\/[\s\S]*?\/\* __TAKU_PUBLICATION_CODE_END__ \*\//,
       [
-        'let STAX_PUBLICATION={published:false,publicUrl:"",profilePageUrl:"",creatorPageUrl:"",staxCardPageUrl:""};',
+        'let STAX_PUBLICATION={published:false,publicUrl:"",profilePageUrl:"",creatorPageUrl:"",staxCardPageUrl:"",staxCardShareUrl:"",...(((window.__TAKU_STAX_DATA__||{}).publishedStax)||{})};',
         'function profilePublicUrl(){return STAX_PUBLICATION.profilePageUrl||STAX_PUBLICATION.creatorPageUrl||STAX_PUBLICATION.publicUrl||"";}',
-        'function staxPublicUrl(){return STAX_PUBLICATION.staxCardPageUrl||"";}',
+        'function staxPublicUrl(){return STAX_PUBLICATION.staxCardPageUrl||STAX_PUBLICATION.staxCardShareUrl||"";}',
         'function setStaxPublication(){}',
-        'function copyProfileLink(){toast("READ ONLY PREVIEW");}',
-        'function copyStaxLink(){toast("READ ONLY PREVIEW");}',
-        'function openShare(){toast("READ ONLY PREVIEW");}',
+        'async function copyText(value){if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(value);return;}const input=document.createElement("textarea");input.value=value;input.setAttribute("readonly","");input.style.position="fixed";input.style.opacity="0";document.body.appendChild(input);input.select();document.execCommand("copy");input.remove();}',
+        'async function copyStaxLink(){const url=staxPublicUrl();if(!url){toast("STAX LINK UNAVAILABLE");return;}try{await copyText(url);toast("STAX LINK COPIED");}catch{toast("COPY FAILED");}}',
         'document.getElementById("mpost")?.addEventListener("click",()=>toast("READ ONLY PREVIEW"));',
         'document.getElementById("mpng")?.addEventListener("click",()=>toast("READ ONLY PREVIEW"));',
-        'document.getElementById("mprofile")?.addEventListener("click",copyProfileLink);',
         'document.getElementById("mlink")?.addEventListener("click",copyStaxLink);',
       ].join('\n'),
     );
@@ -3288,13 +3305,10 @@ export function renderStaxStudioRuntime() {
       if(typeof window.__TAKU_GITHUB_SAVE_SUCCESS__==='function')window.__TAKU_GITHUB_SAVE_SUCCESS__(message);
       setTimeout(()=>post('layout-change',{layout:currentLayout()}),0);
     }
-    if(message.type===MESSAGE_PREFIX+'settings-error'){
-      if(String(message.requestId||'').startsWith('github-')&&typeof window.__TAKU_GITHUB_SAVE_ERROR__==='function')window.__TAKU_GITHUB_SAVE_ERROR__(message);
-      else if(message.message&&typeof toast==='function')toast(String(message.message));
-    }
+    if(message.type===MESSAGE_PREFIX+'settings-error'&&typeof window.__TAKU_GITHUB_SAVE_ERROR__==='function')window.__TAKU_GITHUB_SAVE_ERROR__(message);
     if(message.type===MESSAGE_PREFIX+'status'&&message.message&&typeof toast==='function')toast(String(message.message));
   });
-  document.addEventListener('click',async(event)=>{
+  document.addEventListener('click',(event)=>{
     const target=event.target instanceof Element?event.target.closest('#mpost'):null;
     if(!target||!initialized)return;
     event.preventDefault();
@@ -3302,14 +3316,8 @@ export function renderStaxStudioRuntime() {
     if(publishing)return;
     publishing=true;
     target.disabled=true;
-    target.textContent='CAPTURING...';
-    try{
-      const staxCardSnapshot=await currentStaxCardSnapshot();
-      target.textContent='PUBLISHING...';
-      post('publish',{layout:currentLayout(),staxCardSnapshot});
-    }catch(error){
-      failPublish({message:error&&error.message?error.message:'Could not capture the Stax Card image.'});
-    }
+    target.textContent='PUBLISHING...';
+    post('publish',{layout:currentLayout()});
   },true);
   const reportLayout=()=>{if(initialized)post('layout-change',{layout:currentLayout()});};
   document.addEventListener('pointerup',(event)=>{
@@ -3327,7 +3335,6 @@ export function renderStaxStudioRuntime() {
     .replace('</body>', cloudBridge + '</body>');
 }
 
-
 function renderStaxAppBootstrapScript(model) {
   return [
     'window.__TAKU_STAX_DATA__ = ' + jsonForScript(model) + ';',
@@ -3344,10 +3351,10 @@ function renderStaxAppBootstrapScript(model) {
     '  });',
     '  const byKey = new Map(blocks.map((block) => [block.key, block]));',
     '  const supportedKeys = blocks.filter((block) => block && block.status !== "unsupported").map((block) => block.key);',
-    '  const selected = (Array.isArray(data.selectedKeys) && data.selectedKeys.length ? data.selectedKeys : supportedKeys).filter((key) => byKey.get(key)?.status !== "unsupported" && SIZES[key]);',
+    '  const selected = [...new Set((Array.isArray(data.selectedKeys) && data.selectedKeys.length ? data.selectedKeys : supportedKeys).map((key) => key === "aura" || key === "tier4" ? "tier1" : key))].filter((key) => byKey.get(key)?.status !== "unsupported" && SIZES[key]);',
     '  const locks = {};',
     '  blocks.forEach((block) => {',
-    '    if (!block || block.status !== "unsupported" || !SIZES[block.key]) return;',
+    '    if (!block || block.status !== "unsupported" || !SIZES[block.key] || block.key === "aura" || block.key === "tier4") return;',
     '    locks[block.key] = {',
     '      label: String(block.lockLabel || "LOCKED").toUpperCase(),',
     '      message: String(block.lockReason || block.reason || "Not available yet."),',
@@ -3404,6 +3411,7 @@ function renderStaxAppBootstrapScript(model) {
     '    type: text(typeValue.type || heroValue.type, data.code || "AI"),',
     '    seal: { serial: text(sealValue.serial, data.cardSerial || data.serial || "UNMINTED") },',
     '    qr: { target: text(qrValue.target, data.qrTarget || "stax"), url: text(qrValue.url, ""), username: text(qrValue.username, ""), size: Math.max(0, Math.floor(Number(qrValue.size) || 0)), matrix: text(qrValue.matrix, ""), errorCorrectionLevel: text(qrValue.errorCorrectionLevel, "M") },',
+    '    staxUrl: text(data.staxCardPageUrl, ""),',
     '    social: { x: text(socialValue.x, ""), github: text(socialValue.github, "") },',
     '    axes: Array.isArray(typeValue.axes) && typeValue.axes.length ? typeValue.axes : (Array.isArray(data.axes) && data.axes.length ? data.axes : MASON.axes),',
     '    basicVal: text(basicValue.basicVal, data.basicValue || data.tokenLabel || "0"),',
@@ -3458,6 +3466,7 @@ function renderStaxAppBootstrapScript(model) {
     '      estimated: Boolean(byKey.get("rings")?.estimated),',
     '    },',
     '    ctxring: {',
+    '      ctxAvg: Number.isFinite(Number(ctxringValue.ctxAvg)) ? Number(ctxringValue.ctxAvg) : null,',
     '      avgInputTokens: Number(ctxringValue.avgInputTokens) || 0,',
     '      requestCount: Number(ctxringValue.requestCount) || 0,',
     '      display: text(ctxringValue.display, ""),',
@@ -3472,6 +3481,7 @@ function renderStaxAppBootstrapScript(model) {
     '      coverage: heatValue.coverage && typeof heatValue.coverage === "object" ? heatValue.coverage : {},',
     '    },',
     '    dots: {',
+    '      apiCalls90d: Number.isFinite(Number(dotsValue.apiCalls90d)) ? Number(dotsValue.apiCalls90d) : null,',
     '      toolCallCount: Number(dotsValue.toolCallCount) || 0,',
     '      display: text(dotsValue.display, "0"),',
     '      periodLabel: text(dotsValue.periodLabel, data.usageLabel || "LOCAL SCAN"),',
@@ -3558,9 +3568,7 @@ function renderStaxAppBootstrapScript(model) {
     '      periodLabel: text(bracketValue.periodLabel, data.usageLabel || "This Month"),',
     '    },',
     '    node: {',
-    '      totalCount: Math.max(0, Math.floor(Number(nodeValue.totalCount) || 0)),',
-    '      categories: Array.isArray(nodeValue.categories) ? nodeValue.categories.slice(0, 4).map((category) => ({ id: text(category?.id, ""), label: text(category?.label, "OTHER").toUpperCase(), count: Math.max(0, Math.floor(Number(category?.count) || 0)) })) : [],',
-    '      otherCount: Math.max(0, Math.floor(Number(nodeValue.otherCount) || 0)),',
+    '      integrations: (Array.isArray(nodeValue.integrations) ? nodeValue.integrations : (Array.isArray(nodeValue.categories) ? nodeValue.categories.map((category, index) => ({ name: category?.label, color: ["#C9F24C", "#2BD4C0", "#7C6CF6", "#FFC93D", "#F0641E"][index % 5] })) : [])).slice(0, 5).map((integration, index) => ({ name: text(integration?.name, "TOOL").toUpperCase(), color: text(integration?.color, ["#C9F24C", "#2BD4C0", "#7C6CF6", "#FFC93D", "#F0641E"][index % 5]) })),',
     '    },',
     '    splitring: {',
     '      chatShare: Math.max(0, Math.min(1, Number(splitringValue.chatShare) || 0)),',
@@ -3574,11 +3582,13 @@ function renderStaxAppBootstrapScript(model) {
     '    },',
     '    tier1: {',
     '      tier: text(tier1Value.tier, data.rankTier || "STANDARD"),',
+    '      topPercent: Number(tier1Value.topPercent) || 0,',
     '      topPercentLabel: text(tier1Value.topPercentLabel, data.rankTopPercentLabel),',
     '    },',
     '  };',
     '  PERSONAS.publisher = {',
     '    pd: persona,',
+    '    finish: text(data.cardFinish, "ink"),',
     '    ser: text(data.cardSerial, text(data.serial, "UNMINTED")),',
     '    user: [persona.handle, persona.type, persona.family, text(data.tag, data.usageLabel)].filter(Boolean).join(" · "),',
     '    title: text(data.shareTitle, data.title || "Your Stax is ready."),',
@@ -3633,10 +3643,6 @@ function renderStaxAppBootstrapScript(model) {
     '      for (const placed of placedP) chipRefs[placed.key]?.classList.add("on");',
     '      toast("PRIMARY AI · " + persona.team[0]);',
     '      if (!data.readonly) {',
-    '        if (typeof window.__TAKU_STAX_POST__ === "function") {',
-    '          window.__TAKU_STAX_POST__("settings-change", { requestId: "primary-ai-" + Date.now() + "-" + Math.random().toString(36).slice(2), settings: { primaryAi: selectedTeam.id } });',
-    '          return;',
-    '        }',
     '        try {',
     '          await fetch("/api/card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ card: { primaryAi: selectedTeam.id } }) });',
     '        } catch {}',
@@ -3668,10 +3674,6 @@ function renderStaxAppBootstrapScript(model) {
     '      for (const placed of placedP) chipRefs[placed.key]?.classList.add("on");',
     '      toast("QR LINK · " + text(selectedQr.label, selectedQr.id).toUpperCase());',
     '      if (!data.readonly) {',
-    '        if (typeof window.__TAKU_STAX_POST__ === "function") {',
-    '          window.__TAKU_STAX_POST__("settings-change", { requestId: "qr-target-" + Date.now() + "-" + Math.random().toString(36).slice(2), settings: { qrTarget: selectedQr.id } });',
-    '          return;',
-    '        }',
     '        try {',
     '          await fetch("/api/card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ card: { qrTarget: selectedQr.id } }) });',
     '        } catch {}',
@@ -3745,15 +3747,10 @@ function renderStaxAppBootstrapScript(model) {
     '      }',
     '    });',
     '  }',
-    '  const hasAuthReturn = window.location.hash.includes("taku_auth_code=") || window.location.hash.includes("taku_auth_error=");',
-    '  const hasPublishedStax = Boolean(data.publishedStax && data.publishedStax.published);',
     '  if (data.readonly) {',
     '    document.getElementById("scanov")?.classList.add("off");',
     '    document.getElementById("revealov")?.classList.remove("on");',
-    '  } else if (hasPublishedStax && !hasAuthReturn) {',
-    '    document.getElementById("scanov")?.classList.add("off");',
-    '    document.getElementById("revealov")?.classList.remove("on");',
-    '    shuffleBuild(true);',
+    '    openShare("visitor");',
     '  } else {',
     '    playIntro("publisher");',
     '  }',
