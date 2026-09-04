@@ -1544,19 +1544,20 @@ export async function createStaxCreatorPublishPayload(draft, privateInventory, o
     getBuilderProfileSnapshotForDisplay(draft, options),
     selectedItems
   );
+  const hasAvatarUrl = Object.hasOwn(cardSettings, 'avatarUrl');
   const avatarUrl = publicHttpUrl(cardSettings.avatarUrl);
-  const publicProfileSnapshot = avatarUrl
+  const publicProfileSnapshot = hasAvatarUrl
     ? {
         ...profileSnapshot,
         card: {
           ...(isRecord(profileSnapshot?.card) ? profileSnapshot.card : {}),
-          avatarUrl,
+          avatarUrl: avatarUrl || null,
         },
       }
     : profileSnapshot;
   const card = {
     ...(displayName ? { displayName } : {}),
-    ...(avatarUrl ? { avatarUrl } : {}),
+    ...(hasAvatarUrl ? { avatarUrl: avatarUrl || null } : {}),
     qrTarget: cardSettings.qrTarget === 'profile' ? 'profile' : 'stax',
     showPersonaCode: cardSettings.showPersonaCode,
     showUsage: cardSettings.showUsage,

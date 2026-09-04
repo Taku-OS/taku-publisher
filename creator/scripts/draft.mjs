@@ -873,8 +873,8 @@ export function buildBuilderProfileSnapshot(draft) {
     },
     persona: {
       code: cleanText(persona.code, 12) || '',
-      title: cleanText(persona.archetype?.title, 120) || 'AI Builder',
-      subtitle: cleanText(persona.archetype?.subtitle, 220) || '',
+      title: cleanText(personaProfile.family.label, 120) || 'AI Builder',
+      subtitle: cleanText(personaProfile.basePersona.title, 220) || 'AI Builder',
       description: cleanText(personaProfile.basePersona.description, 220) || '',
       signature: cleanText(persona.archetype?.signature, 220) || personaSignatureFor(persona.code, persona.tone, persona.archetype),
       tone: cleanText(persona.tone, 80) || '',

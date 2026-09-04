@@ -57,6 +57,23 @@ test('keeps a public provider avatar from the signed-in Taku account', async () 
   assert.equal(profile.avatarUrl, 'https://lh3.googleusercontent.com/a/public-avatar');
 });
 
+test('preserves an explicit account avatar removal', async () => {
+  const profile = await normalizeTakuCreatorProfile({
+    data: {
+      displayName: 'Sophia',
+      avatarUrl: null,
+      creator: {
+        avatarUrl: 'https://cdn.example.test/old-avatar.png',
+      },
+    },
+  });
+
+  assert.deepEqual(profile, {
+    displayName: 'Sophia',
+    avatarUrl: null,
+  });
+});
+
 test('falls back to email when the signed-in account has no display name', async () => {
   const profile = await normalizeTakuCreatorProfile({
     profile: {

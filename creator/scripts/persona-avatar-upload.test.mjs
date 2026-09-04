@@ -30,7 +30,7 @@ function publishContext() {
   };
 }
 
-test('publishes the local Persona avatar that matches the scanned Persona code', async (t) => {
+test('keeps a local Persona image out of the public Creator avatar', async (t) => {
   const avatarDir = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-persona-avatars-'));
   const loopback = ['127', '0', '0', '1'].join('.');
   t.after(() => fs.rm(avatarDir, { recursive: true, force: true }));
@@ -48,29 +48,9 @@ test('publishes the local Persona avatar that matches the scanned Persona code',
           handle: '@avatar-builder',
           username: 'avatar-builder',
           displayName: 'Avatar Builder',
+          avatarUrl: 'https://cdn.taku.ai/avatar/account.webp',
         },
       }));
-      return;
-    }
-    if (request.method === 'POST' && request.url === '/profile/avatar/signed-upload') {
-      let body = '';
-      for await (const chunk of request) body += chunk;
-      const parsed = JSON.parse(body);
-      assert.match(parsed.path, /^user-1\/persona-eilw-\d+-[-0-9a-f]+\.webp$/);
-      response.end(JSON.stringify({
-        signedUrl: `http://${loopback}:${server.address().port}/avatar-upload`,
-        publicUrl: 'https://cdn.taku.ai/avatar/user-1/EILW.webp',
-      }));
-      return;
-    }
-    if (request.method === 'PUT' && request.url === '/avatar-upload') {
-      assert.equal(request.headers.authorization, undefined);
-      assert.equal(request.headers['content-type'], 'image/webp');
-      const chunks = [];
-      for await (const chunk of request) chunks.push(chunk);
-      assert.equal(Buffer.concat(chunks).toString('utf8'), 'fake-webp-avatar');
-      response.statusCode = 200;
-      response.end(JSON.stringify({ ok: true }));
       return;
     }
     if (request.method === 'GET' && request.url === '/stax/cards/me') {
@@ -129,18 +109,31 @@ test('publishes the local Persona avatar that matches the scanned Persona code',
       token: jwtForUser('user-1'),
       avatarUploadToken: jwtForUser('user-1'),
       siteUrl: 'https://taku.ai',
-      context: publishContext(),
+      context: {
+        ...publishContext(),
+        getCardSettings: () => ({
+          name: 'Stale Draft Name',
+          avatarUrl: 'https://cdn.taku.ai/avatar/stale-persona.webp',
+          showPersonaCode: true,
+          showUsage: true,
+          showCreatorPageLink: true,
+          visibility: 'public',
+        }),
+      },
     });
 
     assert.equal(result.ok, true);
-    assert.equal(importedPayload.card.avatarUrl, 'https://cdn.taku.ai/avatar/user-1/EILW.webp');
-    assert.equal(importedPayload.profileSnapshot.card.avatarUrl, 'https://cdn.taku.ai/avatar/user-1/EILW.webp');
-    assert.equal(result.publishedInventory.personaAvatarApplied, true);
+    assert.equal(importedPayload.card.displayName, 'Avatar Builder');
+    assert.equal(importedPayload.card.avatarUrl, 'https://cdn.taku.ai/avatar/account.webp');
+    assert.equal(
+      importedPayload.profileSnapshot.card.avatarUrl,
+      'https://cdn.taku.ai/avatar/account.webp',
+    );
+    assert.equal(result.publishedInventory.personaAvatarApplied, false);
     assert.equal(result.publishedInventory.personaAvatarCode, 'EILW');
+    assert.equal(result.publishedInventory.personaAvatarSkippedReason, 'public_identity_preserved');
     assert.deepEqual(calls.map((call) => `${call.method} ${call.url}`), [
       'GET /stax/profile',
-      'POST /profile/avatar/signed-upload',
-      'PUT /avatar-upload',
       'GET /stax/cards/me',
       'GET /stax/studio/cards/me',
       'PUT /stax/studio/cards/me',
@@ -239,7 +232,7 @@ test('publishes Stax when a local Persona avatar exists but the publisher token 
     assert.equal(importedPayload.card.avatarUrl, undefined);
     assert.equal(result.publishedInventory.personaAvatarApplied, false);
     assert.equal(result.publishedInventory.personaAvatarCode, 'EILW');
-    assert.equal(result.publishedInventory.personaAvatarSkippedReason, 'avatar_upload_requires_user_session');
+    assert.equal(result.publishedInventory.personaAvatarSkippedReason, 'public_identity_preserved');
     assert.deepEqual(calls.map((call) => `${call.method} ${call.url}`), [
       'GET /stax/profile',
       'GET /stax/cards/me',
