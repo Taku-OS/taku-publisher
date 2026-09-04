@@ -121,7 +121,7 @@ test('saving a Studio draft uploads the exact Publisher renderer without publish
   ]);
 });
 
-test('a narrow draft token can save cloud Studio without Creator Profile read access', async (t) => {
+test('a narrow draft token tries canonical identity before saving cloud Studio', async (t) => {
   const loopback = '127.0.0.1';
   const previousNoProxy = process.env.NO_PROXY;
   process.env.NO_PROXY = '127.0.0.1,localhost';
@@ -168,6 +168,8 @@ test('a narrow draft token can save cloud Studio without Creator Profile read ac
 
   assert.equal(result.ok, true, JSON.stringify(result));
   assert.deepEqual(calls, [
+    'GET /stax/profile',
+    'GET /stax/creators/me',
     'GET /stax/studio/cards/me',
     'PUT /stax/studio/cards/me',
   ]);
@@ -332,6 +334,8 @@ test('new Publisher falls back to a raw PUT when an old Worker has no draft GET 
 
   assert.equal(result.ok, true);
   assert.deepEqual(calls, [
+    'GET /stax/profile',
+    'GET /stax/creators/me',
     'GET /stax/studio/cards/me',
     'PUT /stax/studio/cards/me',
   ]);
