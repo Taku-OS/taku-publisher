@@ -1304,6 +1304,15 @@ function normalizeDraftUsagePeriod(period) {
     totalTokens: Math.max(0, Math.floor(Number(period.totalTokens) || 0)),
     sessionCount: Math.max(0, Math.floor(Number(period.sessionCount) || 0)),
     eventCount: Math.max(0, Math.floor(Number(period.eventCount) || 0)),
+    sources: (Array.isArray(period.sources) ? period.sources : [])
+      .filter((source) => source?.totalTokens > 0)
+      .map((source) => ({
+        source: source.source,
+        label: source.label,
+        totalTokens: source.totalTokens,
+        sessionCount: source.sessionCount,
+        estimatedCost: normalizeDraftEstimatedCost(source.estimatedCost || source.modelUsage?.estimatedCost),
+      })),
   };
 }
 
