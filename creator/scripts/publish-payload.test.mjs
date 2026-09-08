@@ -189,6 +189,26 @@ test('keeps top-level usage within the Worker public import contract', async () 
   assert.equal(serialized.includes(privatePath), false);
 });
 
+test('publishes safe per-host usage cost summaries for activity ranking', async () => {
+  const payload = await createStaxCreatorPublishPayload({
+    sections: [],
+    builderProfileSnapshot: {
+      schemaVersion: 'taku.creator.builder-profile-snapshot.v1',
+      usage: {
+        periodId: 'allTimeLocal',
+        totalTokens: 1200,
+        sources: [
+          { source: 'codex', label: 'Codex', totalTokens: 1200, sessionCount: 3, estimatedCost: { totalUsd: 4.25, coverageRatio: 1 } },
+        ],
+      },
+    },
+  }, { items: [] }, publishOptions());
+
+  assert.equal(payload.profileSnapshot.usage.sources[0].source, 'codex');
+  assert.equal(payload.profileSnapshot.usage.sources[0].totalTokens, 1200);
+  assert.equal(payload.profileSnapshot.usage.sources[0].estimatedCost.totalUsd, 4.25);
+});
+
 test('publishes sanitized Stax block support data in the public profile snapshot', async () => {
   const privatePath = path.join(path.sep, 'Users', 'example', '.codex', 'sessions', 'private.jsonl');
   const payload = await createStaxCreatorPublishPayload({

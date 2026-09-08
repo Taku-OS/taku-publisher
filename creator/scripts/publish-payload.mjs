@@ -794,6 +794,10 @@ function sanitizeBuilderProfileSnapshot(value, schemaVersion) {
       eventCount: integerValue(usage.eventCount ?? usage.event_count),
       modelUsage: sanitizeModelUsage(usage.modelUsage ?? usage.model_usage),
       estimatedCost: sanitizeEstimatedCost(usage.estimatedCost ?? usage.estimated_cost),
+      sources: sanitizeUsageSources(usage.sources),
+      periods: asArray(usage.periods).slice(0, 8).map(sanitizeUsagePeriod).filter(isNonNull),
+      partial: usage.partial === true,
+      scanCoverage: sanitizeScanCoverage(usage.scanCoverage ?? usage.scan_coverage),
       localActivity: sanitizeLocalActivity(usage.localActivity ?? usage.local_activity),
     },
     codeActivity: {
@@ -1069,6 +1073,48 @@ function sanitizeEstimatedCost(value) {
     unpricedModelCount: integerValue(raw.unpricedModelCount ?? raw.unpriced_model_count),
     topModels: asArray(raw.topModels ?? raw.top_models).slice(0, 4).map(sanitizeCostModel).filter(isNonNull),
     warnings: stringArray(raw.warnings, 4, 180),
+  };
+}
+
+function sanitizeUsageSources(value) {
+  return asArray(value)
+    .slice(0, 8)
+    .map((item) => {
+      const raw = asRecord(item);
+      const source = stringValue(raw.source, 40);
+      if (!source) return null;
+      return {
+        source,
+        label: optionalString(raw.label, 80),
+        totalTokens: integerValue(raw.totalTokens ?? raw.total_tokens),
+        sessionCount: integerValue(raw.sessionCount ?? raw.session_count),
+        estimatedCost: sanitizeEstimatedCost(raw.estimatedCost ?? raw.estimated_cost),
+      };
+    })
+    .filter(isNonNull);
+}
+
+function sanitizeUsagePeriod(value) {
+  const raw = asRecord(value);
+  const id = stringValue(raw.id ?? raw.periodId ?? raw.period_id, 80);
+  if (!id) return null;
+  return {
+    id,
+    label: optionalString(raw.label ?? raw.periodLabel ?? raw.period_label, 80),
+    startsAt: optionalString(raw.startsAt ?? raw.starts_at, 80),
+    endsAt: optionalString(raw.endsAt ?? raw.ends_at, 80),
+    totalTokens: integerValue(raw.totalTokens ?? raw.total_tokens),
+    sources: sanitizeUsageSources(raw.sources),
+  };
+}
+
+function sanitizeScanCoverage(value) {
+  const raw = asRecord(value);
+  return {
+    partial: raw.partial === true,
+    periodFiltered: raw.periodFiltered === true || raw.period_filtered === true,
+    scannedFileCount: integerValue(raw.scannedFileCount ?? raw.scanned_file_count),
+    candidateFileCount: integerValue(raw.candidateFileCount ?? raw.candidate_file_count),
   };
 }
 
