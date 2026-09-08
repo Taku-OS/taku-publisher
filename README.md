@@ -2,9 +2,9 @@
 
 Install Taku Publisher directly from this GitHub marketplace.
 
-Current release: **0.3.15**. It adds Taku-connected GitHub project discovery,
-keeps Creator initialization and multi-project publishing plans, and fixes
-Cloud Studio authorization, scanner false positives, and legacy Worker saves.
+Current release: **0.3.16**. It publishes sanitized per-host Codex and Claude
+Code usage summaries for activity rankings and preserves canonical creator
+identity across Publisher updates.
 
 ## Codex
 
