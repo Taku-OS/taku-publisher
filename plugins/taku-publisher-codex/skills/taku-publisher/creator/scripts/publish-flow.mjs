@@ -3,7 +3,7 @@ import {
   createWorkerPublishError,
 } from './publish-client.mjs';
 import { fetchTakuCreatorProfile } from './creator-profile.mjs';
-import { uploadPersonaAvatarForDraft } from './persona-avatar-upload.mjs';
+import { personaCodeForAvatar } from './persona-avatar-upload.mjs';
 import {
   createStaxCreatorPublishPayload,
   getBuilderProfileSnapshotForDisplay as getBuilderProfileSnapshotForDisplayCore,
@@ -36,16 +36,18 @@ function mergeDraftWithTakuProfile(draft, profileResult = {}) {
   const staxProfile = profileResult.staxProfile && typeof profileResult.staxProfile === 'object'
     ? profileResult.staxProfile
     : {};
+  const hasDisplayName = Object.hasOwn(profile, 'displayName') && Boolean(profile.displayName);
+  const hasAvatarUrl = Object.hasOwn(profile, 'avatarUrl');
   return {
     ...draft,
     creator: {
       ...(draft?.creator || {}),
-      ...(profile.displayName ? { name: profile.displayName } : {}),
-      ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}),
+      ...(hasDisplayName ? { name: profile.displayName } : {}),
+      ...(hasAvatarUrl ? { avatarUrl: profile.avatarUrl } : {}),
     },
     card: {
       ...(draft?.card || {}),
-      ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}),
+      ...(hasAvatarUrl ? { avatarUrl: profile.avatarUrl } : {}),
     },
     ...(Object.keys(staxProfile).length
       ? { staxProfile: { ...(draft?.staxProfile || {}), ...staxProfile } }
@@ -63,19 +65,18 @@ export async function saveDraftToTakuStudio({
   workerUrl,
   token,
   siteUrl,
-  canReadCreatorProfile = !String(token || '').startsWith('taku_pub_'),
+  canReadCreatorProfile = true,
   context = {},
 }) {
-  // A narrow creator.studio-draft.write grant can save an owner-scoped private
-  // Studio draft but intentionally cannot read or publish the Creator Profile.
-  // Enrich when broader creator auth is available; otherwise keep the local
-  // public-safe snapshot and let the Studio draft route bind it to the user.
+  // Try the profile endpoint for every token. Narrow grants may reject the
+  // read, but token prefixes are not an authorization contract; the Worker
+  // still binds the saved draft to the canonical account identity.
   const profile = canReadCreatorProfile
     ? await fetchTakuCreatorProfile({ workerUrl, token }).catch(() => null)
     : null;
   const cloudDraft = profile?.ok ? mergeDraftWithTakuProfile(draft, profile) : draft;
   const publishContext = profile?.ok
-    ? withTakuCreatorProfileFallback(context, profile.profile)
+    ? withTakuCreatorProfileIdentity(context, profile.profile)
     : context;
   const payload = await createPublishPayloadFromDraft(
     cloudDraft,
@@ -136,8 +137,11 @@ export async function saveDraftToTakuStudio({
   }
 }
 
-function withTakuCreatorProfileFallback(context = {}, creatorProfile = {}) {
-  if (!creatorProfile.displayName && !creatorProfile.avatarUrl) return context;
+function withTakuCreatorProfileIdentity(context = {}, creatorProfile = {}) {
+  const hasDisplayName = Object.hasOwn(creatorProfile, 'displayName')
+    && Boolean(creatorProfile.displayName);
+  const hasAvatarUrl = Object.hasOwn(creatorProfile, 'avatarUrl');
+  if (!hasDisplayName && !hasAvatarUrl) return context;
   const originalGetCardSettings = context.getCardSettings;
   if (typeof originalGetCardSettings !== 'function') return context;
   return {
@@ -146,24 +150,8 @@ function withTakuCreatorProfileFallback(context = {}, creatorProfile = {}) {
       const settings = originalGetCardSettings(draft) || {};
       return {
         ...settings,
-        ...(!settings.name && creatorProfile.displayName ? { name: creatorProfile.displayName } : {}),
-        ...(!settings.avatarUrl && creatorProfile.avatarUrl ? { avatarUrl: creatorProfile.avatarUrl } : {}),
-      };
-    },
-  };
-}
-
-function withAvatarOverride(context = {}, avatarUrl = '') {
-  if (!avatarUrl) return context;
-  const originalGetCardSettings = context.getCardSettings;
-  if (typeof originalGetCardSettings !== 'function') return context;
-  return {
-    ...context,
-    getCardSettings(draft) {
-      const settings = originalGetCardSettings(draft) || {};
-      return {
-        ...settings,
-        avatarUrl,
+        ...(hasDisplayName ? { name: creatorProfile.displayName } : {}),
+        ...(hasAvatarUrl ? { avatarUrl: creatorProfile.avatarUrl } : {}),
       };
     },
   };
@@ -190,33 +178,11 @@ export async function publishDraftToTaku({
     };
   }
 
-  const personaAvatar = await uploadPersonaAvatarForDraft({
-    draft,
-    workerUrl,
-    token: avatarUploadToken || token,
-  }).catch((error) => ({
-    ok: false,
-    error: error instanceof Error ? error.message : String(error),
-  }));
-  if (!personaAvatar.ok) {
-    return {
-      ok: false,
-      status: 0,
-      workerUrl,
-      endpoint: `${workerUrl}/profile/avatar/signed-upload`,
-      error: personaAvatar.error || 'Could not upload the Persona avatar.',
-      data: {
-        code: personaAvatar.code,
-        avatarUpload: 'failed',
-      },
-    };
-  }
-
   const endpoint = `${workerUrl}/stax/cards/import-inventory`;
-  const publishContext = withAvatarOverride(
-    withTakuCreatorProfileFallback(context, profile.profile),
-    personaAvatar.avatarUrl,
-  );
+  const personaAvatarCode = personaCodeForAvatar(draft);
+  // Persona artwork belongs to the Card presentation. It must never silently
+  // replace the public account/Creator avatar during an ordinary publish.
+  const publishContext = withTakuCreatorProfileIdentity(context, profile.profile);
   const payload = await createPublishPayloadFromDraft(
     draft,
     privateInventory,
@@ -280,8 +246,9 @@ export async function publishDraftToTaku({
         remixedItemCount: publishPayload.sections.remixedItems.length,
         builtItemCount: publishPayload.sections.builtItems.length,
         profileSnapshotIncluded: Boolean(publishPayload.profileSnapshot),
-        personaAvatarApplied: Boolean(personaAvatar.avatarUrl),
-        personaAvatarCode: personaAvatar.code,
+        personaAvatarApplied: false,
+        personaAvatarCode,
+        personaAvatarSkippedReason: 'public_identity_preserved',
       },
     };
   }
@@ -316,9 +283,9 @@ export async function publishDraftToTaku({
       remixedItemCount: publishPayload.sections.remixedItems.length,
       builtItemCount: publishPayload.sections.builtItems.length,
       profileSnapshotIncluded: Boolean(publishPayload.profileSnapshot),
-      personaAvatarApplied: Boolean(personaAvatar.avatarUrl),
-      personaAvatarCode: personaAvatar.code,
-      personaAvatarSkippedReason: personaAvatar.skipped ? personaAvatar.reason : undefined,
+      personaAvatarApplied: false,
+      personaAvatarCode,
+      personaAvatarSkippedReason: 'public_identity_preserved',
       workerSections: Array.isArray(data?.data?.sections) ? data.data.sections : undefined,
       installableItemCount: typeof data?.data?.installableItemCount === 'number' ? data.data.installableItemCount : undefined,
       studioDraftSync,

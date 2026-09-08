@@ -81,18 +81,27 @@ export async function normalizeTakuCreatorProfile(value, token = '') {
   const displayName = extractTakuProfileDisplayName(value)
     || extractTakuProfileDisplayName(jwtPayload?.user_metadata)
     || extractTakuProfileDisplayName(jwtPayload);
-  const avatarUrl = await resolveTakuProfileAvatarUrl({ creatorProfile: value, token })
-    || extractTakuProfileAvatarUrl(jwtPayload?.user_metadata)
-    || extractTakuProfileAvatarUrl(jwtPayload);
+  const accountAvatarUrl = await resolveTakuProfileAvatarUrl({
+    creatorProfile: value,
+    token,
+  });
+  const avatarUrl = accountAvatarUrl !== undefined
+    ? accountAvatarUrl
+    : extractTakuProfileAvatarUrl(jwtPayload?.user_metadata)
+      || extractTakuProfileAvatarUrl(jwtPayload);
   return {
     ...(displayName ? { displayName } : {}),
-    ...(avatarUrl ? { avatarUrl } : {}),
+    ...(avatarUrl !== undefined ? { avatarUrl } : {}),
   };
 }
 
 export async function resolveTakuProfileAvatarUrl({ creatorProfile, token }) {
-  return (await fetchSupabaseUserProfileAvatarUrl(token).catch(() => undefined))
-    || extractTakuProfileAvatarUrl(creatorProfile);
+  const accountAvatarUrl = await fetchSupabaseUserProfileAvatarUrl(token).catch(
+    () => undefined,
+  );
+  if (accountAvatarUrl !== undefined) return accountAvatarUrl;
+  const profileAvatar = extractTakuProfileAvatarState(creatorProfile);
+  return profileAvatar.present ? profileAvatar.avatarUrl : undefined;
 }
 
 function unwrapWorkerData(value) {
@@ -159,7 +168,8 @@ async function fetchSupabaseUserProfileAvatarUrl(token) {
   if (!response.ok) return undefined;
   const rows = await response.json().catch(() => []);
   const row = Array.isArray(rows) ? rows[0] : undefined;
-  return publicHttpUrl(row?.avatar_url);
+  if (!row) return undefined;
+  return publicHttpUrl(row.avatar_url) || null;
 }
 
 function getUserIdFromJwt(token) {
@@ -202,6 +212,49 @@ function resolveSupabaseAnonKey() {
 function extractTakuProfileAvatarUrl(value) {
   const candidates = collectProfileAvatarCandidates(value, 0, new Set());
   return candidates[0];
+}
+
+function extractTakuProfileAvatarState(value, depth = 0, seen = new Set()) {
+  if (depth > 5 || !isRecord(value) || seen.has(value)) {
+    return { present: false, avatarUrl: undefined };
+  }
+  seen.add(value);
+  for (const key of [
+    'avatarUrl',
+    'avatar_url',
+    'profileAvatarUrl',
+    'profile_avatar_url',
+    'profileImageUrl',
+    'profile_image_url',
+    'avatar',
+    'imageUrl',
+    'image_url',
+    'image',
+    'photoUrl',
+    'photo_url',
+    'pictureUrl',
+    'picture_url',
+    'picture',
+  ]) {
+    if (Object.hasOwn(value, key)) {
+      return { present: true, avatarUrl: publicHttpUrl(value[key]) || null };
+    }
+  }
+  for (const key of [
+    'profile',
+    'creatorProfile',
+    'creator_profile',
+    'userProfile',
+    'user_profile',
+    'creator',
+    'user',
+    'user_metadata',
+    'data',
+  ]) {
+    const state = extractTakuProfileAvatarState(value[key], depth + 1, seen);
+    if (state.present) return state;
+  }
+  return { present: false, avatarUrl: undefined };
 }
 
 function avatarUrlFromRecord(value) {
