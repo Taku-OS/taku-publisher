@@ -146,6 +146,42 @@ test('API client keeps public reads unauthenticated and fails closed on writes',
   assert.equal(requests[1].headers.Authorization, ['Bearer', publisherToken].join(' '));
 });
 
+test('API client generates Flowchart data with scoped auth and idempotency', async () => {
+  const requests = [];
+  const transport = async (method, url, headers, body, timeoutMs) => {
+    requests.push({ method, url, headers, body, timeoutMs });
+    return {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      body: Buffer.from(JSON.stringify({
+        flowchartIntro: {
+          nodes: [{ id: 'input', title: 'Input' }, { id: 'output', title: 'Output' }],
+          edges: [{ from: 'input', to: 'output' }],
+        },
+        flowchartIntroI18n: {},
+      })),
+    };
+  };
+  const publisherToken = ['taku', 'pub', 'flowchart', 'fixture'].join('_');
+  const client = new TakuPublisherClient({ token: publisherToken, transport });
+
+  const result = await client.generateFlowchart(
+    { type: 'app', name: 'Demo', description: 'A useful app.' },
+    'flowchart:app:demo:sha256-fixture',
+  );
+
+  assert.equal(result.flowchartIntro.nodes.length, 2);
+  assert.equal(requests[0].method, 'POST');
+  assert.equal(new URL(requests[0].url).pathname, '/publisher/flowchart/generate');
+  assert.equal(requests[0].headers.Authorization, `Bearer ${publisherToken}`);
+  assert.equal(requests[0].headers['Idempotency-Key'], 'flowchart:app:demo:sha256-fixture');
+  assert.equal(requests[0].timeoutMs, 120_000);
+  assert.throws(
+    () => client.generateFlowchart({ type: 'app', name: 'Demo', description: 'A useful app.' }, ''),
+    error => error instanceof PublisherError && error.code === 'invalid_idempotency_key',
+  );
+});
+
 test('API client uses scoped auth for GitHub connection and repository discovery', async () => {
   const requests = [];
   const transport = async (method, url, headers, body) => {
@@ -590,6 +626,8 @@ test('listing metadata normalizes to Worker field names', () => {
     source_author: ['Original', 'Author'].join(' '),
     support_email: 'support@example.com',
     privacy_policy: 'https://example.com/privacy',
+    flowchart_intro: { nodes: [], edges: [] },
+    flowchart_intro_i18n: { 'en-US': { nodes: [], edges: [] } },
   });
 
   assert.equal(metadata.sourceUrl, 'https://example.com/source');
@@ -597,6 +635,8 @@ test('listing metadata normalizes to Worker field names', () => {
   assert.equal(metadata.sourceAuthor, 'Original Author');
   assert.equal(metadata.supportEmail, 'support@example.com');
   assert.equal(metadata.privacyPolicyUrl, 'https://example.com/privacy');
+  assert.deepEqual(metadata.flowchartIntro, { nodes: [], edges: [] });
+  assert.deepEqual(metadata.flowchartIntroI18n, { 'en-US': { nodes: [], edges: [] } });
 });
 
 test('draft listing is read from the Worker response envelope', () => {

@@ -26,8 +26,11 @@ import type { JsonObject, JsonValue, PublisherState } from './types.js';
 import { isRecord, PublisherError } from './util.js';
 
 const DEFAULT_MARKETPLACE_CATEGORY = 'writing-content';
+const FLOWCHART_GENERATION_TIMEOUT_MS = 120_000;
 const LISTING_KEY_ALIASES = new Map([
   ['short_description', 'shortDescription'],
+  ['flowchart_intro', 'flowchartIntro'],
+  ['flowchart_intro_i18n', 'flowchartIntroI18n'],
   ['icon_url', 'iconUrl'],
   ['source_url', 'sourceUrl'],
   ['upstream_url', 'sourceUrl'],
@@ -124,6 +127,27 @@ export class TakuPublisherClient {
 
   createDraft(payload: JsonObject): Promise<JsonObject> { return this.json('POST', PUBLISHER_DRAFTS_PATH, payload); }
   generateListingIcon(payload: JsonObject): Promise<JsonObject> { return this.json('POST', '/marketplace/icons/generate', payload, this.iconToken || this.token); }
+  generateFlowchart(payload: JsonObject, idempotencyKey: string): Promise<JsonObject> {
+    const key = String(idempotencyKey ?? '').trim();
+    const hasControlCharacter = [...key].some(character => {
+      const code = character.charCodeAt(0);
+      return code <= 31 || code === 127;
+    });
+    if (!key || key.length > 200 || hasControlCharacter) {
+      throw new PublisherError(
+        'A valid Flowchart idempotency key is required.',
+        'invalid_idempotency_key',
+      );
+    }
+    return this.json(
+      'POST',
+      '/publisher/flowchart/generate',
+      payload,
+      undefined,
+      true,
+      { idempotencyKey: key, timeoutMs: FLOWCHART_GENERATION_TIMEOUT_MS },
+    );
+  }
   getDraft(id: string): Promise<JsonObject> { return this.json('GET', publisherDraftPath(id)); }
   updateDraft(id: string, payload: JsonObject): Promise<JsonObject> { return this.json('PATCH', publisherDraftPath(id), payload); }
   submitScanReport(id: string, payload: JsonObject): Promise<JsonObject> { return this.json('POST', publisherDraftScanReportPath(id), payload); }
@@ -264,6 +288,7 @@ export class TakuPublisherClient {
     payload?: JsonObject,
     token?: string,
     requireAuth = true,
+    options: { idempotencyKey?: string; timeoutMs?: number } = {},
   ): Promise<JsonObject> {
     const requestToken = token === undefined ? this.token : token.trim();
     if (requireAuth && !requestToken) {
@@ -279,11 +304,18 @@ export class TakuPublisherClient {
       'X-Taku-Publisher-Schema': SCHEMA_VERSION,
     };
     if (requestToken) headers.Authorization = `Bearer ${requestToken}`;
+    if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey;
     if (body) {
       headers['Content-Type'] = 'application/json';
       headers['Content-Length'] = String(body.length);
     }
-    const response = await this.transport(method, `${this.workerUrl}${apiPath}`, headers, body, this.timeoutMs);
+    const response = await this.transport(
+      method,
+      `${this.workerUrl}${apiPath}`,
+      headers,
+      body,
+      options.timeoutMs ?? this.timeoutMs,
+    );
     const parsed = parseJsonResponse(response.body);
     if (response.status < 200 || response.status >= 300) {
       let message = String(parsed.error ?? parsed.message ?? `HTTP ${response.status}`);
