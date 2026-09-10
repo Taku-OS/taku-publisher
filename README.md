@@ -2,9 +2,9 @@
 
 Install Taku Publisher directly from this GitHub marketplace.
 
-Current release: **0.3.16**. It publishes sanitized per-host Codex and Claude
-Code usage summaries for activity rankings and preserves canonical creator
-identity across Publisher updates.
+Current release: **0.3.17**. It adds authenticated Publisher flowchart
+generation and preserves per-host AI Burn source and period metrics in Builder
+Profile snapshots.
 
 ## Codex
 

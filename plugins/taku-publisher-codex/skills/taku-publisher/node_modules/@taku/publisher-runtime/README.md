@@ -215,6 +215,30 @@ paths, file limits, runtime scripts, and `.next-preview` contract, installs the
 Application into its managed projects directory, then opens preview. This path
 does not authenticate, upload, register, or publish the SubApp.
 
+## Flowchart generation before publishing
+
+After conversion has produced the final App or Skill name, description, and a
+bounded source summary, call the Publisher-scoped Flowchart endpoint before the
+final publish or SubApp registration request:
+
+```js
+const generated = await client.generateFlowchart({
+  type: 'app',
+  name: catalog.name,
+  shortDescription: catalog.shortDescription,
+  description: catalog.description,
+  sourceContext,
+  locale: 'auto',
+}, `flowchart:app:${stableProjectId}:${sourceDigest}`);
+```
+
+Use a stable idempotency key for retries. Copy `generated.flowchartIntro` and
+`generated.flowchartIntroI18n` into the App `catalog` or Skill `listing` before
+publishing. The JSON travels with the normal publish request; it is not a
+separate file upload. Generation failure must fail the current item's publish
+step instead of silently publishing without a Flowchart. Authentication uses
+the existing scoped Publisher session; never distribute user or AI tokens.
+
 ## Confirmed private SubApp registration
 
 `subapp-register-plan` re-hashes both archives, validates the Desktop install
