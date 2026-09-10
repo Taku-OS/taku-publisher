@@ -934,6 +934,19 @@ export function buildBuilderProfileSnapshot(draft) {
       eventCount: Math.max(0, Math.floor(Number(usage.eventCount) || 0)),
       modelUsage: normalizeDraftModelUsage(usage.modelUsage),
       estimatedCost: normalizeDraftEstimatedCost(usage.estimatedCost || usage.modelUsage?.estimatedCost),
+      sources: (Array.isArray(usage.sources) ? usage.sources : [])
+        .filter((source) => Number(source?.totalTokens) > 0)
+        .map((source) => ({
+          source: cleanText(source.source, 40) || '',
+          label: cleanText(source.label, 80) || '',
+          totalTokens: Math.max(0, Math.floor(Number(source.totalTokens) || 0)),
+          sessionCount: Math.max(0, Math.floor(Number(source.sessionCount) || 0)),
+          estimatedCost: normalizeDraftEstimatedCost(source.estimatedCost || source.modelUsage?.estimatedCost),
+        }))
+        .filter((source) => source.source),
+      periods: (Array.isArray(usage.periods) ? usage.periods : [])
+        .map(normalizeDraftUsagePeriod)
+        .filter((period) => period.id),
       localActivity: normalizeDraftLocalActivity(localActivity),
     },
     codeActivity: {

@@ -25,6 +25,8 @@ test('plans a private SubApp registration without remote operations', async t =>
   assert.equal(plan.registrationStarted, false);
   assert.equal(plan.publishStarted, false);
   assert.equal(plan.metadata.catalog.iconUrl, 'https://cdn.example.test/calculator.png');
+  assert.equal(plan.metadata.catalog.flowchartIntro.nodes[0].title, 'Enter values');
+  assert.equal(plan.metadata.catalog.flowchartIntroI18n['zh-CN'].nodes[0].title, '输入数值');
 });
 
 test('uploads both archives and registers only a private App draft version', async t => {
@@ -67,6 +69,8 @@ test('uploads both archives and registers only a private App draft version', asy
   ]);
   assert.equal(calls[0].payload.status, 'draft');
   assert.equal(calls[0].payload.appId, undefined);
+  assert.equal(calls[0].payload.flowchartIntro.nodes[0].title, 'Enter values');
+  assert.equal(calls[0].payload.flowchartIntroI18n['zh-CN'].nodes[0].title, '输入数值');
   assert.equal(calls[2].payload.path, 'apps/app_test_123/versions/4/source.zip');
   assert.equal(calls[4].payload.path, 'apps/app_test_123/versions/4/build.zip');
   assert.equal(calls[2].payload.sizeBytes, fixture.sourceSize);
@@ -495,6 +499,29 @@ async function registrationFixture(t) {
         tags: ['calculator'],
         iconUrl: 'https://cdn.example.test/calculator.png',
         repoUrl: 'https://github.com/example/calculator',
+        flowchartIntro: {
+          nodes: [
+            { id: 'input', title: 'Enter values' },
+            { id: 'output', title: 'Get result' },
+          ],
+          edges: [{ from: 'input', to: 'output' }],
+        },
+        flowchartIntroI18n: {
+          'en-US': {
+            nodes: [
+              { id: 'input', title: 'Enter values' },
+              { id: 'output', title: 'Get result' },
+            ],
+            edges: [{ from: 'input', to: 'output' }],
+          },
+          'zh-CN': {
+            nodes: [
+              { id: 'input', title: '输入数值' },
+              { id: 'output', title: '获得结果' },
+            ],
+            edges: [{ from: 'input', to: 'output' }],
+          },
+        },
       },
       releaseNotes: 'Initial converted release.',
       sourceRights: {
