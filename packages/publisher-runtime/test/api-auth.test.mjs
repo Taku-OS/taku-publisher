@@ -729,7 +729,15 @@ test('browser callback resumes the same authorization call and saves the standal
   assert.deepEqual(requests, ['POST /marketplace/local-auth/redeem']);
   assert.equal(status.authenticated, true);
   assert.match(stderr, /Waiting for browser confirmation/);
-  assert.equal(stderr.includes('code_challenge='), false);
+  const progress = stderr.split('\n').filter((line) => line.startsWith('{')).map(JSON.parse);
+  assert.equal(progress[0].status, 'authorization_required');
+  const loginUrl = new URL(progress[0].authorization_url);
+  assert.equal(loginUrl.searchParams.get('intent'), 'publish_stax_card');
+  assert.ok(loginUrl.searchParams.get('code_challenge'));
+  assert.equal(loginUrl.searchParams.has('code_verifier'), false);
+  assert.equal(stderr.includes('fixture-publisher-callback-token'), false);
+  assert.equal(stderr.includes('one-time-code'), false);
+  assert.equal(progress[1].browser_launch.status, 'requested');
   const resolved = await resolveAuth({ env, allowDesktopSession: false });
   assert.equal(resolved.source, 'publisher_session');
   assert.equal(resolved.token, 'fixture-publisher-callback-token');
@@ -820,10 +828,12 @@ if (!response.ok) process.exitCode = 1;
   const result = await dispatch({
     command: 'creator-draft',
     flags: new Map(),
-    rest: ['--json', '--editor', '--worker-url', workerUrl, '--allow-custom-worker-url'],
+    rest: ['--json', '--editor', '--wait-for-auth', '--worker-url', workerUrl, '--allow-custom-worker-url'],
   });
 
   assert.equal(result.ok, true);
+  assert.equal(result.editor_open_required, true);
+  assert.equal(result.next_action, 'open_editor_url');
   const invocations = (await fs.readFile(creatorLog, 'utf8')).trim().split('\n').map(JSON.parse);
   assert.equal(invocations.length, 1);
   assert.equal(invocations[0].token, 'replacement-publisher-token');

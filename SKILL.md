@@ -20,6 +20,56 @@ This skill has six product surfaces:
 
 ## User-Facing Response Rules
 
+### Browser authorization in Codex and Claude Code
+
+- Login is a two-turn workflow by default. Run the original business command.
+  If it returns `awaiting_authorization`, the independent local receiver is
+  running and the business command has exited before scanning or uploading.
+  Show `authorization_url` and say: "Complete sign-in in your external browser,
+  then return here and say continue." End the turn; do not keep polling by default.
+- Retain the original command, workspace/draft arguments and `request_id` in the
+  conversation. On "continue", first run `auth-check --request-id <id>`.
+  Only `authenticated` means the saved Publisher session still exists, matches
+  this request, is unexpired, and has the required scopes. Tell the user sign-in
+  is complete, then rerun the exact original command and finish its Studio handoff.
+  The user's "continue" is a request to check, not evidence of authentication.
+- If `auth-check` still returns `awaiting_authorization`, show the same link and
+  ask the user to finish authorization. Do not logout or start duplicate requests.
+  If expired, cancelled, interrupted, or failed, explain the returned state and
+  obtain a fresh request by rerunning the original command. An `auth_flow_conflict`
+  means another intent is pending: finish it or explicitly cancel it first.
+- `auth-start` and `auth-login` also return promptly and keep the independent
+  receiver alive. For separate Stax login use `auth-start --intent publish_stax_card`.
+  `auth-check` only reads status. `auth-cancel` stops the pending request;
+  `auth-logout` cancels it before deleting credentials, preventing late callbacks
+  from silently signing the user back in. Never clear credentials merely to retry.
+- A pending request is reused for the same intent, Worker, site and permissions.
+  The receiver expires automatically (five minutes by default, at most ten).
+  It needs the same computer, loopback access and Publisher storage permissions.
+  It survives the short caller command exiting; it does not survive shutdown.
+  Report `auth_receiver_start_failed` or `auth_callback_failed` as a callback/
+  storage execution issue, not as a successful browser launch.
+- Open sign-in/OAuth pages in the system external browser by default. The CLI
+  already attempts this. After `browser_launch.status: requested`, show the link
+  and wait for the user; lack of visibility is not evidence of launcher failure.
+  Only retry after a reported failure/timeout or the user says no page appeared.
+  Reuse the same live URL with an explicitly external-browser opening method,
+  or ask the user to open it in their external browser.
+- Never use Codex's built-in/in-app browser for authentication unless the user
+  explicitly requests it. Do not use automatic `cua.getBrowser({ url })` selection
+  or an in-app panel as an authentication fallback. No browser plugin is required.
+- `--no-open-browser` skips the OS launch but still starts the independent receiver
+  and returns the link. The URL contains a public PKCE challenge, not a verifier
+  or account token. Never ask users to paste tokens or callback codes into chat.
+- Optional automatic continuation: only if requested, poll `auth-check` using
+  short waits while the task is active, then rerun the original command after
+  `authenticated`. If interrupted, "continue" uses the same request check.
+- Legacy foreground waiting remains available explicitly via `auth-login --wait`
+  or business `--wait-for-auth`. These modes need a live yielding shell session;
+  do not use them for the default two-turn workflow. Progress is on stderr and
+  final JSON is on stdout. Report `authenticated` immediately when received;
+  `scan_started` and `studio_ready` are separate subsequent phases.
+
 The creator should not see the internal pipeline unless they ask for technical details. Translate CLI fields and paths into plain language, and make the next action obvious.
 
 Default user response shape:
@@ -476,6 +526,17 @@ Only use `creator-scan --compact` when the creator explicitly asks for a text-on
 
 After `creator-draft --json --editor`, the CLI must save the owner-scoped private draft and return the stable Worker-hosted `editorUrl`, normally `https://worker.taku.ai/stax/studio/editor` after its one-time launch handoff is redeemed. Treat a result without `editorUrl` as a failed Creator Profile draft unless the user explicitly asked for scan-only output. The launch value is an opaque one-time credential; never display or log it as an account token.
 
+`--editor` returns an editor handoff; it does not itself launch a browser.
+When `editor_open_required` or `next_action: open_editor_url` is returned, open
+the exact `editorUrl` with an available host browser-opening tool. Do this even
+when authentication was reused and no sign-in page was needed. Do not fetch or
+preview the one-time handoff in a separate HTTP client, as that could consume it.
+Studio is a separate post-login handoff: follow the user's browser preference
+for Studio, and otherwise use the system external browser. Choosing a Studio
+preview surface never authorizes moving the sign-in flow into an in-app browser.
+If no host tool is available, provide the returned editor link for the creator
+to open. Do not claim Studio opened solely because a URL was returned.
+
 For creator profile scans:
 
 - Before scanning for an editable cloud Stax Card, reuse the valid standalone Publisher session or authorize once through Taku Web. Do not begin the scan while browser authorization is still pending.
@@ -666,7 +727,7 @@ node scripts/taku-publisher.mjs remote-create --draft-id <draft-id>
 
 If the command returns `status: awaiting_web_confirmation`, the returned `review_url` is the final confirmation page. The creator should be able to review and publish there after refreshing the page.
 
-Remote commands first use explicit environment tokens for CI, then reuse the standalone Publisher session at `~/.taku/publisher/session.json`, and finally keep the local Taku Desktop session as a compatibility fallback. If no authorization is available, the command opens Taku Web, waits for the loopback PKCE authorization, and resumes the same draft automatically. Users may sign in or create a Taku account on the Web and do not need to install Taku Desktop. Never ask the creator to paste any token.
+Remote commands first use explicit environment tokens for CI, then reuse the standalone Publisher session at `~/.taku/publisher/session.json`, and finally keep the local Taku Desktop session as a compatibility fallback. If no authorization is available, the command opens Taku Web, starts an independent loopback PKCE receiver, and returns `awaiting_authorization`. After the user returns and `auth-check` confirms success, rerun the same draft command. Users may sign in or create a Taku account on the Web and do not need to install Taku Desktop. Never ask the creator to paste any token.
 
 The default create payload must include enough listing metadata for the final read-only review page to be submittable after upload:
 
@@ -689,7 +750,7 @@ If `remote-create` was accidentally run before the local package is ready and th
 
 If the creator did not ask to manually edit the listing first, continue to stage, scan, review, package, `remote-scan`, and `remote-upload` in the same workflow rather than stopping at `remote-create`. Never tell the creator to "save and tell me to continue" after successful automatic icon generation. Do not present the `remote-create` URL as the final confirmation page.
 
-If the platform response reports missing or expired auth, do not show raw auth error JSON and do not ask for a token. Run `node scripts/taku-publisher.mjs auth-login`, let the creator approve the request in Taku Web, and then resume the current local publishing draft; do not restart from discovery unless the source files changed. Use `auth-status` only for troubleshooting and `auth-logout` to revoke the local Publisher session. Never show token values.
+If the platform response reports missing or expired auth, do not show raw auth error JSON and do not ask for a token. Run `node scripts/taku-publisher.mjs auth-login`, ask the creator to approve in Taku Web and return with "continue", verify using `auth-check`, and then resume the current local publishing draft; do not restart from discovery unless the source files changed. Use `auth-status` only for troubleshooting and `auth-logout` to revoke the local Publisher session. Never show token values.
 
 ### 4. Stage and scan
 
