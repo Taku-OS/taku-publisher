@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
-import { spawn } from 'node:child_process';
+import { launchBrowser, type BrowserLaunch } from './browser-launch.js';
 
 import { authStatus, savePublisherSession } from './auth.js';
 import type { JsonObject } from './types.js';
@@ -10,7 +10,7 @@ export const DEFAULT_SITE_URL = 'https://taku.ai';
 const DEFAULT_LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 const LOOPBACK_HOST = '127.0.0.1';
 
-export async function loginWithBrowser(options: {
+export interface BrowserAuthOptions {
   workerUrl: string;
   siteUrl?: string;
   intent?: string;
@@ -19,7 +19,16 @@ export async function loginWithBrowser(options: {
   openBrowser?: boolean;
   browserOpen?: (url: string) => Promise<boolean> | boolean;
   env?: NodeJS.ProcessEnv;
-}): Promise<JsonObject> {
+  signal?: AbortSignal;
+  onEvent?: (event: JsonObject) => Promise<void> | void;
+}
+
+export async function loginWithBrowser(options: BrowserAuthOptions): Promise<JsonObject> {
+  options.signal?.throwIfAborted();
+  const report = async (event: JsonObject) => {
+    if (options.onEvent) await options.onEvent(event);
+    else process.stderr.write(`${JSON.stringify(event)}\n`);
+  };
   const state = base64url(randomBytes(24));
   const codeVerifier = base64url(randomBytes(32));
   const codeChallenge = base64url(createHash('sha256').update(codeVerifier, 'ascii').digest());
@@ -68,6 +77,8 @@ export async function loginWithBrowser(options: {
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(0, LOOPBACK_HOST, () => resolve());
+  }).catch(() => {
+    throw new PublisherError('Unable to start the local login callback. Check loopback permissions before retrying.', 'auth_callback_failed');
   });
   const address = server.address();
   if (!address || typeof address === 'string') throw new PublisherError('Unable to start local authorization callback.', 'auth_callback_failed');
@@ -82,35 +93,58 @@ export async function loginWithBrowser(options: {
     codeChallenge,
     accountMode: options.accountMode,
   });
-  process.stderr.write(
-    'Waiting for browser confirmation. Complete Taku sign-in or authorization in the opened page; this command will continue automatically.\n',
-  );
-  const browserOpened = options.openBrowser !== false
-    && await (options.browserOpen ?? openExternal)(loginUrl);
-  if (!browserOpened) {
-    process.stderr.write(`The browser did not open. Open this Taku authorization page:\n${loginUrl}\n`);
-  }
+  const deadline = Date.now() + Math.max(1_000, options.timeoutMs ?? DEFAULT_LOGIN_TIMEOUT_MS);
+  // Emit before attempting the launcher, even if it hangs or falsely succeeds.
+  // The URL contains a public PKCE challenge, never the verifier or a token.
+  await report({
+    status: 'authorization_required', requires_action: true,
+    action_type: 'open_authorization_url', authorization_url: loginUrl,
+    intent, expires_at: new Date(deadline).toISOString(),
+  });
+  if (!options.onEvent) process.stderr.write('Waiting for browser confirmation. Open the authorization URL if no page appears. Keep this command running; authorization will resume it automatically.\n');
+  let browserLaunch: BrowserLaunch = { status: 'skipped' };
   let received: { code: string; state: string };
   let timeoutId: NodeJS.Timeout | undefined;
+  let onAbort: (() => void) | undefined;
   try {
+    if (options.openBrowser !== false) {
+      try {
+        browserLaunch = options.browserOpen
+          ? { status: await options.browserOpen(loginUrl) ? 'requested' : 'failed' }
+          : await launchBrowser(loginUrl, { env: options.env, timeoutMs: Math.min(5_000, Math.max(1, deadline - Date.now())) });
+      } catch {
+        browserLaunch = { status: 'failed' };
+      }
+    }
+    await report({ status: 'awaiting_authorization', browser_launch: { ...browserLaunch } });
     received = await Promise.race([
       callback,
       new Promise<never>((_, reject) => {
+        onAbort = () => reject(new PublisherError('Authorization cancelled.', 'auth_cancelled'));
+        options.signal?.addEventListener('abort', onAbort, { once: true });
+        if (options.signal?.aborted) onAbort();
+      }),
+      new Promise<never>((_, reject) => {
         timeoutId = setTimeout(
           () => reject(new PublisherError(
-            'Browser confirmation timed out. Run the original command again to retry authorization.',
+            'Authorization timed out; this login link is no longer valid. Run the original command again to obtain a new link.',
             'auth_timeout',
-            { browser_opened: browserOpened },
+            { browser_launch: { ...browserLaunch } },
           )),
-          Math.max(1_000, options.timeoutMs ?? DEFAULT_LOGIN_TIMEOUT_MS),
+          Math.max(1, deadline - Date.now()),
         );
       }),
     ]);
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
+    if (onAbort) options.signal?.removeEventListener('abort', onAbort);
+    server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
+  options.signal?.throwIfAborted();
+  await report({ status: 'redeeming_authorization' });
   const payload = await redeemLocalCode({
+    signal: options.signal,
     workerUrl: options.workerUrl,
     code: received.code,
     state: received.state,
@@ -121,6 +155,7 @@ export async function loginWithBrowser(options: {
   const accessToken = String(payload.token ?? '').trim();
   if (!accessToken) throw new PublisherError('Taku Web did not return a publisher authorization.', 'invalid_auth_response');
   const now = Date.now();
+  options.signal?.throwIfAborted();
   await savePublisherSession({
     schemaVersion: 'taku.publisher.session.v1',
     accessToken,
@@ -130,7 +165,10 @@ export async function loginWithBrowser(options: {
     scopes: Array.isArray(payload.scopes) ? payload.scopes : [],
     accountHint: String(payload.accountHint ?? '').trim() || null,
     createdAt: now,
-  }, options.env);
+  }, options.env).catch(() => {
+    throw new PublisherError('Authorization was received, but the Publisher session could not be saved. Check Publisher storage permissions before retrying.', 'auth_session_save_failed');
+  });
+  await report({ status: 'authenticated' });
   return authStatus({ env: options.env });
 }
 
@@ -158,6 +196,7 @@ export function buildLoginUrl(options: {
 }
 
 async function redeemLocalCode(options: {
+  signal?: AbortSignal;
   workerUrl: string;
   code: string;
   state: string;
@@ -175,7 +214,7 @@ async function redeemLocalCode(options: {
         codeVerifier: options.codeVerifier,
         intent: options.intent,
       }),
-      signal: AbortSignal.timeout(options.timeoutMs),
+      signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(options.timeoutMs)]) : AbortSignal.timeout(options.timeoutMs),
     });
     const payload = await response.json() as unknown;
     if (!isRecord(payload)) throw new PublisherError('Taku Web returned an invalid authorization response.', 'invalid_auth_response');
@@ -187,29 +226,13 @@ async function redeemLocalCode(options: {
   }
 }
 
-function openExternal(url: string): Promise<boolean> {
-  const command = process.platform === 'darwin'
-    ? { file: 'open', args: [url] }
-    : process.platform === 'win32'
-      ? { file: 'cmd', args: ['/c', 'start', '', url] }
-      : { file: 'xdg-open', args: [url] };
-  return new Promise((resolve) => {
-    const child = spawn(command.file, command.args, { detached: true, stdio: 'ignore', windowsHide: true });
-    child.once('error', () => resolve(false));
-    child.once('spawn', () => {
-      child.unref();
-      resolve(true);
-    });
-  });
-}
-
 function callbackHtml(): string {
   return `<!doctype html><html><head><meta charset="utf-8"><title>Taku Publisher</title></head>
 <body><p id="status">Completing Taku Publisher authorization...</p><script>
 (async()=>{const p=new URLSearchParams(location.hash.slice(1));const code=p.get('taku_auth_code')||'';
 const state=p.get('taku_auth_state')||'';const el=document.getElementById('status');
 try{const r=await fetch('/callback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,state})});
-if(!r.ok)throw new Error('Authorization failed');history.replaceState(null,'',location.pathname);el.textContent='Taku Publisher is authorized. You can close this tab.';}
+if(!r.ok)throw new Error('Authorization failed');history.replaceState(null,'',location.pathname);el.textContent='Authorization received. Return to Codex or your terminal to confirm completion.';}
 catch(e){el.textContent='Authorization could not be completed. Return to the terminal and try again.';}})();
 </script></body></html>`;
 }
