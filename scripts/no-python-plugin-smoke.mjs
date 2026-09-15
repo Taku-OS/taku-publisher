@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const host = process.argv[2] || 'codex';
 if (!['codex', 'claude', 'cursor'].includes(host)) throw new Error('Unknown smoke host.');
-const skillRoot = path.join(
+const skillRoot = process.argv[3] ? path.resolve(process.argv[3]) : path.join(
   repositoryRoot,
   'dist',
   'plugins',

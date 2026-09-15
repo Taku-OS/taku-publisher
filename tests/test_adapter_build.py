@@ -165,8 +165,11 @@ class AdapterBuildTests(unittest.TestCase):
             plugin = ROOT / "dist" / "plugins" / host / "taku-publisher"
             manifest = json.loads((plugin / directory / "plugin.json").read_text())
             self.assertEqual(expected["version"], manifest["version"])
-            self.assertFalse(any(plugin.rglob("challenge-handoff.mjs")))
-            self.assertFalse(any(plugin.rglob("challenge-publisher-job.mjs")))
+            skill = plugin / "skills" / "taku-publisher"
+            self.assertTrue((skill / "creator/scripts/challenge-handoff.mjs").is_file())
+            self.assertTrue((skill / "creator/scripts/challenge-publisher-job.mjs").is_file())
+            self.assertIn("Stax Challenge (explicit requests only)", (skill / "SKILL.md").read_text())
+            self.assertNotIn("--challenge-handoff", (skill / "agents/openai.yaml").read_text())
             output = subprocess.check_output(["node", str(plugin / "skills/taku-publisher/scripts/taku-publisher.mjs"), "--version"], text=True)
             self.assertIn(expected["version"], output)
 
@@ -287,7 +290,7 @@ if ('localPath' in publicValue) {
         )
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-        self.assertEqual("0.3.18", manifest["version"])
+        self.assertEqual(json.loads((PORTABLE_SKILL_ROOT / "publisher-version.json").read_text())["version"], manifest["version"])
         self.assertLessEqual(len(manifest["interface"]["defaultPrompt"]), 3)
 
     def test_claude_marketplace_points_to_packaged_plugin(self) -> None:
@@ -313,7 +316,7 @@ if ('localPath' in publicValue) {
             ),
         )
 
-        self.assertEqual("0.3.18", manifest["version"])
+        self.assertEqual(json.loads((PORTABLE_SKILL_ROOT / "publisher-version.json").read_text())["version"], manifest["version"])
         self.assertTrue(
             (
                 plugin_root

@@ -864,6 +864,27 @@ if (!response.ok) process.exitCode = 1;
   assert.equal(invocations[0].args[0], 'draft');
   const authorization = new URL(await fs.readFile(browserLog, 'utf8'));
   assert.equal(authorization.searchParams.has('account_mode'), false);
+  assert.equal(authorization.searchParams.get('intent'), 'publish_stax_card');
+  await dispatch({
+    command: 'creator-draft', flags: new Map(),
+    rest: ['--json', '--editor', '--challenge-handoff', '--worker-url', workerUrl, '--allow-custom-worker-url'],
+  });
+  const challengeInvocation = (await fs.readFile(creatorLog, 'utf8')).trim().split('\n').map(JSON.parse).at(-1);
+  assert.equal(challengeInvocation.args.includes('--challenge-handoff'), true);
+  assert.equal(challengeInvocation.token, 'replacement-publisher-token');
+  await savePublisherSession({
+    accessToken: 'fixture-rejected-publisher-token', expiresAt: Date.now() + 10 * 60_000,
+    scopes: ['creator.profile.read', 'creator.studio-draft.write'],
+  });
+  await dispatch({
+    command: 'creator-draft', flags: new Map(),
+    rest: ['--json', '--editor', '--challenge-handoff', '--worker-url', workerUrl, '--allow-custom-worker-url'],
+  });
+  const retryInvocation = (await fs.readFile(creatorLog, 'utf8')).trim().split('\n').map(JSON.parse).at(-1);
+  assert.equal(retryInvocation.args[0], 'editor');
+  assert.equal(retryInvocation.args.includes('--challenge-handoff'), true);
+  assert.equal(retryInvocation.args.includes('--allow-custom-worker-url'), true);
+  assert.equal(retryInvocation.args.includes('/private/generated-card.json'), true);
   const resolved = await resolveAuth({ allowDesktopSession: false });
   assert.equal(resolved.token, 'replacement-publisher-token');
   worker.closeIdleConnections?.();

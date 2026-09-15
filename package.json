@@ -13,6 +13,7 @@
     "url": "https://github.com/Taku-OS/taku-publisher/issues"
   },
   "imports": {
+    "#taku-publisher-runtime": "./packages/publisher-runtime/dist/index.js",
     "#taku-capability-contract": "./packages/capability-contract/dist/index.js",
     "#taku-passport-core": "./packages/passport-core/dist/index.js",
     "#taku-passport-core/privacy": "./packages/passport-core/dist/privacy.js",
@@ -25,6 +26,7 @@
     "audit:repo": "node scripts/audit-repository.mjs",
     "build:adapters": "npm run build:runtime && node scripts/build-adapters.mjs",
     "build:marketplace": "npm run build:adapters && node scripts/build-marketplace-release.mjs",
+    "build:challenge-test": "npm run build:adapters && node scripts/build-challenge-test.mjs",
     "build:contract": "npm run build --workspace @taku/capability-contract",
     "build:converter": "npm run build --workspace repo-to-stax-converter",
     "build:subapp-contract": "npm run build --workspace @taku/subapp-contract",
@@ -36,6 +38,7 @@
     "pack:runtime": "node scripts/package-publisher-runtime.mjs",
     "pack:cursor": "npm run build:adapters && node scripts/package-cursor-release.mjs",
     "smoke:clean": "node scripts/clean-copy-smoke.mjs",
+    "smoke:challenge": "npm run build:challenge-test && node scripts/challenge-test-smoke.mjs",
     "smoke:contract": "npm run pack:contract && node scripts/contract-install-smoke.mjs",
     "smoke:cursor-install": "node scripts/cursor-install-smoke.mjs",
     "smoke:core": "npm run build:core && node scripts/passport-core-install-smoke.mjs",

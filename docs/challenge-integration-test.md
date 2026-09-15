@@ -1,0 +1,65 @@
+# Stax Challenge integration acceptance
+
+The **0.3.19** production source integrates the accepted Challenge workflow on
+top of **0.3.18**. The production plugin remains named `taku-publisher` and uses
+the `standard` channel. Separate three-host acceptance packages are named `taku-publisher-challenge-integration-test`
+and use a `0.3.19-stax-challenge.b<source-checksum>` version. They are not a new
+production installation entry point. No npm or official Cursor store publication is included.
+
+## What changed
+
+Production's Cursor runtime and normal Card, App, Skill and Creator Center modes
+are retained. Explicit Challenge requests add a Card-to-one-Skill handoff in the
+current Codex, Claude Code or Cursor Agent. Studio and authorization use the
+same production defaults. No forced preview site, browser-to-local server,
+background Agent, global latest-draft fallback or public auto-submit is imported
+from the old mixed test package. Candidates are not proof of publishing rights.
+
+## Run
+
+Build with `npm ci && npm run build:challenge-test`. Independent marketplaces
+and ZIPs are under `dist/challenge-test/{codex,claude,cursor}`. Cursor can use the
+project-local `.cursor/skills/taku-publisher-challenge-integration-test` copied from this
+build. Do not install into the production plugin name or overwrite global caches.
+Open this test checkout and start a **new Agent chat**, so old Skill paths are
+not reused. Invoke `taku-publisher-challenge-integration-test` explicitly; the
+distinct name avoids the older `taku-publisher-stax-challenge-test` Skill.
+
+First prompt:
+
+```text
+使用当前项目的 taku-publisher-challenge-integration-test，扫描最近30天使用记录，生成私有 Stax Card，返回可编辑 Studio 地址，同时列出候选 Skill。先不要上传或公开发布。
+```
+
+Expect one private Card/actual Studio URL and Skill choices in the same response.
+If the account lacks a valid grant, the plugin opens authorization and the same
+command resumes after the user approves it. A valid scoped session is reused.
+Opening/signing into the account and reviewing the Card remain user actions;
+the user should not need to rerun CLI commands manually. With no candidates,
+Card editing remains available without a required Skill selection.
+
+Select one candidate (replace the placeholder):
+
+```text
+选择刚才的 <Skill名称或候选ID>，我确认有权发布它。请完成安全审查并在本地打包，先不要上传。发现风险就停下并说明。
+```
+
+Expect only that exact Skill to be staged, scanned and semantically reviewed
+by the current Agent. Packaging requires real review decisions. A blocked scan
+must not be bypassed. No other Skill source or remote draft should be modified.
+
+Optional private-upload test, only after you authorize uploading this Skill:
+
+```text
+把刚才审查通过的这一个 Skill 上传为私有草稿，返回 Taku Web 审核地址，不要自动公开发布。
+```
+
+Expect normal icon/listing/auth/bundle gates and the actual Worker-returned
+review URL. Repeating preparation must not create a second draft. Public Skill
+submission is a separate user confirmation on Taku Web; local `status` is not
+proof that a Skill was publicly published. `remote-status` verifies that claim.
+
+Also test `跳过 Skill，只编辑 Card` before preparation, and make one ordinary
+Card/App/Creator Center request to confirm Challenge does not replace that route.
+Use a fresh production install on all three hosts for post-release acceptance;
+checking an isolated test package does not verify the public installation entry point.

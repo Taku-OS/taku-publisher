@@ -51,6 +51,8 @@ try {
   for (const host of ['codex', 'claude', 'cursor']) {
     run('node', ['scripts/no-python-plugin-smoke.mjs', host], sourceDirectory);
   }
+  run('node', ['scripts/build-challenge-test.mjs'], sourceDirectory);
+  run('node', ['scripts/challenge-test-smoke.mjs'], sourceDirectory);
   run('node', ['scripts/build-marketplace-release.mjs'], sourceDirectory);
   run('node', ['scripts/package-cursor-release.mjs'], sourceDirectory);
   run('npm', ['run', 'smoke:cursor-install'], sourceDirectory);

@@ -1,16 +1,17 @@
-# Cursor 0.3.18
+# Cursor 0.3.19
 
-This is production 0.3.17 plus Cursor integration and installation packaging.
-It does **not** include Stax Challenge Test. Distribution is through the
-GitHub `marketplace` branch and the `v0.3.18` release assets. It is not
+This preserves production 0.3.18's Cursor integration and installation packaging
+and adds the explicitly requested Stax Challenge workflow. The production plugin
+is still named `taku-publisher`, without a test-version suffix. Distribution is through the
+GitHub `marketplace` branch and the `v0.3.19` release assets. It is not
 published to npm or listed in the official Cursor Marketplace.
 
-Download `taku-publisher-0.3.18.tgz` from the trusted
-[GitHub release](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.3.18),
+Download `taku-publisher-0.3.19.tgz` from the trusted
+[GitHub release](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.3.19),
 then run from the download directory (Node.js 20+):
 
 ```sh
-npx --yes --package ./taku-publisher-0.3.18.tgz taku-publisher install --host cursor
+npx --yes --package ./taku-publisher-0.3.19.tgz taku-publisher install --host cursor
 ```
 
 ## Build and install locally
@@ -42,14 +43,14 @@ For a previously manually copied, unmanaged Skill, explicit `--backup-existing`
 moves the entire old directory to a recoverable backup before installing.
 It does not bypass protections for edited managed installs.
 
-The local npm tarball is `dist/releases/taku-publisher-0.3.18.tgz`:
+The local npm tarball is `dist/releases/taku-publisher-0.3.19.tgz`:
 
 ```sh
-npx --yes --package ./dist/releases/taku-publisher-0.3.18.tgz taku-publisher install --host cursor
+npx --yes --package ./dist/releases/taku-publisher-0.3.19.tgz taku-publisher install --host cursor
 ```
 
 This tarball command uses a local file, not a released npm package. A public
-`npx --yes --package @taku/publisher@0.3.18 taku-publisher install --host cursor`
+`npx --yes --package @taku/publisher@0.3.19 taku-publisher install --host cursor`
 command must not be advertised until package ownership and npm publication
 are confirmed. Installation checks bundled file hashes; hashes detect
 corruption, not publisher authenticity. Obtain the package from a trusted source.
@@ -78,7 +79,7 @@ Check its version from that same Skill directory:
 node scripts/taku-publisher.mjs --version
 ```
 
-1. “扫描 Cursor 最近 30 天使用记录，生成私有 Stax Card，返回可编辑 Studio 地址，同时列出候选 Skill；不要公开发布。” With a valid session, generation proceeds automatically. First use opens browser sign-in; after authorization the same command resumes. Missing recorded token counts must remain unavailable, not estimated.
+1. “使用 Taku Publisher 开始 Stax Challenge，扫描 Cursor 最近 30 天使用记录，生成私有 Stax Card，返回可编辑 Studio 地址，同时列出候选 Skill，让我选择一个或跳过；先不要上传或公开发布。” With a valid session, generation proceeds automatically. First use opens browser sign-in; after authorization the same command resumes. Missing recorded token counts must remain unavailable, not estimated.
 2. “把我选定的这个 Skill 准备发布到 Taku，先做安全检查和打包，不要公开发布。” Confirm exact source selection, review, packaging and private review/Studio handoff. Public release still requires confirmation in Taku Web.
 3. “评估这个本地 App 能否转为 Taku SubApp，先只评估。” Preparation, current-Agent migration, static verification and Desktop installation each retain their confirmation gates.
 
@@ -93,5 +94,5 @@ Run audit, Node/Python tests, adapter validation, all-host Node-only smoke,
 installer tests, packaging checks and `npm run smoke:clean` after committing.
 For an uncommitted candidate, add `-- --working-tree` to export the current
 sources rather than old HEAD. Final release builds must use the reviewed
-release commit. Follow CONTRIBUTING.md for delivery tracking; do not merge
-Challenge while doing this release.
+release commit. Follow CONTRIBUTING.md for delivery tracking. Preserve production
+authorization and endpoints; do not import the old preview-only Challenge package.

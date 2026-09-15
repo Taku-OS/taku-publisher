@@ -95,7 +95,7 @@ claude plugin install taku-publisher@taku
 ```
 
 Start a new Codex task or Claude Code session after installation so it picks up
-the Taku Publisher Skill. Cursor 0.3.18 includes a complete
+the Taku Publisher Skill. Version 0.3.19 includes a complete Cursor
 Agent-plugin marketplace bundle and a file-preserving local installer:
 
 ```sh
@@ -104,9 +104,10 @@ node dist/installers/cursor/bin/taku-publisher.mjs install --host cursor
 ```
 
 Start a new Cursor Agent chat and invoke `/taku-publisher`. GitHub production
-distribution uses the `marketplace` branch and `v0.3.18` release assets, not
+distribution uses the `marketplace` branch and `v0.3.19` release assets, not
 the npm registry or the official Cursor store. `npm run build:marketplace`
-generates the combined three-host GitHub bundle. Stax Challenge is not included. See
+generates the combined three-host GitHub bundle. Stax Challenge is an explicit,
+optional Card-to-one-Skill workflow; ordinary Card, Skill and SubApp routes remain available. See
 [Cursor installation and release gates](docs/cursor-release.md).
 
 Creator-facing scans default to a bounded local usage-file budget so large

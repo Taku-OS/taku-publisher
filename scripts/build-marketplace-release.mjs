@@ -38,8 +38,7 @@ for (const spec of specs) {
   if (plugin.name !== 'taku-publisher' || plugin.version !== version || marker.host !== spec.marker) {
     throw new Error(`Host or version mismatch: ${spec.host}`);
   }
-  if (files.some(({ path: file }) => /(?:^|\/)(?:challenge-handoff|challenge-publisher-job)\.mjs$/.test(file)
-      || /\.(?:py|pyc|pyo|test\.mjs|js\.map)$/.test(file))) {
+  if (files.some(({ path: file }) => /\.(?:py|pyc|pyo|test\.mjs|js\.map)$/.test(file))) {
     throw new Error(`Unexpected test or development runtime: ${spec.host}`);
   }
   const marketplace = JSON.parse(await fs.readFile(path.join(root,
@@ -59,8 +58,9 @@ await fs.writeFile(path.join(output, 'release.json'), `${JSON.stringify({
 }, null, 2)}\n`);
 await fs.writeFile(path.join(output, 'README.md'), `# Taku Publisher Marketplace
 
-Current release: **${version}** — production Publisher with Cursor integration.
-Stax Challenge Test is not included. All three hosts share the same Node.js runtime.
+${sourceDirty ? 'Unpublished source candidate' : 'Release bundle'}: **${version}** — Publisher with Cursor integration.
+All three hosts share the same Node.js runtime. Stax Challenge is an explicit
+optional workflow; ordinary Card, Skill and SubApp entry behavior is preserved.
 
 ## Codex
 
@@ -98,7 +98,7 @@ Existing unmanaged or edited installations are protected; see the
 Start a new Agent chat/session after installation, then ask:
 
 \`\`\`text
-生成私有 Stax Card，返回可编辑 Studio 地址，同时列出候选 Skill；不要公开发布。
+使用 Taku Publisher 开始 Stax Challenge，生成私有 Stax Card，返回可编辑 Studio 地址，同时列出候选 Skill，让我选择一个或跳过；先不要上传或公开发布。
 \`\`\`
 
 First-use browser sign-in is required; after authorization the same command

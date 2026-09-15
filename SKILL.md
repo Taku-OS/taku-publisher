@@ -35,6 +35,53 @@ project path is available.
 - SubApp semantic migration is performed by the current host Agent. The
   bundled CLI does not contain or launch an independent AI runner.
 
+## Stax Challenge (explicit requests only)
+
+Use this mode when the creator explicitly asks for Stax Challenge or for a Card
+followed by choosing and preparing one local Skill. Ordinary Card generation,
+project import, Creator Center and SubApp requests keep their existing routes.
+
+Run `creator-draft --json --editor --challenge-handoff` with the requested
+workspace and usage window. Keep the exact returned `editorUrl`; the cloud
+Studio and production authorization behavior do not change. Show the Card URL
+and `challengeSkills` together, and ask the creator to choose one candidate or
+skip. Selection happens here in the current Codex, Claude Code or Cursor Agent,
+not through a browser-to-local bridge. Candidates are suggestions, not proof of
+ownership, publication rights or safety. Confirm the creator owns or has the
+right to publish the selected Skill before preparation or upload.
+
+Use the exact `challengeDraftPath` from that result in subsequent calls; never
+choose the latest draft globally or substitute another source path:
+
+```sh
+node scripts/taku-publisher.mjs creator-challenge-select --draft <card-draft> --candidate-id <selected-id>
+node scripts/taku-publisher.mjs creator-challenge-prepare --draft <card-draft>
+node scripts/taku-publisher.mjs creator-challenge-status --draft <card-draft>
+node scripts/taku-publisher.mjs creator-challenge-skip --draft <card-draft>
+```
+
+Only one exact candidate can be selected per Challenge. `prepare` stages and
+scans that source through the standard runtime, stopping for semantic review.
+Use its `publisherResult.deep_scan_request_path` and dispositions template to
+perform the existing Safety Rules review with the current Agent. Apply actual
+review decisions through `apply-review --draft-id <publisherDraftId>
+--dispositions <review-file>`, then run Challenge preparation again to package.
+Do not invent passing review decisions. A blocked or changed source needs a new
+draft, not an attempt to bypass the immutable snapshot.
+
+When the user authorized private upload as part of preparing this selected
+Skill for Taku publishing, continue with `creator-challenge-prepare --draft
+<card-draft> --upload`. If the user requested local checks/packaging only or said
+not to upload, omit `--upload`. Respect production's auth, icon, listing, scan
+and bundle gates. Return the actual final review URL for Taku Web confirmation;
+do not publicly submit or use a preview-only submit command. If the user asks
+whether the release was published, verify through the existing `remote-status`
+workflow: local Challenge progress is not a trusted publication result.
+
+Card review remains usable while Skill preparation is paused. With no candidates,
+return the Card URL without requiring selection. Skip is available before Skill
+preparation starts and does not publish anything or delete remote drafts.
+
 ## User-Facing Response Rules
 
 The creator should not see the internal pipeline unless they ask for technical details. Translate CLI fields and paths into plain language, and make the next action obvious.

@@ -109,6 +109,11 @@ import {
   detectGitHubIdentity,
   withGitHubSocialCandidate,
 } from './social-identity.mjs';
+import {
+  challengeCandidatesFromCreationChoices, challengeCloudStudioResult, challengePublisherState, createChallengeHandoff,
+  publicChallengeHandoffState, readChallengeHandoff, selectChallengeSkill, skipChallengeSkill,
+} from './challenge-handoff.mjs';
+import { prepareChallengeSkill } from './challenge-publisher-job.mjs';
 
 const VERSION = '0.2.4';
 const SCAN_SCHEMA = 'taku.creator.scan.v1';
@@ -116,6 +121,7 @@ const DEFAULT_INCLUDE_CREATION_CANDIDATES = false;
 const READONLY_PREVIEW_OPTIONS = { readonlyPreview: true };
 const DETACHED_EDITOR_START_TIMEOUT_MS = 60000;
 function shouldIncludeCreationCandidates(parsed) {
+  if (hasFlag(parsed, 'challenge-handoff')) return true;
   if (hasFlag(parsed, 'include-creation-candidates') || hasFlag(parsed, 'include-built-candidates')) return true;
   if (hasFlag(parsed, 'no-creation-candidates') || hasFlag(parsed, 'no-built-candidates')) return false;
   const envValue = String(process.env.TAKU_INCLUDE_CREATION_CANDIDATES || '').trim().toLowerCase();
@@ -341,6 +347,13 @@ async function createDraftResult(parsed) {
 }
 
 async function runDraft(parsed) {
+  if (hasFlag(parsed, 'challenge-handoff') && (!hasFlag(parsed, 'editor') || hasFlag(parsed, 'local-editor'))) {
+    throw new Error('Challenge requires the cloud Studio: use --editor without --local-editor.');
+  }
+  if (hasFlag(parsed, 'challenge-handoff') && getFlag(parsed, 'output')
+      && await readChallengeHandoff(path.resolve(getFlag(parsed, 'output')))) {
+    throw new Error('A Challenge already uses this output; reuse it with creator-editor --draft or choose a new output.');
+  }
   const cloudParsed = hasFlag(parsed, 'editor') && !hasFlag(parsed, 'local-editor')
     ? withStudioWorker(parsed)
     : parsed;
@@ -442,6 +455,9 @@ async function readDraft(filePath) {
 }
 
 async function runEditor(parsed) {
+  if (hasFlag(parsed, 'challenge-handoff') && hasFlag(parsed, 'local-editor')) {
+    throw new Error('Challenge requires the cloud Studio, not --local-editor.');
+  }
   const editorParsed = hasFlag(parsed, 'local-editor') ? parsed : withStudioWorker(parsed);
   const draftPath = getFlag(parsed, 'draft');
   if (draftPath) {
@@ -523,7 +539,7 @@ async function saveDraftResultToCloudStudio(parsed, draftResult) {
   if (saved.draft) {
     await writeJson(draftPath, saved.draft);
   }
-  return createCloudStudioCommandResult(
+  const cloudResult = createCloudStudioCommandResult(
     saved.draft || draftResult.draft,
     saved.studioUrl,
     {
@@ -531,6 +547,12 @@ async function saveDraftResultToCloudStudio(parsed, draftResult) {
       accountHint: saved.accountHint,
     },
   );
+  if (!hasFlag(parsed, 'challenge-handoff')) return cloudResult;
+  const handoff = await createChallengeHandoff(draftPath, {
+    candidates: challengeCandidatesFromCreationChoices(draftResult.creationChoices), workerUrl, siteUrl,
+    allowCustomWorkerUrl: hasFlag(parsed, 'allow-custom-worker-url'),
+  });
+  return challengeCloudStudioResult(cloudResult, handoff, await challengePublisherState(handoff));
 }
 
 async function runPublish(parsed) {
@@ -611,6 +633,7 @@ async function main() {
         'draft',
         'editor',
         'publish',
+        'challenge-select', 'challenge-status', 'challenge-skip', 'challenge-prepare',
         'center-list',
         'center-show',
         'center-stats',
@@ -630,6 +653,17 @@ async function main() {
     result = await runEditor(parsed);
   } else if (command === 'publish') {
     result = await runPublish(parsed);
+  } else if (command.startsWith('challenge-')) {
+    const draftPath = getFlag(parsed, 'draft');
+    if (!draftPath || !path.isAbsolute(draftPath)) throw new Error('Use the exact absolute --draft returned by this Challenge.');
+    if (command === 'challenge-select') result = await selectChallengeSkill(draftPath, getFlag(parsed, 'candidate-id'));
+    else if (command === 'challenge-skip') result = await skipChallengeSkill(draftPath);
+    else if (command === 'challenge-prepare') result = await prepareChallengeSkill(draftPath, { upload: hasFlag(parsed, 'upload') });
+    else if (command === 'challenge-status') {
+      const context = await readChallengeHandoff(draftPath);
+      if (!context) throw new Error('No active Challenge context.');
+      result = publicChallengeHandoffState(context, await challengePublisherState(context));
+    } else throw new Error('Unknown Challenge command.');
   } else if (command === 'center-list') {
     result = await runCreatorCenterList(parsed);
   } else if (command === 'center-show') {
@@ -655,6 +689,11 @@ main()
     process.exitCode = code;
   })
   .catch((error) => {
-    console.error(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }, null, 2));
+    if (String(process.argv[2] || '').startsWith('challenge-') || process.argv.includes('--challenge-handoff')) {
+      console.log(JSON.stringify({ ok: false, status: 'error', requires_action: true,
+        error: { code: 'challenge_error', message: error instanceof Error ? error.message : String(error) } }, null, 2));
+    } else {
+      console.error(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }, null, 2));
+    }
     process.exitCode = 1;
   });

@@ -36,5 +36,6 @@ venv/
 
 # Locally installed test runtime; release sources live under adapters/.
 /.cursor/skills/taku-publisher/
+/.cursor/skills/taku-publisher-challenge-integration-test/
 /.cursor/publisher-backups/
 /packages/repo-to-stax-converter/.converter-build-*/
