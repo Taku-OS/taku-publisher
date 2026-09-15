@@ -1,0 +1,9 @@
+{
+  "name": "superpowers",
+  "version": "6.2.0",
+  "source": "openai-curated-remote/superpowers",
+  "license": "MIT",
+  "bundleSha256": "sha256:bd4810288fa17c0f697f638a5041b55a370b9e76b16d61adc56f59f869c72fe9",
+  "bundlePath": ".agent-tools/superpowers/6.2.0",
+  "entrySkill": "skills/using-superpowers/SKILL.md"
+}

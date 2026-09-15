@@ -1,0 +1,5 @@
+{
+  "schemaVersion": "taku.publisher.host-adapter.v1",
+  "host": "cursor",
+  "skill": "taku-publisher"
+}

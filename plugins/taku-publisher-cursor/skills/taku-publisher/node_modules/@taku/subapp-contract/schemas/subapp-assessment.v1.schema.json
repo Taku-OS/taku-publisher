@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taku.ai/schemas/subapp-assessment.v1.schema.json",
+  "title": "Taku SubApp Assessment v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractVersion",
+    "assessmentId",
+    "assessedAt",
+    "privacy",
+    "source",
+    "analysis",
+    "route",
+    "serviceRequirements",
+    "eligibility",
+    "nextStep",
+    "findings"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "taku.subapp-assessment.v1" },
+    "contractVersion": { "const": "0.1.0" },
+    "assessmentId": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "assessedAt": { "type": "string", "format": "date-time" },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["localOnly", "uploads", "localLocatorIncluded"],
+      "properties": {
+        "localOnly": { "const": true },
+        "uploads": { "const": false },
+        "localLocatorIncluded": { "const": true }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "locator"],
+      "properties": {
+        "kind": { "enum": ["local", "github"] },
+        "locator": { "type": "string", "minLength": 1 },
+        "repo": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "minLength": 1 },
+        "ref": { "type": ["string", "null"], "minLength": 1 },
+        "commit": { "type": ["string", "null"], "minLength": 1 },
+        "dirty": { "type": ["boolean", "null"] }
+      }
+    },
+    "analysis": { "$ref": "#/$defs/analysis" },
+    "route": { "$ref": "#/$defs/route" },
+    "serviceRequirements": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/serviceRequirement" }
+    },
+    "eligibility": { "enum": ["eligible", "review-required", "rejected"] },
+    "nextStep": {
+      "enum": [
+        "start-conversion",
+        "manual-review",
+        "native-import",
+        "reference-only",
+        "stop"
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    }
+  },
+  "$defs": {
+    "projectType": {
+      "enum": [
+        "nextjs",
+        "vite-react",
+        "fastapi-next",
+        "streamlit",
+        "gradio",
+        "workflow-skill",
+        "browser-extension",
+        "external-connector",
+        "python-cli",
+        "unknown"
+      ]
+    },
+    "stringArray": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "packageName",
+        "description",
+        "appType",
+        "score",
+        "recommendation",
+        "strategy",
+        "license",
+        "hasReadme",
+        "hasUi",
+        "reasons",
+        "risks"
+      ],
+      "properties": {
+        "packageName": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "appType": { "$ref": "#/$defs/projectType" },
+        "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "recommendation": { "enum": ["convertible", "manual-review", "not-recommended"] },
+        "strategy": { "type": "string", "minLength": 1 },
+        "license": { "type": "string", "minLength": 1 },
+        "hasReadme": { "type": "boolean" },
+        "hasUi": { "type": "boolean" },
+        "reasons": { "$ref": "#/$defs/stringArray" },
+        "risks": { "$ref": "#/$defs/stringArray" }
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "capability", "reason", "nextAction"],
+      "properties": {
+        "kind": { "enum": ["subapp-migration", "native-import", "reference-only"] },
+        "capability": { "$ref": "#/$defs/projectType" },
+        "reason": { "type": "string", "minLength": 1 },
+        "nextAction": { "type": "string", "minLength": 1 }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "category", "severity", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "category": { "enum": ["technical", "security", "rights", "runtime", "product"] },
+        "severity": { "enum": ["info", "warning", "blocker"] },
+        "message": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/$defs/relativePath" }
+      }
+    },
+    "serviceRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "capability",
+        "required",
+        "operations",
+        "dataClasses",
+        "mutation",
+        "mapping"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9._-]{0,127}$"
+        },
+        "capability": { "type": "string", "minLength": 1 },
+        "required": { "type": "boolean" },
+        "detectedProvider": { "type": "string", "minLength": 1 },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "dataClasses": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "mutation": { "type": "boolean" },
+        "mapping": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": {
+              "enum": ["mapped", "review-required", "unavailable"]
+            },
+            "serviceId": {
+              "type": "string",
+              "pattern": "^[a-z][A-Za-z0-9._-]{0,127}$"
+            },
+            "endpointIds": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][A-Za-z0-9._-]{0,127}$"
+              }
+            },
+            "reason": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000]+$"
+    }
+  }
+}

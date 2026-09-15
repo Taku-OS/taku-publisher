@@ -1,0 +1,4 @@
+interface:
+  display_name: "Taku Publisher"
+  short_description: "Create profiles and safely publish Taku Skills."
+  default_prompt: "Use $taku-publisher to generate an editable Creator Profile or safely publish one local Skill to Taku."

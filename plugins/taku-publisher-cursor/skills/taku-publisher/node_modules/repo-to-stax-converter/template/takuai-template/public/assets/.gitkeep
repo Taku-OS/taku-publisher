@@ -1,0 +1,8 @@
+# 静态资源目录
+
+此目录用于存储用户上传的文件和项目静态资源，包括图片、视频、音频、文档等。
+
+## 访问路径
+文件将通过 `/assets/` 路径访问，例如：
+- `public/assets/logo.png` → `/assets/logo.png`
+- `public/assets/demo.mp4` → `/assets/demo.mp4`

@@ -1,0 +1,12 @@
+{
+  "name": "taku-creator",
+  "type": "skill",
+  "version": "1.0.0",
+  "description": "Generate a local Taku Stax Card and Creator Page draft, open a review editor to choose public tools and confirmed works, then publish selected public inventory to Taku from Codex or Claude Code environments.",
+  "entry": "SKILL.md",
+  "install": {
+    "target": "skills"
+  },
+  "platforms": ["taku"],
+  "permissions": []
+}
