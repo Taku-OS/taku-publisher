@@ -125,6 +125,40 @@ test('interleaves sources before consuming the file-count budget', async (contex
   assert.equal(result.scanCoverage.stoppedReason, 'files');
 });
 
+test('reads exact Cursor token counts from the local state database', async (context) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-cursor-usage-'));
+  context.after(() => fs.rm(homeDir, { recursive: true, force: true }));
+  const cursorStateDbPath = path.join(homeDir, 'state.vscdb');
+  await fs.writeFile(cursorStateDbPath, 'fixture');
+
+  const result = await scanUsage({
+    homeDir,
+    cursorStateDbPath,
+    usagePeriodId: 'allTimeLocal',
+    cursorQueryDatabase: async () => ({
+      bubbles: [{
+        key: 'bubbleId:composer-1:bubble-1',
+        value: JSON.stringify({
+          usageUuid: 'usage-1',
+          model: 'cursor-model',
+          createdAt: '2026-09-10T10:00:00.000Z',
+          tokenCount: { inputTokens: 120, outputTokens: 30 },
+        }),
+      }],
+      composers: [],
+      scannedByteCount: 128,
+    }),
+  });
+
+  assert.equal(result.totalInputTokens, 120);
+  assert.equal(result.totalOutputTokens, 30);
+  assert.equal(result.totalTokens, 150);
+  assert.equal(result.sessionCount, 1);
+  assert.equal(result.scannedFileCount, 1);
+  assert.equal(result.scanCoverage.cursorDatabasePartial, false);
+  assert.equal(result.sources.find((source) => source.source === 'cursor')?.available, true);
+});
+
 test('reads Claude Code usage from CLAUDE_CONFIG_DIR', async (context) => {
   const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-usage-home-'));
   const claudeConfigDir = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-claude-config-'));

@@ -38,11 +38,19 @@ jobs:
       - name: Run Node and Python tests
         run: npm test
 
-      - name: Build Codex and Claude Adapters
+      - name: Build Codex, Claude Code and Cursor Adapters
         run: npm run build:adapters
 
       - name: Verify generated plugin without Python
         run: npm run smoke:plugin
+
+      - name: Validate production marketplace bundle
+        run: node scripts/build-marketplace-release.mjs
+
+      - name: Verify packaged Cursor installer
+        run: |
+          node scripts/package-cursor-release.mjs
+          npm run smoke:cursor-install
 
       - name: Pack Capability Contract
         run: npm run smoke:contract

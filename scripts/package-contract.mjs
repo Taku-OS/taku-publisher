@@ -82,8 +82,8 @@ const sourceCommit =
     encoding: 'utf8',
   }).trim();
 const sourceDirty =
-  process.env.TAKU_CONTRACT_SOURCE_DIRTY === 'false'
-    ? false
+  ['true', 'false'].includes(process.env.TAKU_CONTRACT_SOURCE_DIRTY)
+    ? process.env.TAKU_CONTRACT_SOURCE_DIRTY === 'true'
     : Boolean(
         execFileSync('git', ['status', '--porcelain'], {
           cwd: repositoryRoot,

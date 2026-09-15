@@ -1,0 +1,11 @@
+{
+  "name": "taku-publisher",
+  "version": "0.3.18",
+  "description": "Generate editable Stax Cards, discover Cursor projects, and prepare Taku Skills or SubApps with the current Agent.",
+  "author": { "name": "Taku", "url": "https://taku.ai/" },
+  "homepage": "https://taku.ai/",
+  "repository": "https://github.com/Taku-OS/taku-publisher",
+  "license": "Apache-2.0",
+  "keywords": ["taku", "stax", "publisher", "skills", "subapp"],
+  "skills": "./skills/"
+}

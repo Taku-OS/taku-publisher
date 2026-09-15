@@ -1,7 +1,7 @@
 {
   "name": "taku-publisher",
-  "version": "0.3.17",
-  "description": "Discover Codex and Claude Code projects, convert them into Taku SubApps or Skills, and safely publish tools.",
+  "version": "0.3.18",
+  "description": "Discover Codex, Claude Code, and Cursor projects, convert them into Taku SubApps or Skills, and safely publish tools.",
   "author": {
     "name": "Taku",
     "url": "https://taku.ai/"
@@ -20,7 +20,7 @@
   "interface": {
     "displayName": "Taku Publisher",
     "shortDescription": "Import AI coding projects into Taku.",
-    "longDescription": "Discover recent Codex and Claude Code workspaces or repositories owned by the creator's Taku-connected GitHub account, route one selected project to verified SubApp conversion or bounded Skill generation, install SubApps locally, publish Skills, search community tools, and manage creator works.",
+    "longDescription": "Discover recent Codex, Claude Code, and Cursor workspaces or repositories owned by the creator's Taku-connected GitHub account, route one selected project to verified SubApp conversion or bounded Skill generation, install SubApps locally, publish Skills, search community tools, and manage creator works.",
     "developerName": "Taku",
     "category": "Productivity",
     "websiteURL": "https://taku.ai/",
@@ -28,7 +28,7 @@
     "termsOfServiceURL": "https://taku.ai/terms",
     "capabilities": [
       "Local discovery",
-      "Codex and Claude Code project import",
+      "Codex, Claude Code, and Cursor project import",
       "Taku-connected GitHub repository discovery",
       "Repository to SubApp conversion",
       "Repository to Skill conversion",
@@ -41,7 +41,7 @@
     ],
     "defaultPrompt": [
       "List repositories owned by my Taku-connected GitHub account and let me choose one to import.",
-      "Find my recent Codex and Claude Code projects and import one into Taku.",
+      "Find my recent AI coding projects and import one into Taku.",
       "Publish the tool in this workspace to Taku."
     ]
   }

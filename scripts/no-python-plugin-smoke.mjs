@@ -7,11 +7,13 @@ import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const host = process.argv[2] || 'codex';
+if (!['codex', 'claude', 'cursor'].includes(host)) throw new Error('Unknown smoke host.');
 const skillRoot = path.join(
   repositoryRoot,
   'dist',
   'plugins',
-  'codex',
+  host,
   'taku-publisher',
   'skills',
   'taku-publisher',
@@ -88,6 +90,15 @@ try {
     PATH: runtimeBin,
     TAKU_PUBLISHER_HOME: publisherHome,
   };
+  const discoveredProjects = run([
+    'project-discover',
+    '--host', 'other',
+    '--project', workspace,
+  ], env);
+  if (discoveredProjects.project_count !== 1
+    || discoveredProjects.projects?.[0]?.hosts?.[0] !== 'other') {
+    throw new Error('Portable project discovery did not preserve the explicit Other workspace.');
+  }
   run(['discover', '--workspace', workspace, '--source', source], env);
   run([
     'init',

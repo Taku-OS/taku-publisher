@@ -1,0 +1,11 @@
+{
+  "name": "taku",
+  "owner": { "name": "Taku" },
+  "plugins": [
+    {
+      "name": "taku-publisher",
+      "source": "./plugins/taku-publisher",
+      "description": "Stax Cards, Cursor project discovery, and safe Taku publishing."
+    }
+  ]
+}

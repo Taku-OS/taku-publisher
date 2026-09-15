@@ -4,6 +4,7 @@ import * as fsp from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as readline from 'node:readline';
+import { fileURLToPath } from 'node:url';
 
 import { PublisherError } from './util.js';
 
@@ -31,7 +32,7 @@ const TIMESTAMP_KEYS = new Set([
   'updatedat',
 ]);
 
-export type ProjectHost = 'codex' | 'claude-code';
+export type ProjectHost = 'codex' | 'claude-code' | 'cursor' | 'other';
 export type ProjectHostFilter = ProjectHost | 'all';
 
 export interface ProjectDiscoveryOptions {
@@ -41,6 +42,10 @@ export interface ProjectDiscoveryOptions {
   homeDir?: string;
   codexHome?: string;
   claudeConfigDir?: string;
+  cursorUserDir?: string;
+  explicitProjects?: string[];
+  env?: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
 }
 
 export interface DiscoveredProject {
@@ -64,7 +69,7 @@ interface ProjectObservation {
   host: ProjectHost;
   workspace: string;
   activityMs: number;
-  sessionFile: string;
+  sourceFile: string;
 }
 
 interface ProjectAccumulator {
@@ -77,7 +82,7 @@ interface ProjectAccumulator {
 export async function discoverRecentProjects(
   options: ProjectDiscoveryOptions = {},
 ): Promise<DiscoveredProject[]> {
-  const host = normalizeHost(options.host ?? 'all');
+  const host = normalizeProjectHost(options.host ?? 'all');
   const maxProjects = boundedInteger(
     options.maxProjects,
     DEFAULT_MAX_PROJECTS,
@@ -92,23 +97,46 @@ export async function discoverRecentProjects(
     2_000,
     'maxSessionFiles',
   );
+  const env = options.env ?? process.env;
   const homeDir = path.resolve(options.homeDir ?? os.homedir());
   const codexHome = path.resolve(
-    options.codexHome ?? process.env.CODEX_HOME ?? path.join(homeDir, '.codex'),
+    options.codexHome ?? env.CODEX_HOME ?? path.join(homeDir, '.codex'),
   );
   const claudeConfigDir = path.resolve(
-    options.claudeConfigDir ?? process.env.CLAUDE_CONFIG_DIR ?? path.join(homeDir, '.claude'),
+    options.claudeConfigDir ?? env.CLAUDE_CONFIG_DIR ?? path.join(homeDir, '.claude'),
   );
-  const sessionFiles = await collectSessionFiles({
-    host,
-    codexHome,
-    claudeConfigDir,
-    maxSessionFiles,
-  });
+  const cursorUserDir = path.resolve(
+    options.cursorUserDir ?? resolveCursorUserDir(homeDir, options.platform ?? process.platform, env),
+  );
   const observations: ProjectObservation[] = [];
-  for (const sessionFile of sessionFiles) {
-    const observation = await readProjectObservation(sessionFile);
-    if (observation) observations.push(observation);
+  for (const candidate of options.explicitProjects ?? []) {
+    if (!path.isAbsolute(candidate)) {
+      throw new PublisherError(
+        'Explicit projects must use absolute paths.',
+        'invalid_explicit_project',
+      );
+    }
+    observations.push({
+      host: host === 'all' ? 'other' : host,
+      workspace: candidate,
+      activityMs: Date.now(),
+      sourceFile: 'explicit-project',
+    });
+  }
+  if (host === 'all' || host === 'codex' || host === 'claude-code') {
+    const sessionFiles = await collectSessionFiles({
+      host,
+      codexHome,
+      claudeConfigDir,
+      maxSessionFiles,
+    });
+    for (const sessionFile of sessionFiles) {
+      const observation = await readProjectObservation(sessionFile);
+      if (observation) observations.push(observation);
+    }
+  }
+  if (host === 'all' || host === 'cursor') {
+    observations.push(...await readCursorWorkspaceObservations(cursorUserDir, maxSessionFiles));
   }
 
   const projects = new Map<string, ProjectAccumulator>();
@@ -123,7 +151,7 @@ export async function discoverRecentProjects(
     };
     current.hosts.add(observation.host);
     current.lastActivityMs = Math.max(current.lastActivityMs, observation.activityMs);
-    current.sessionFiles.add(`${observation.host}:${observation.sessionFile}`);
+    current.sessionFiles.add(`${observation.host}:${observation.sourceFile}`);
     projects.set(workspace, current);
   }
 
@@ -147,6 +175,73 @@ export async function discoverRecentProjects(
     });
   }
   return output;
+}
+
+export function resolveCursorUserDir(
+  homeDir: string,
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const override = String(env.CURSOR_USER_DIR ?? '').trim();
+  if (override) return path.resolve(override);
+  if (platform === 'darwin') {
+    return path.join(homeDir, 'Library', 'Application Support', 'Cursor', 'User');
+  }
+  if (platform === 'win32') {
+    const appData = String(env.APPDATA ?? '').trim() || path.join(homeDir, 'AppData', 'Roaming');
+    return path.join(appData, 'Cursor', 'User');
+  }
+  const configRoot = String(env.XDG_CONFIG_HOME ?? '').trim() || path.join(homeDir, '.config');
+  return path.join(configRoot, 'Cursor', 'User');
+}
+
+async function readCursorWorkspaceObservations(
+  cursorUserDir: string,
+  limit: number,
+): Promise<ProjectObservation[]> {
+  const workspaceStorage = path.join(cursorUserDir, 'workspaceStorage');
+  const entries = await fsp.readdir(workspaceStorage, { withFileTypes: true }).catch(() => []);
+  const candidates: Array<{ file: string; mtimeMs: number }> = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    const file = path.join(workspaceStorage, entry.name, 'workspace.json');
+    const stat = await fsp.stat(file).catch(() => undefined);
+    if (stat?.isFile() && stat.size <= MAX_PROJECT_METADATA_BYTES) {
+      candidates.push({ file, mtimeMs: stat.mtimeMs });
+    }
+  }
+  candidates.sort((left, right) => right.mtimeMs - left.mtimeMs || left.file.localeCompare(right.file));
+
+  const observations: ProjectObservation[] = [];
+  for (const candidate of candidates.slice(0, limit)) {
+    const value = await readSmallJson(candidate.file);
+    const workspace = cursorWorkspacePath(value);
+    if (!workspace) continue;
+    observations.push({
+      host: 'cursor',
+      workspace,
+      activityMs: Math.max(candidate.mtimeMs, timestampMs(value?.lastUpdatedAt)),
+      sourceFile: candidate.file,
+    });
+  }
+  return observations;
+}
+
+function cursorWorkspacePath(value: Record<string, unknown> | undefined): string {
+  const raw = typeof value?.folder === 'string'
+    ? value.folder.trim()
+    : typeof value?.workspace === 'string'
+      ? value.workspace.trim()
+      : '';
+  if (!raw) return '';
+  if (path.isAbsolute(raw)) return raw;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'file:') return '';
+    return fileURLToPath(url);
+  } catch {
+    return '';
+  }
 }
 
 async function collectSessionFiles(options: {
@@ -241,7 +336,7 @@ async function readProjectObservation(file: SessionFile): Promise<ProjectObserva
     input.destroy();
   }
   if (!workspace) return undefined;
-  return { host: file.host, workspace, activityMs, sessionFile: file.path };
+  return { host: file.host, workspace, activityMs, sourceFile: file.path };
 }
 
 function findWorkspaceMetadata(value: unknown, depth = 0): string {
@@ -367,11 +462,14 @@ function record(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function normalizeHost(value: string): ProjectHostFilter {
-  if (value === 'all' || value === 'codex' || value === 'claude-code') return value;
-  if (value === 'claude' || value === 'cc') return 'claude-code';
+export function normalizeProjectHost(value: string): ProjectHostFilter {
+  const normalized = value.trim().toLowerCase();
+  if (['all', 'codex', 'claude-code', 'cursor', 'other'].includes(normalized)) {
+    return normalized as ProjectHostFilter;
+  }
+  if (normalized === 'claude' || normalized === 'cc') return 'claude-code';
   throw new PublisherError(
-    'Project host must be codex, claude-code, or all.',
+    'Project host must be codex, claude-code, cursor, other, or all.',
     'invalid_project_host',
   );
 }

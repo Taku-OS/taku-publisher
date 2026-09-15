@@ -51,7 +51,7 @@ The host must review every text file listed by `deep-scan-request.json`, not jus
 7. Environment/config reads missing from `requirements.json`.
 8. Plugin child capabilities that differ materially from the plugin listing.
 
-The script never calls an LLM. Codex or Claude performs this local semantic review and writes a dispositions file.
+The script never calls an LLM. The current host Agent (Codex, Claude Code, or Cursor) performs this local semantic review and writes a dispositions file.
 
 ## Dispositions schema
 
