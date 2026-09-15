@@ -8,6 +8,7 @@ import { isRecord, PublisherError } from './util.js';
 
 export const DEFAULT_SITE_URL = 'https://taku.ai';
 const DEFAULT_LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
+const DEFAULT_MANUAL_BROWSER_FALLBACK_DELAY_MS = 1_500;
 const LOOPBACK_HOST = '127.0.0.1';
 
 export async function loginWithBrowser(options: {
@@ -17,6 +18,7 @@ export async function loginWithBrowser(options: {
   accountMode?: 'confirm' | 'switch';
   timeoutMs?: number;
   openBrowser?: boolean;
+  manualBrowserFallbackDelayMs?: number;
   browserOpen?: (url: string) => Promise<boolean> | boolean;
   env?: NodeJS.ProcessEnv;
 }): Promise<JsonObject> {
@@ -87,8 +89,23 @@ export async function loginWithBrowser(options: {
   );
   const browserOpened = options.openBrowser !== false
     && await (options.browserOpen ?? openExternal)(loginUrl);
+  let manualBrowserFallbackTimer: NodeJS.Timeout | undefined;
+  const printManualBrowserFallback = () => {
+    process.stderr.write(
+      `If the Taku authorization page is not visible, open this URL manually:\n${loginUrl}\n`,
+    );
+  };
   if (!browserOpened) {
-    process.stderr.write(`The browser did not open. Open this Taku authorization page:\n${loginUrl}\n`);
+    printManualBrowserFallback();
+  } else {
+    // `open`/`xdg-open` only tells us that the launcher process started. In a
+    // host sandbox (notably Cursor), that does not guarantee a visible page.
+    // Give the creator a usable fallback before the five-minute timeout while
+    // avoiding the URL in the normal fast-success path.
+    manualBrowserFallbackTimer = setTimeout(
+      printManualBrowserFallback,
+      Math.max(0, options.manualBrowserFallbackDelayMs ?? DEFAULT_MANUAL_BROWSER_FALLBACK_DELAY_MS),
+    );
   }
   let received: { code: string; state: string };
   let timeoutId: NodeJS.Timeout | undefined;
@@ -107,6 +124,7 @@ export async function loginWithBrowser(options: {
       }),
     ]);
   } finally {
+    if (manualBrowserFallbackTimer) clearTimeout(manualBrowserFallbackTimer);
     if (timeoutId) clearTimeout(timeoutId);
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }

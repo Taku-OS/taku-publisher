@@ -1,8 +1,11 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { repositoryRoot } from './repository-files.mjs';
+import { listRepositoryFiles, repositoryRoot } from './repository-files.mjs';
+
+const workingTree = process.argv.includes('--working-tree');
+if (process.argv.slice(2).some((arg) => arg !== '--working-tree')) throw new Error('Unknown smoke option.');
 
 const temporaryRoot = await mkdtemp(
   path.join(os.tmpdir(), 'taku-passport-clean-'),
@@ -21,27 +24,43 @@ function run(command, args, cwd = repositoryRoot) {
       ...process.env,
       CI: 'true',
       TAKU_CONTRACT_SOURCE_COMMIT: sourceCommit,
-      TAKU_CONTRACT_SOURCE_DIRTY: 'false',
+      TAKU_CONTRACT_SOURCE_DIRTY: workingTree ? 'true' : 'false',
     },
   });
 }
 
 try {
-  run('mkdir', ['-p', sourceDirectory]);
-  const archive = path.join(temporaryRoot, 'source.tar');
-  run('git', ['archive', '--format=tar', '--output', archive, 'HEAD']);
-  run('tar', ['-xf', archive, '-C', sourceDirectory]);
+  await mkdir(sourceDirectory);
+  if (workingTree) {
+    for (const relative of await listRepositoryFiles()) {
+      const source = path.join(repositoryRoot, relative);
+      if ((await lstat(source)).isSymbolicLink()) throw new Error(`Source symlink unsupported: ${relative}`);
+      const target = path.join(sourceDirectory, relative);
+      await mkdir(path.dirname(target), { recursive: true });
+      await copyFile(source, target);
+    }
+  } else {
+    const archive = path.join(temporaryRoot, 'source.tar');
+    run('git', ['archive', '--format=tar', '--output', archive, 'HEAD']);
+    run('tar', ['-xf', archive, '-C', sourceDirectory]);
+  }
   run('npm', ['ci'], sourceDirectory);
   run('npm', ['run', 'audit:repo'], sourceDirectory);
   run('npm', ['test'], sourceDirectory);
   run('npm', ['run', 'build:adapters'], sourceDirectory);
+  for (const host of ['codex', 'claude', 'cursor']) {
+    run('node', ['scripts/no-python-plugin-smoke.mjs', host], sourceDirectory);
+  }
+  run('node', ['scripts/build-marketplace-release.mjs'], sourceDirectory);
+  run('node', ['scripts/package-cursor-release.mjs'], sourceDirectory);
+  run('npm', ['run', 'smoke:cursor-install'], sourceDirectory);
   run('npm', ['run', 'smoke:core'], sourceDirectory);
   run('npm', ['run', 'smoke:contract'], sourceDirectory);
   run('npm', ['run', 'checksum:source'], sourceDirectory);
   console.log(
     JSON.stringify({
       ok: true,
-      source: 'git archive HEAD',
+      source: workingTree ? 'current source snapshot (uncommitted candidate)' : 'git archive HEAD',
       desktopDependency: false,
     }),
   );

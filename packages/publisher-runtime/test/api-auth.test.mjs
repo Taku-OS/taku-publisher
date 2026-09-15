@@ -729,12 +729,46 @@ test('browser callback resumes the same authorization call and saves the standal
   assert.deepEqual(requests, ['POST /marketplace/local-auth/redeem']);
   assert.equal(status.authenticated, true);
   assert.match(stderr, /Waiting for browser confirmation/);
+  assert.equal(stderr.includes('If the Taku authorization page is not visible'), false);
   assert.equal(stderr.includes('code_challenge='), false);
   const resolved = await resolveAuth({ env, allowDesktopSession: false });
   assert.equal(resolved.source, 'publisher_session');
   assert.equal(resolved.token, 'fixture-publisher-callback-token');
   worker.closeIdleConnections?.();
   worker.closeAllConnections?.();
+});
+
+test('browser authorization prints a manual URL when the launcher is not visible', async (t) => {
+  const root = await temporaryDirectory(t);
+  const env = { ...process.env, TAKU_PUBLISHER_HOME: root };
+  let stderr = '';
+  const stderrWrite = process.stderr.write;
+  process.stderr.write = (chunk) => {
+    stderr += String(chunk);
+    return true;
+  };
+
+  try {
+    await assert.rejects(
+      loginWithBrowser({
+        workerUrl: 'http://127.0.0.1:1',
+        siteUrl: 'https://taku.ai',
+        intent: 'publish_stax_card',
+        env,
+        timeoutMs: 50,
+        manualBrowserFallbackDelayMs: 5,
+        // Simulate Cursor's sandbox reporting that `open` started without a
+        // visible browser window or callback.
+        browserOpen: async () => true,
+      }),
+      error => error instanceof PublisherError && error.code === 'auth_timeout',
+    );
+  } finally {
+    process.stderr.write = stderrWrite;
+  }
+
+  assert.match(stderr, /If the Taku authorization page is not visible, open this URL manually:/);
+  assert.match(stderr, /https:\/\/taku\.ai\/profile\?[^\s]+/);
 });
 
 test('Creator cloud authorization completes before the scan process starts', async (t) => {

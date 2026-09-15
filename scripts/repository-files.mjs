@@ -25,7 +25,7 @@ async function walk(relativeDirectory = '') {
   const files = [];
 
   for (const entry of entries) {
-    if (EXCLUDED_SEGMENTS.has(entry.name)) continue;
+    if (EXCLUDED_SEGMENTS.has(entry.name) || entry.name.startsWith('.converter-build-')) continue;
     const relativePath = path.posix.join(
       relativeDirectory.split(path.sep).join(path.posix.sep),
       entry.name,
@@ -54,6 +54,7 @@ export async function listRepositoryFiles() {
     const candidates = [...new Set(output.split('\0').filter(Boolean))];
     const files = [];
     for (const relativePath of candidates) {
+      if (relativePath.split('/').some((part) => part.startsWith('.converter-build-'))) continue;
       try {
         if ((await stat(path.join(repositoryRoot, relativePath))).isFile()) {
           files.push(relativePath);

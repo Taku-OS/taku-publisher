@@ -33,3 +33,8 @@ venv/
 *.zip
 *.tar.gz
 .DS_Store
+
+# Locally installed test runtime; release sources live under adapters/.
+/.cursor/skills/taku-publisher/
+/.cursor/publisher-backups/
+/packages/repo-to-stax-converter/.converter-build-*/

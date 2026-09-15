@@ -11,6 +11,7 @@ import {
   stableId,
 } from './cli.mjs';
 import { readJsonFile } from './draft-state.mjs';
+import { readCursorStateUsage } from './cursor-sqlite.mjs';
 import { cleanText } from './privacy.mjs';
 
 export { composeUsageSummary } from '#taku-passport-core';
@@ -145,6 +146,7 @@ export function createEmptyUsageSummary(usagePeriodId = DEFAULT_USAGE_PERIOD_ID)
       scannedFileCount: 0,
       sampledFileCount: 0,
       oversizedJsonFileCount: 0,
+      cursorDatabasePartial: false,
       scannedByteCount: 0,
       periodFiltered: false,
     },
@@ -176,12 +178,46 @@ export async function scanUsage(options = {}) {
   let oversizedJsonFileCount = 0;
   let candidateFileCount = 0;
   let stoppedReason;
+  let cursorDatabasePartial = false;
   const candidatesBySource = new Map();
   const seenCandidatePaths = new Set();
+
+  const cursorStateUsage = await readCursorStateUsage({
+    homeDir: options.homeDir,
+    stateDbPath: options.cursorStateDbPath,
+    maxRows: Math.min(50_000, Math.max(1_000, maxFiles * 10)),
+    timeoutMs: Math.min(5_000, timeoutMs),
+    queryDatabase: options.cursorQueryDatabase,
+  });
+  if (cursorStateUsage.found) {
+    const cursorAvailability = ensureUsageAvailability(availability, 'cursor', 'Cursor');
+    cursorAvailability.available = cursorStateUsage.exact;
+    candidateFileCount += 1;
+    if (cursorStateUsage.scanned) {
+      scannedFileCount += 1;
+      scannedByteCount += Math.max(0, Number(cursorStateUsage.scannedByteCount) || 0);
+      cursorDatabasePartial = Boolean(cursorStateUsage.partial);
+      for (const session of cursorStateUsage.sessions) {
+        const fileUsage = summarizeUsageRecords(
+          session.records,
+          `${cursorStateUsage.stateDbPath}#${session.sessionId}`,
+        );
+        if (fileUsage.eventCount <= 0 && fileUsage.totals.totalTokens <= 0) continue;
+        records.push({
+          source: 'cursor',
+          label: 'Cursor',
+          sourceFileId: `${cursorStateUsage.stateDbPath}#${session.sessionId}`,
+          file: fileUsage,
+        });
+      }
+    }
+    if (cursorStateUsage.warning) warnings.push(cursorStateUsage.warning);
+  }
 
   for (const spec of buildUsageSpecs({
     homeDir: options.homeDir,
     claudeConfigDir: options.claudeConfigDir,
+    skipCursor: cursorStateUsage.scanned,
   })) {
     const sourceAvailability = ensureUsageAvailability(availability, spec.source, spec.label);
     const rootExists = await exists(spec.root);
@@ -261,7 +297,9 @@ export async function scanUsage(options = {}) {
 
   if (!stoppedReason && candidates.length < candidateFileCount) stoppedReason = 'files';
   if (!stoppedReason && scannedByteCount >= maxBytes) stoppedReason = 'bytes';
-  const partial = Boolean(stoppedReason || sampledFileCount || oversizedJsonFileCount);
+  const partial = Boolean(
+    stoppedReason || sampledFileCount || oversizedJsonFileCount || cursorDatabasePartial,
+  );
   if (stoppedReason === 'time') {
     warnings.push(`Stopped usage scan after reaching the ${timeoutMs}ms time budget.`);
   } else if (stoppedReason === 'bytes') {
@@ -301,6 +339,7 @@ export async function scanUsage(options = {}) {
     scannedFileCount,
     sampledFileCount,
     oversizedJsonFileCount,
+    cursorDatabasePartial,
     scannedByteCount,
     maxFiles,
     maxBytes,
@@ -318,10 +357,12 @@ function buildUsageSpecs(options = {}) {
   const claudeRoot = configuredClaudeRoot
     ? path.resolve(configuredClaudeRoot)
     : path.join(home, '.claude');
-  return USAGE_SOURCES.map((spec) => ({
+  return USAGE_SOURCES
+    .filter((spec) => !(options.skipCursor && spec.source === 'cursor'))
+    .map((spec) => ({
     ...spec,
     root: path.join(spec.base === 'claude-config' ? claudeRoot : home, ...spec.root),
-  }));
+    }));
 }
 
 export function buildUsagePeriods(now) {

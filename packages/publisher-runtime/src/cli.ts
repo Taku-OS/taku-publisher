@@ -48,7 +48,7 @@ import {
   marketplaceItems,
   openMarketplaceItemInTaku,
 } from './marketplace.js';
-import { discoverRecentProjects } from './project-discovery.js';
+import { discoverRecentProjects, normalizeProjectHost } from './project-discovery.js';
 import {
   assessProjectSource,
   projectAssessmentJson,
@@ -178,7 +178,7 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
       siteUrl: stringFlag(args, 'site-url', DEFAULT_SITE_URL),
       workerUrl: stringFlag(args, 'worker-url', DEFAULT_WORKER_URL),
       tokenEnv: stringFlag(args, 'token-env', 'TAKU_BEARER_TOKEN'),
-      host: stringFlag(args, 'host', 'all') as 'all' | 'codex' | 'claude-code',
+      host: normalizeProjectHost(stringFlag(args, 'host', 'all')),
       maxProjects: numberFlag(args, 'max-projects', 20),
       maxSessionFiles: numberFlag(args, 'max-session-files', 200),
       allowCustomWorkerUrl: booleanFlag(args, 'allow-custom-worker-url'),
@@ -196,7 +196,7 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
   }
   if (args.command === 'creator-plan') {
     const projects = await discoverRecentProjects({
-      host: stringFlag(args, 'host', 'all') as 'all' | 'codex' | 'claude-code',
+      host: normalizeProjectHost(stringFlag(args, 'host', 'all')),
       maxProjects: numberFlag(args, 'max-projects', 20),
       maxSessionFiles: numberFlag(args, 'max-session-files', 200),
     });
@@ -352,12 +352,22 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
     });
   }
   if (args.command === 'project-discover') {
+    const explicitProject = optionalFlag(args, 'project');
     const projects = await discoverRecentProjects({
-      host: stringFlag(args, 'host', 'all') as 'all' | 'codex' | 'claude-code',
+      host: normalizeProjectHost(stringFlag(args, 'host', 'all')),
       maxProjects: numberFlag(args, 'max-projects', 20),
       maxSessionFiles: numberFlag(args, 'max-session-files', 200),
+      ...(optionalFlag(args, 'home-dir') ? { homeDir: optionalFlag(args, 'home-dir') } : {}),
+      ...(optionalFlag(args, 'codex-home') ? { codexHome: optionalFlag(args, 'codex-home') } : {}),
+      ...(optionalFlag(args, 'claude-config-dir')
+        ? { claudeConfigDir: optionalFlag(args, 'claude-config-dir') }
+        : {}),
+      ...(optionalFlag(args, 'cursor-user-dir')
+        ? { cursorUserDir: optionalFlag(args, 'cursor-user-dir') }
+        : {}),
+      explicitProjects: explicitProject ? [explicitProject] : [],
     });
-    return jsonOutput('project_selection_required', {
+    return jsonOutput(projects.length ? 'project_selection_required' : 'no_recent_projects_found', {
       projects: projects as unknown as JsonValue,
       project_choices: projects.map(creatorProjectChoice) as unknown as JsonValue,
       project_count: projects.length,
@@ -374,6 +384,8 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
         command: 'github-project-discover',
       }],
       selection_rule: 'Select one or more projects and choose skill or subapp for each before validation begins.',
+      manual_project_supported: true,
+      discovery_note: 'Host history is optional. An explicit local project can always be selected.',
     }, {
       requiresAction: true,
       actionType: projects.length ? 'select_local_projects_and_targets' : 'choose_an_explicit_project_directory',
@@ -1298,6 +1310,7 @@ async function runCreatorCommand(command: string, creatorArgs: string[]): Promis
         workerUrl,
         siteUrl: creatorAuthorizationSiteUrl(effectiveCreatorArgs),
         intent: command === 'center-unpublish' ? 'creator_center_unpublish' : centerScope[command] ? 'creator_center' : 'publish_stax_card',
+        openBrowser: !creatorArgs.includes('--no-open-browser'),
       });
       auth = await resolveAuth({ allowDesktopSession: !strictPublisherBinding });
       if (creatorAuthorizationRequired(auth, requiredScopes)) throw new PublisherError(
@@ -1438,6 +1451,7 @@ async function createCreatorInitEditor(args: ParsedArguments): Promise<JsonObjec
     'auth-site-url',
     'worker-url',
     'allow-custom-worker-url',
+    'no-open-browser',
   ]);
   for (const [name, value] of args.flags) {
     if (!forwarded.has(name)) continue;
@@ -2001,12 +2015,12 @@ Publishing availability: Skill only. Action, Agent, and Plugin are not available
 
 Commands:
   discover, init, stage, scan, apply-review, package, status
-  creator-init [--host codex|claude-code|all] [--max-projects <n>]
-  creator-plan --select <project-id=skill|subapp,...> [--host codex|claude-code|all]
+  creator-init [--host codex|claude-code|cursor|all] [--max-projects <n>] [--no-open-browser]
+  creator-plan --select <project-id=skill|subapp,...> [--host codex|claude-code|cursor|all]
   creator-plan-show --plan-id <creator-plan-id>
   creator-plan-next --plan-id <creator-plan-id>
   creator-plan-update --plan-id <creator-plan-id> [--card-status <ready_for_review|published|skipped>] [--project-id <id> --project-status <queued|in_progress|completed|blocked>] [--remote-item-id <id>]
-  project-discover [--host codex|claude-code|all] [--max-projects <n>]
+  project-discover [--host codex|claude-code|cursor|other|all] [--project <absolute-path>] [--max-projects <n>]
   github-status
   github-connect [--no-open-browser]
   github-disconnect
@@ -2030,7 +2044,7 @@ Commands:
   subapp-install --package-root <same-release-dir> --confirm-install <token> [--wait-timeout <seconds>] [--no-wait] [developer: --taku-app <packaged-app-path>]
   subapp-register-plan --package-root <release-dir> --metadata <json> --mode <create|update> [--app-id <required-for-update>]
   subapp-register --package-root <same-release-dir> --metadata <same-json> --mode <same-mode> --confirm-registration <token> [--app-id <same-update-id>] [--upload-timeout <seconds>]
-  creator-doctor, creator-scan, creator-draft, creator-editor, creator-publish
+  creator-doctor, creator-scan, creator-draft, creator-editor, creator-publish [--no-open-browser]
   creator-center-list, creator-center-show, creator-center-stats
   creator-center-update, creator-center-unpublish
 `;

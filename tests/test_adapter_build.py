@@ -6,8 +6,10 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+PORTABLE_SKILL_ROOT = ROOT / "dist" / "skills" / "taku-publisher"
 MARKETPLACE_ROOT = ROOT / "dist" / "marketplaces" / "codex" / "taku"
 CLAUDE_MARKETPLACE_ROOT = ROOT / "dist" / "marketplaces" / "claude" / "taku"
+CURSOR_MARKETPLACE_ROOT = ROOT / "dist" / "marketplaces" / "cursor" / "taku"
 
 
 class AdapterBuildTests(unittest.TestCase):
@@ -42,6 +44,50 @@ class AdapterBuildTests(unittest.TestCase):
             },
             marketplace["plugins"][0],
         )
+
+    def test_portable_skill_contains_self_contained_runtime(self) -> None:
+        self.assertTrue((PORTABLE_SKILL_ROOT / "SKILL.md").is_file())
+        self.assertTrue((PORTABLE_SKILL_ROOT / "README.md").is_file())
+        self.assertTrue(
+            (
+                PORTABLE_SKILL_ROOT
+                / "node_modules"
+                / "@taku"
+                / "publisher-runtime"
+                / "dist"
+                / "cli.js"
+            ).is_file(),
+        )
+        self.assertTrue((PORTABLE_SKILL_ROOT / "creator" / "scripts" / "cursor-sqlite.mjs").is_file())
+        self.assertFalse(any(PORTABLE_SKILL_ROOT.rglob("*.py")))
+
+    def test_host_adapters_wrap_the_same_portable_skill(self) -> None:
+        plugin_roots = {
+            "codex": ROOT / "dist" / "plugins" / "codex" / "taku-publisher",
+            "claude-code": ROOT / "dist" / "plugins" / "claude" / "taku-publisher",
+            "cursor": ROOT / "dist" / "plugins" / "cursor" / "taku-publisher",
+        }
+        portable_files = sorted(
+            file.relative_to(PORTABLE_SKILL_ROOT)
+            for file in PORTABLE_SKILL_ROOT.rglob("*")
+            if file.is_file() and file.name != "host-adapter.json"
+        )
+        for host, plugin_root in plugin_roots.items():
+            adapter = json.loads((plugin_root / "host-adapter.json").read_text(encoding="utf-8"))
+            self.assertEqual("taku.publisher.host-adapter.v1", adapter["schemaVersion"])
+            self.assertEqual(host, adapter["host"])
+            skill_root = plugin_root / "skills" / "taku-publisher"
+            adapter_files = sorted(
+                file.relative_to(skill_root)
+                for file in skill_root.rglob("*")
+                if file.is_file() and file.name != "host-adapter.json"
+            )
+            self.assertEqual(portable_files, adapter_files)
+            for relative_file in portable_files:
+                self.assertEqual(
+                    (PORTABLE_SKILL_ROOT / relative_file).read_bytes(),
+                    (skill_root / relative_file).read_bytes(),
+                )
 
     def test_codex_marketplace_contains_self_contained_runtime(self) -> None:
         plugin_root = MARKETPLACE_ROOT / "plugins" / "taku-publisher"
@@ -93,7 +139,7 @@ class AdapterBuildTests(unittest.TestCase):
         }
         local_home = str(Path.home()).encode("utf-8")
 
-        for marketplace_root in (MARKETPLACE_ROOT, CLAUDE_MARKETPLACE_ROOT):
+        for marketplace_root in (MARKETPLACE_ROOT, CLAUDE_MARKETPLACE_ROOT, CURSOR_MARKETPLACE_ROOT):
             plugin_root = marketplace_root / "plugins" / "taku-publisher"
             self.assertFalse(
                 any(
@@ -109,6 +155,20 @@ class AdapterBuildTests(unittest.TestCase):
                     file_path.read_bytes(),
                     f"generated plugin contains a local home path: {file_path}",
                 )
+
+    def test_cursor_marketplace_and_plugin_version_match_standard_runtime(self) -> None:
+        marketplace = json.loads((CURSOR_MARKETPLACE_ROOT / ".cursor-plugin" / "marketplace.json").read_text())
+        self.assertEqual("./plugins/taku-publisher", marketplace["plugins"][0]["source"])
+        expected = json.loads((PORTABLE_SKILL_ROOT / "publisher-version.json").read_text())
+        self.assertEqual("standard", expected["channel"])
+        for host, directory in (("codex", ".codex-plugin"), ("claude", ".claude-plugin"), ("cursor", ".cursor-plugin")):
+            plugin = ROOT / "dist" / "plugins" / host / "taku-publisher"
+            manifest = json.loads((plugin / directory / "plugin.json").read_text())
+            self.assertEqual(expected["version"], manifest["version"])
+            self.assertFalse(any(plugin.rglob("challenge-handoff.mjs")))
+            self.assertFalse(any(plugin.rglob("challenge-publisher-job.mjs")))
+            output = subprocess.check_output(["node", str(plugin / "skills/taku-publisher/scripts/taku-publisher.mjs"), "--version"], text=True)
+            self.assertIn(expected["version"], output)
 
     def test_codex_runtime_resolves_embedded_passport_core(self) -> None:
         skill_root = (
@@ -227,7 +287,7 @@ if ('localPath' in publicValue) {
         )
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-        self.assertEqual("0.3.17", manifest["version"])
+        self.assertEqual("0.3.18", manifest["version"])
         self.assertLessEqual(len(manifest["interface"]["defaultPrompt"]), 3)
 
     def test_claude_marketplace_points_to_packaged_plugin(self) -> None:
@@ -253,7 +313,7 @@ if ('localPath' in publicValue) {
             ),
         )
 
-        self.assertEqual("0.3.17", manifest["version"])
+        self.assertEqual("0.3.18", manifest["version"])
         self.assertTrue(
             (
                 plugin_root

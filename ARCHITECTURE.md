@@ -4,13 +4,13 @@
 
 Taku Passport is the product and capability-platform boundary. Publisher is one Passport module responsible for review, packaging, authorization, upload, and publication.
 
-Users currently install a compatibility host adapter named **Taku Publisher for Codex** or **Taku Publisher for Claude Code**. They do not install or interact with `creator-core` directly. Taku Desktop can consume the same core/runtime as an embedded build dependency. Existing Publisher names remain compatible until a separately reviewed distribution migration.
+Users currently install a compatibility host adapter named **Taku Publisher for Codex** or **Taku Publisher for Claude Code**, while Cursor uses the same host-neutral portable Skill with its current Agent. They do not install or interact with `creator-core` directly. Taku Desktop can consume the same core/runtime as an embedded build dependency. Existing Publisher names remain compatible until a separately reviewed distribution migration.
 
 ```text
 Codex plugin ---------\
 Claude Code plugin ----> Taku Passport runtime ---> Taku Worker / Taku Web
-Taku Desktop ---------/            |
-                                   +-- Publisher module
+Cursor portable Skill -/            |
+Taku Desktop ---------/            +-- Publisher module
 ```
 
 ## Source ownership
@@ -26,8 +26,9 @@ Taku Desktop ---------/            |
 | Publishing runtime | `packages/publisher-runtime/` | Canonical TypeScript/ESM discovery, SubApp assessment adaptation, trusted runtime receipts, deterministic dual-archive SubApp packaging, owner-only packaged-Taku local install handoff, confirmed private App registration, capability staging/scan/package, authorization, Marketplace and Worker orchestration |
 | Legacy publishing pipeline | `scripts/taku_publisher/` | Source-only Python compatibility implementation during the migration window; never shipped in generated plugins |
 | CLI facade | `packages/publisher-cli/` | Give workspace consumers stable Node.js executable entrypoints |
-| Codex delivery | `adapters/codex/taku-publisher/` | Codex plugin metadata |
-| Claude delivery | `adapters/claude/taku-publisher/` | Claude Code plugin metadata |
+| Portable delivery | `adapters/portable/taku-publisher/` | Host-neutral Skill distribution notes |
+| Codex delivery | `adapters/codex/taku-publisher/` | Thin Codex plugin metadata |
+| Claude delivery | `adapters/claude/taku-publisher/` | Thin Claude Code plugin metadata |
 
 ## Compatibility policy
 
@@ -77,13 +78,15 @@ development fallbacks, not creator installation requirements.
 
 ## Distribution
 
-`scripts/build-adapters.mjs` creates self-contained, Node-only plugin artifacts
-under `dist/plugins/<host>/taku-publisher`. It also packages installable Codex
-and Claude Code Marketplaces at `dist/marketplaces/<host>/taku`, with canonical
-Marketplace metadata sourced from `adapters/<host>/marketplace.json`. Generated
+`scripts/build-adapters.mjs` first creates one self-contained, Node-only portable
+Skill under `dist/skills/taku-publisher`. It then wraps that Skill with thin
+Codex, Claude Code, and Cursor metadata under `dist/plugins/<host>/taku-publisher`, and
+packages installable Marketplaces at `dist/marketplaces/<host>/taku`. Generated
 artifacts use an explicit runtime allowlist and omit Python, tests, TypeScript
-sources, declarations, source maps, and repository build utilities. They are
-not a second source of truth and must never be edited directly.
+sources, declarations, source maps, and repository build utilities. Cursor
+project discovery is bounded to workspace metadata, and local usage accepts
+only explicit token counters. They are not a second source of truth and must
+never be edited directly.
 
 The plugin can authenticate through Taku Web, manage owner-scoped Creator Center data, and publish through Taku Worker. Taku Desktop is not a dependency of either host adapter.
 

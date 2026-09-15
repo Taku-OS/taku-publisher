@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outputRoot = path.join(repositoryRoot, 'dist', 'plugins');
+const portableOutputRoot = path.join(repositoryRoot, 'dist', 'skills');
 const marketplaceOutputRoot = path.join(repositoryRoot, 'dist', 'marketplaces');
 const pluginName = 'taku-publisher';
 const templateBuildArtifactNames = new Set([
@@ -31,6 +32,7 @@ const adapterSpecs = [
     creatorHost: 'claude-code',
     manifestDir: '.claude-plugin',
   },
+  { host: 'cursor', creatorHost: 'cursor', manifestDir: '.cursor-plugin' },
 ];
 
 const skillRuntimeEntries = [
@@ -46,44 +48,45 @@ const skillRuntimeEntries = [
 
 async function main() {
   await fs.mkdir(outputRoot, { recursive: true });
+  const portableSkillRoot = await buildPortableSkill();
   const outputs = [];
   for (const spec of adapterSpecs) {
-    outputs.push(await buildAdapter(spec));
+    outputs.push(await buildAdapter(spec, portableSkillRoot));
   }
   const marketplaces = [
     await buildCodexMarketplace(outputs.find((output) =>
       output === path.join(outputRoot, 'codex', pluginName))),
     await buildClaudeMarketplace(outputs.find((output) =>
       output === path.join(outputRoot, 'claude', pluginName))),
+    await buildCursorMarketplace(path.join(outputRoot, 'cursor', pluginName)),
   ];
   console.log(JSON.stringify({
     ok: true,
+    portableSkill: path.relative(repositoryRoot, portableSkillRoot),
     outputs: outputs.map((output) => path.relative(repositoryRoot, output)),
     marketplaces: marketplaces.map((output) => path.relative(repositoryRoot, output)),
   }, null, 2));
 }
 
-async function buildAdapter(spec) {
-  const sourceRoot = path.join(repositoryRoot, 'adapters', spec.host, pluginName);
-  const targetRoot = path.join(outputRoot, spec.host, pluginName);
-  assertInside(outputRoot, targetRoot);
-  await fs.rm(targetRoot, { recursive: true, force: true });
-  await fs.mkdir(targetRoot, { recursive: true });
-
-  await copyTree(
-    path.join(sourceRoot, spec.manifestDir),
-    path.join(targetRoot, spec.manifestDir),
-  );
-  await copyOptionalFile(
-    path.join(sourceRoot, 'README.md'),
-    path.join(targetRoot, 'README.md'),
-  );
-
-  const skillRoot = path.join(targetRoot, 'skills', pluginName);
+async function buildPortableSkill() {
+  const skillRoot = path.join(portableOutputRoot, pluginName);
+  assertInside(portableOutputRoot, skillRoot);
+  await fs.rm(skillRoot, { recursive: true, force: true });
   await fs.mkdir(skillRoot, { recursive: true });
+  const versions = await Promise.all(adapterSpecs.map(async (spec) => JSON.parse(
+    await fs.readFile(path.join(repositoryRoot, 'adapters', spec.host, pluginName,
+      spec.manifestDir, 'plugin.json'), 'utf8'),
+  ).version));
+  if (new Set(versions).size !== 1) throw new Error('Host plugin versions disagree.');
+  await fs.writeFile(path.join(skillRoot, 'publisher-version.json'),
+    `${JSON.stringify({ name: pluginName, version: versions[0], channel: 'standard' }, null, 2)}\n`);
   for (const entry of skillRuntimeEntries) {
     await copyTree(path.join(repositoryRoot, entry), path.join(skillRoot, entry));
   }
+  await copyOptionalFile(
+    path.join(repositoryRoot, 'adapters', 'portable', pluginName, 'README.md'),
+    path.join(skillRoot, 'README.md'),
+  );
   await fs.mkdir(path.join(skillRoot, 'scripts'), { recursive: true });
   await fs.copyFile(
     path.join(repositoryRoot, 'scripts', 'taku-publisher.mjs'),
@@ -91,39 +94,19 @@ async function buildAdapter(spec) {
   );
   await copyRuntimePackage(
     'capability-contract',
-    path.join(
-      skillRoot,
-      'node_modules',
-      '@taku',
-      'capability-contract',
-    ),
+    path.join(skillRoot, 'node_modules', '@taku', 'capability-contract'),
   );
   await copyRuntimePackage(
     'subapp-contract',
-    path.join(
-      skillRoot,
-      'node_modules',
-      '@taku',
-      'subapp-contract',
-    ),
+    path.join(skillRoot, 'node_modules', '@taku', 'subapp-contract'),
   );
   await copyRuntimePackage(
     'passport-core',
-    path.join(
-      skillRoot,
-      'node_modules',
-      '@taku',
-      'passport-core',
-    ),
+    path.join(skillRoot, 'node_modules', '@taku', 'passport-core'),
   );
   await copyRuntimePackage(
     'publisher-runtime',
-    path.join(
-      skillRoot,
-      'node_modules',
-      '@taku',
-      'publisher-runtime',
-    ),
+    path.join(skillRoot, 'node_modules', '@taku', 'publisher-runtime'),
   );
   await copyConverterRuntime(
     path.join(skillRoot, 'node_modules', 'repo-to-stax-converter'),
@@ -148,8 +131,40 @@ async function buildAdapter(spec) {
       },
     }, null, 2)}\n`,
   );
+  return skillRoot;
+}
+
+async function buildAdapter(spec, portableSkillRoot) {
+  const sourceRoot = path.join(repositoryRoot, 'adapters', spec.host, pluginName);
+  const targetRoot = path.join(outputRoot, spec.host, pluginName);
+  assertInside(outputRoot, targetRoot);
+  await fs.rm(targetRoot, { recursive: true, force: true });
+  await fs.mkdir(targetRoot, { recursive: true });
+
+  await copyTree(
+    path.join(sourceRoot, spec.manifestDir),
+    path.join(targetRoot, spec.manifestDir),
+  );
+  await copyOptionalFile(
+    path.join(sourceRoot, 'README.md'),
+    path.join(targetRoot, 'README.md'),
+  );
+
   await fs.writeFile(
-    path.join(skillRoot, 'host-adapter.json'),
+    path.join(targetRoot, 'host-adapter.json'),
+    `${JSON.stringify({
+      schemaVersion: 'taku.publisher.host-adapter.v1',
+      host: spec.creatorHost,
+      skill: pluginName,
+    }, null, 2)}\n`,
+  );
+  await copyTree(
+    portableSkillRoot,
+    path.join(targetRoot, 'skills', pluginName),
+    { includeNodeModules: true },
+  );
+  await fs.writeFile(
+    path.join(targetRoot, 'skills', pluginName, 'host-adapter.json'),
     `${JSON.stringify({
       schemaVersion: 'taku.host-adapter.v1',
       host: spec.creatorHost,
@@ -354,6 +369,19 @@ async function buildClaudeMarketplace(claudePluginRoot) {
     { includeNodeModules: true },
   );
   return marketplaceRoot;
+}
+
+async function buildCursorMarketplace(cursorPluginRoot) {
+  const target = path.join(marketplaceOutputRoot, 'cursor', 'taku');
+  assertInside(marketplaceOutputRoot, target);
+  await fs.rm(target, { recursive: true, force: true });
+  await copyTree(path.join(repositoryRoot, 'adapters', 'cursor', 'marketplace.json'),
+    path.join(target, '.cursor-plugin', 'marketplace.json'));
+  await copyTree(path.join(repositoryRoot, 'adapters', 'cursor', 'README.md'),
+    path.join(target, 'README.md'));
+  await copyTree(cursorPluginRoot, path.join(target, 'plugins', pluginName),
+    { includeNodeModules: true });
+  return target;
 }
 
 async function copyTree(source, target, options = {}) {

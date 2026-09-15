@@ -45,6 +45,7 @@ export async function detectInvokingAiClient(options = {}) {
   const normalizedPath = modulePath.split(path.sep).join('/').toLowerCase();
   if (normalizedPath.includes('/.codex/')) return 'codex';
   if (normalizedPath.includes('/.claude/')) return 'claude-code';
+  if (normalizedPath.includes('/.cursor/')) return 'cursor';
   return '';
 }
 

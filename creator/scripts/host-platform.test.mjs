@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 
 import {
@@ -17,6 +18,16 @@ test('uses the packaged host adapter as the invoking Stax default', async (conte
   await fs.writeFile(markerPath, JSON.stringify({ host: 'claude-code' }));
 
   assert.equal(await detectInvokingAiClient({ markerPath, env: {} }), 'claude-code');
+  await fs.writeFile(markerPath, JSON.stringify({ host: 'cursor' }));
+  assert.equal(await detectInvokingAiClient({ markerPath, env: {} }), 'cursor');
+  assert.equal(await detectInvokingAiClient({ markerPath, env: { TAKU_CREATOR_HOST: 'codex' } }), 'codex');
+});
+
+test('recognizes older portable Skills in Cursor paths without a host marker', async () => {
+  assert.equal(await detectInvokingAiClient({
+    moduleUrl: pathToFileURL(path.join(os.tmpdir(), '.cursor/skills/taku-publisher/creator/scripts/host-platform.mjs')).href,
+    markerPath: path.join(os.tmpdir(), 'missing-taku-fixture-marker.json'), env: {},
+  }), 'cursor');
 });
 
 test('keeps the invoking host first and exposes other locally detected clients', async (context) => {

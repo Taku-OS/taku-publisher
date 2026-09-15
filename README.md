@@ -10,13 +10,14 @@ The repository deliberately separates reusable implementation from host-specific
 - `packages/passport-core`: host-independent TypeScript/ESM core for deterministic Snapshot, inventory and privacy rules.
 - `packages/creator-core`: deprecated compatibility alias for `@taku/passport-core`.
 - `packages/publisher-runtime`: canonical TypeScript/ESM runtime for discovery,
-  Codex/Claude Code project import, bounded Skill generation, staging,
+  Codex/Claude Code/Cursor project import, bounded Skill generation, staging,
   scanning, packaging, authorization, Marketplace installation, and Worker
   orchestration.
 - `packages/publisher-cli`: stable Node.js workspace entrypoints for the creator
   and publisher runtimes.
-- `adapters/codex/taku-publisher`: Codex plugin manifest source.
-- `adapters/claude/taku-publisher`: Claude Code plugin manifest source.
+- `adapters/portable/taku-publisher`: portable Skill distribution notes.
+- `adapters/codex/taku-publisher`: thin Codex plugin manifest source.
+- `adapters/claude/taku-publisher`: thin Claude Code plugin manifest source.
 - `creator/` and `scripts/taku_publisher/`: current implementation and backward-compatible entrypoints.
 
 The canonical entrypoint is:
@@ -25,13 +26,20 @@ The canonical entrypoint is:
 node scripts/taku-publisher.mjs --help
 ```
 
-Recent local projects can be discovered from Codex/Claude Code session metadata
-and assessed without executing them:
+Recent local projects can be discovered from Codex, Claude Code, or Cursor
+metadata and assessed without executing them:
 
 ```bash
 node scripts/taku-publisher.mjs project-discover --host all
+node scripts/taku-publisher.mjs project-discover --host cursor
 node scripts/taku-publisher.mjs project-assess --source /absolute/path/to/project
 ```
+
+Cursor discovery reads bounded `workspaceStorage` metadata. Its local usage
+reader uses only explicit token counters in `state.vscdb`; missing counters are
+reported as unavailable and are never estimated from conversation text. A
+Cursor-compatible host uses the portable Skill with its current Agent; it does
+not ship an independent AI runner.
 
 The assessment routes one selected project to existing Skill publishing,
 SubApp migration, bounded Skill generation, or reference-only handling.
@@ -57,7 +65,10 @@ Build self-contained host plugins without installing Taku Desktop:
 npm run build:adapters
 ```
 
-Generated plugins are written to `dist/plugins/`. Each generated plugin contains the host manifest plus a self-contained copy of the canonical Taku Publisher skill runtime. `dist/` is generated output and should not be edited.
+The host-neutral Skill is written to `dist/skills/taku-publisher/`. Generated
+plugins are written to `dist/plugins/`; each contains thin host metadata around
+a self-contained copy of that canonical Skill runtime. `dist/` is generated
+output and should not be edited.
 
 Build and verify the immutable capability contract artifact:
 
@@ -84,7 +95,19 @@ claude plugin install taku-publisher@taku
 ```
 
 Start a new Codex task or Claude Code session after installation so it picks up
-the Taku Publisher skill.
+the Taku Publisher Skill. Cursor 0.3.18 includes a complete
+Agent-plugin marketplace bundle and a file-preserving local installer:
+
+```sh
+npm run pack:cursor
+node dist/installers/cursor/bin/taku-publisher.mjs install --host cursor
+```
+
+Start a new Cursor Agent chat and invoke `/taku-publisher`. GitHub production
+distribution uses the `marketplace` branch and `v0.3.18` release assets, not
+the npm registry or the official Cursor store. `npm run build:marketplace`
+generates the combined three-host GitHub bundle. Stax Challenge is not included. See
+[Cursor installation and release gates](docs/cursor-release.md).
 
 Creator-facing scans default to a bounded local usage-file budget so large
 session histories remain responsive. Pass `--max-usage-files <n>` only when a
@@ -109,6 +132,8 @@ npm run checksum:source
 ```
 
 After the first commit exists, `npm run smoke:clean` exports `HEAD` into a temporary clean directory and repeats the repository audit, tests, and Adapter build without depending on Taku Desktop.
+For an uncommitted integration candidate, use `npm run smoke:clean -- --working-tree`
+to test a clean export of the actual current sources rather than old HEAD.
 
 Generated `dist/` content is never canonical source and must not be committed. See [SECURITY.md](SECURITY.md) and [CONTRIBUTING.md](CONTRIBUTING.md) before contributing.
 
