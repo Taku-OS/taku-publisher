@@ -1,0 +1,5 @@
+{
+  "schemaVersion": "taku.publisher.host-adapter.v1",
+  "host": "codex",
+  "skill": "taku-publisher"
+}

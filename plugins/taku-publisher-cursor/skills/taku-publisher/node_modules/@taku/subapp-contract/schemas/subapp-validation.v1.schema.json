@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taku.ai/schemas/subapp-validation.v1.schema.json",
+  "title": "Taku SubApp Validation Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "level", "ok", "findings", "errors", "warnings"],
+  "properties": {
+    "schemaVersion": { "const": "taku.subapp-validation.v1" },
+    "level": { "enum": ["workspace", "conversion", "publish"] },
+    "ok": { "type": "boolean" },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "code", "message"],
+        "properties": {
+          "severity": { "enum": ["error", "warning"] },
+          "code": { "type": "string", "minLength": 1 },
+          "message": { "type": "string", "minLength": 1 },
+          "path": { "$ref": "#/$defs/relativePath" }
+        }
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000]+$"
+    }
+  }
+}

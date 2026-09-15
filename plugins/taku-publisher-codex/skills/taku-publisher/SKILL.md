@@ -1,22 +1,39 @@
 ---
 name: taku-publisher
-description: Discover recent Codex and Claude Code projects or public repositories owned by the creator's Taku-connected GitHub account, route a selected project to Taku SubApp conversion, existing Skill publishing, or bounded Skill generation; generate a Taku Stax Card or AI Builder Profile; assess and convert an existing local App or GitHub repository into a Taku SubApp; safely package and publish one installable Taku Skill; manage Creator Center items; and search or install compatible Marketplace items. Public SubApp release remains a separate unsupported confirmation phase.
+description: Discover recent Codex, Claude Code, and Cursor projects or public repositories owned by the creator's Taku-connected GitHub account, route a selected project to Taku SubApp conversion, existing Skill publishing, or bounded Skill generation; generate a Taku Stax Card or AI Builder Profile; assess and convert an existing local App or GitHub repository into a Taku SubApp; safely package and publish one installable Taku Skill; manage Creator Center items; and search or install compatible Marketplace items. Public SubApp release remains a separate unsupported confirmation phase.
 ---
 
 # Taku Publisher
 
 Run every command from this skill directory with `node scripts/taku-publisher.mjs`. Treat CLI JSON as the workflow authority. Parse `ok`, `status`, `requires_action`, and `action_type` before responding.
 
-In Claude Code or Codex shell calls, always change into the directory that contains this `SKILL.md` in the same command before invoking the CLI, for example `cd <this-skill-directory> && node scripts/taku-publisher.mjs ...`. Never run `node scripts/taku-publisher.mjs ...` from the user's project or workspace directory.
+In every host shell call, always change into the directory that contains this `SKILL.md` in the same command before invoking the CLI, for example `cd <this-skill-directory> && node scripts/taku-publisher.mjs ...`. Never run `node scripts/taku-publisher.mjs ...` from the user's project or workspace directory.
 
 This skill has six product surfaces:
 
-- Project import flow: discover recent Codex and Claude Code workspaces from local session metadata, let the creator select one exact project, assess it locally, and route it to existing Skill publishing, SubApp migration, bounded Skill generation, or reference-only handling.
+- Project import flow: discover recent Codex, Claude Code, and Cursor workspaces from bounded local metadata, let the creator select one exact project, assess it locally, and route it to existing Skill publishing, SubApp migration, bounded Skill generation, or reference-only handling.
 - Creator profile flow: authorize and confirm the Taku account first, then scan local AI tooling and behavior, generate the public-safe persona summary, save an owner-scoped private Stax Card cloud draft, and open the stable Worker-hosted Studio URL.
 - Creator Center flow: list and search the signed-in creator's Taku items, read trusted server-side stats, inspect one owned item, and edit the listing metadata of a private draft.
 - Marketplace consumer flow: search and inspect public community Apps, Skills, Tools, and Bundles; show an install preflight and safely install one compatible confirmed Skill into Codex.
 - Marketplace publisher flow: package and publish one installable Skill with staged files, deterministic scan, semantic review, and remote artifact verification. Action, Agent, and Plugin publishing are not currently available.
-- SubApp conversion flow: assess one existing App directory or public GitHub repository, prepare an isolated candidate after exact confirmation, migrate it with the current Codex or Claude Agent under a bounded contract, run confirmed trusted validation, create the deterministic Desktop dual-archive release, install/open it locally through the packaged Taku Desktop client after separate confirmation, and optionally upload/register one private App draft version. Public release and packaged-client catalog installation are not yet supported.
+- SubApp conversion flow: assess one existing App directory or public GitHub repository, prepare an isolated candidate after exact confirmation, migrate it with the current host Agent (Codex, Claude Code, or Cursor) under a bounded contract, run confirmed trusted validation, create the deterministic Desktop dual-archive release, install/open it locally through the packaged Taku Desktop client after separate confirmation, and optionally upload/register one private App draft version. Public release and packaged-client catalog installation are not yet supported.
+
+## Host and Project Selection
+
+Use the current workspace directly when the creator asks about "this project".
+Use `project-discover` for recent projects or when no project was named. Host
+history is a convenience and must never be required when an explicit absolute
+project path is available.
+
+- For Cursor, use `project-discover --host cursor`. It reads bounded
+  `workspaceStorage` metadata, not conversation text. Creator Profile usage
+  scans may read explicit token counts from Cursor's local state database;
+  missing counts are reported as unavailable and are never estimated.
+- For Codex or Claude Code, preserve the existing local history behavior.
+- For another compatible host, use `project-discover --host other --project
+  <absolute-path>`. Do not promise recent-project discovery or token statistics.
+- SubApp semantic migration is performed by the current host Agent. The
+  bundled CLI does not contain or launch an independent AI runner.
 
 ## User-Facing Response Rules
 
@@ -106,7 +123,7 @@ Examples:
 ## Safety Rules
 
 - Publish exactly one Skill per workflow. If discovery finds only an Action, Agent, or Plugin source, explain that its publishing type is not available yet and do not initialize a draft. Treat any existing draft of those unopened types as read-only: status inspection is allowed, but staging, scanning, packaging, metadata changes, and uploads are blocked.
-- Project discovery may inspect only Codex/Claude Code session metadata needed to recover absolute workspace paths and activity times, plus bounded root metadata such as `SKILL.md`, `README.md`, and dependency names for a lightweight route hint. It must not recursively scan source code or summarize, expose, upload, or semantically analyze prompt/message bodies before the creator selects one exact project.
+- Project discovery may inspect only Codex/Claude Code session metadata or Cursor `workspaceStorage` metadata needed to recover absolute workspace paths and activity times, plus bounded root metadata such as `SKILL.md`, `README.md`, and dependency names for a lightweight route hint. Cursor usage may read only explicit token counters from its local state database. It must not recursively scan source code or summarize, expose, upload, or semantically analyze prompt/message bodies before the creator selects one exact project.
 - Never auto-select a discovered project or GitHub repository. Project assessment accepts only one explicit existing absolute local directory; reject filesystem roots, the whole home directory, symlinks, files, and arbitrary URLs. Route one repository URL returned by authenticated GitHub discovery through the existing public-GitHub SubApp assessment boundary.
 - GitHub project discovery may read only connection/account state and public repository metadata. Never ask for a GitHub token in chat, never include private repositories, and never imply that choosing a repository publishes, clones, or scans it.
 - Treat project assessment as read-only. Route `existing-skill` to the normal Skill publishing flow, `subapp-migration` to the existing SubApp flow, `skill-generation` to the bounded Skill candidate flow, and `reference-only` to a stop/reference response. Do not reinterpret an unsupported runtime as a Skill merely because it contains code.
@@ -119,7 +136,7 @@ Examples:
 - Treat `.env` and credential stores as scan/exclusion inputs, never package inputs. Permit `.env.example`, `.env.sample`, and `.env.template` only when they contain placeholders.
 - Use Taku Web for listing edits and final submission. The host may stage, scan, package, and upload, but must not claim submission or publication until remote status confirms it.
 - Do not upload if deterministic scan blocks, deep scan is incomplete, a deep disposition blocks, or the staging/bundle digest changes.
-- Do not run database commands. Worker tables, storage, review pages, and server-side rescanning are platform dependencies.
+- Do not run database commands manually. The bundled Cursor usage reader performs only a bounded read-only query of Cursor's local state database; Worker tables, storage, review pages, and server-side rescanning remain platform dependencies.
 - Do not call remote publishing commands unless the creator asked to continue publishing. Creator Profile generation may only access Taku account endpoints to authorize the user and read their public display name/avatar.
 - Creator Center mutations are owner-scoped server operations. Never treat a local name, path, or cached item as proof of ownership.
 - Never delete from the Creator Center flow. Unpublishing is allowed only for one
@@ -232,7 +249,7 @@ Examples:
 ## Project Import Flow
 
 Use this flow when the creator asks to find, import, convert, or package a
-project they worked on in Codex or Claude Code.
+project they worked on in Codex, Claude Code, or Cursor.
 
 Start with local metadata-only discovery:
 
@@ -465,7 +482,7 @@ Use these commands when the creator asks to generate a Stax Card, AI Builder Pro
 ```bash
 node scripts/taku-publisher.mjs creator-doctor --json
 node scripts/taku-publisher.mjs creator-scan --json --compact [--workspace <workspace>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal] [--max-usage-files <n>] [--include-creation-candidates] [--include-github-metrics] [--include-prompt-style]
-node scripts/taku-publisher.mjs creator-draft --json --editor [--workspace <workspace>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal] [--include-creation-candidates] [--worker-url <url>] [--site-url <url>]
+node scripts/taku-publisher.mjs creator-draft --json --editor [--workspace <workspace>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal] [--include-creation-candidates] [--worker-url <url>] [--site-url <url>] [--no-open-browser]
 node scripts/taku-publisher.mjs creator-editor --json --draft <draft.json> [--worker-url <url>] [--site-url <url>]
 node scripts/taku-publisher.mjs creator-publish --json --draft <draft.json> [--worker-url <url>] [--site-url <url>]
 ```
@@ -487,6 +504,7 @@ For creator profile scans:
 - Cloud Studio opens after Taku Web authorization and does not require Taku Desktop. If auth is missing, open the provided Web login URL and wait before scanning; never ask the creator to paste tokens into chat.
 - Authorization uses the stable Taku Web origin by default, independently of the Studio Worker or editor origin. A loopback authorization site is allowed only through the explicit developer `--auth-site-url` option.
 - The Worker-hosted cloud Studio is the normal review surface while the LP Studio route is unavailable. Its one-time launch handoff must become an HttpOnly owner-scoped Studio session and immediately redirect to the fixed editor URL.
+- Normally omit `--no-open-browser` so the CLI can launch authorization automatically. If no browser is visible, use the URL printed by that same live command with the host's available browser-opening mechanism, and present the clickable URL if opening is unavailable. Do not start duplicate creator commands merely to get another URL, and do not just poll while the user has no authorization page. Use `--no-open-browser` only for an explicit no-launch request or a host-managed browser fallback. The existing command resumes automatically after authorization; return its actual `editorUrl`, not an assumed Studio address.
 
 When responding after `creator-draft --editor`, lead with the generated public-facing summary: persona code/title, short persona description, whether tools/works are selected, the masked `publisherAccountHint`, and the cloud Studio URL. Say naturally that authorization completed before scanning and the private draft belongs to that account. Keep scan counts secondary and omit local paths unless the creator asks for technical details.
 
@@ -618,7 +636,7 @@ Do not introduce runtime dependency concerns unless a command actually fails bec
   runtime, pinned Taku template, and TypeScript validator; do not
   ask creators to install or locate `repo-to-stax`.
 - Node.js 20 or newer is the only external runtime requirement. Python is not
-  part of the generated Codex or Claude Code plugin.
+  part of the portable Skill or generated host plugins.
 - If `node` is missing or too old, say: "This device needs Node.js 20+ to run
   Taku Publisher."
 - Do not ask the creator to install Node packages; all runtime modules required

@@ -1,0 +1,27 @@
+{
+  "name": "takuai-template",
+  "description": "TakuAI 应用模板 - 示例 SubApp",
+  "version": "0.3.2",
+  "actions": [
+    {
+      "name": "greet",
+      "description": "打个招呼",
+      "params": {
+        "name": {
+          "type": "string",
+          "required": false,
+          "description": "要问候的名字",
+          "default": "World"
+        }
+      }
+    },
+    {
+      "name": "getStatus",
+      "description": "获取应用状态",
+      "returns": {
+        "type": "object",
+        "description": "包含应用运行状态的对象"
+      }
+    }
+  ]
+}
