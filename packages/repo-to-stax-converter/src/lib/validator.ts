@@ -1,3 +1,4 @@
+import { assertRuntimeCapabilities } from './runtime-capabilities.js';
 import { createHash } from 'node:crypto';
 import { lstat, opendir, readFile, readdir, realpath } from 'node:fs/promises';
 import { isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
@@ -67,12 +68,12 @@ const TEST_CONTRACTS = [
   },
 ] as const;
 // Approved authority bytes from the current Taku template commit
-// 96a103388beea6e7f5158a53f5c21be2c17e36c0. Converted business Actions may change;
+// fbe79d41ba1592336b9a915877bc6c2bbd1cfd03. Converted business Actions may change;
 // Host routing, module resolution, and Action authority infrastructure may not.
 const TEMPLATE_AUTHORITY_CONTRACTS = [
   {
     path: 'next.config.ts',
-    sha256: '9e2029e7022d030fdbc7a328bf98fa8778bf57180548ffd3f8bcdf3176b4360d',
+    sha256: '592d740b3aff36ff14fc8856695199a288f463776055b2e052837b31d28fa730',
     code: 'workspace.noncanonical-next-config',
   },
   {
@@ -103,12 +104,12 @@ const TEMPLATE_AUTHORITY_CONTRACTS = [
   },
   {
     path: 'scripts/start-preview.js',
-    sha256: '7a608bf34a4107c225a33c563873c6296dc5834144c67d1000ac29d8c99c7579',
+    sha256: '47a005af045ead477f027e56c299692480c6911b796b8900bdca9f6a0180d841',
     code: 'workspace.desktop-runtime-contract',
   },
   {
     path: 'scripts/start-edit.js',
-    sha256: 'c0a4b6056ec1e03389118daf226634961da0c9cacfae5570b7c93d7129660fa9',
+    sha256: '513f552c4341f43f389ff2c583954b8f699a2affbc15d343e6ef0bd567545a07',
     code: 'workspace.desktop-runtime-contract',
   },
   {
@@ -120,6 +121,66 @@ const TEMPLATE_AUTHORITY_CONTRACTS = [
     path: 'scripts/check-design-mode-slots.js',
     sha256: 'ee9f9de8b61c85247565db1ae02323baf4305fa24c08e8030194ead536f58088',
     code: 'workspace.desktop-runtime-contract',
+  },
+  {
+    path: 'src/app/api/taku/host-attestation/verify/route.ts',
+    sha256: '6508960d7202b11cf78f7a525167f3af28cff96561e5ec419c1f9d85a0ee490c',
+    code: 'workspace.runtime-contract',
+  },
+  {
+    path: 'src/lib/taku-runtime/asset-playback.ts',
+    sha256: 'c483ccbf5d949f28c62276904a1e21bcfcad0f2bba6564528cc0ac488e9a8dc0',
+    code: 'workspace.runtime-contract',
+  },
+  {
+    path: 'src/lib/taku-runtime/browser.ts',
+    sha256: '9eb0178874ca440032534f3a4ab4641dbd7c8417a77308bfff2acc6258986964',
+    code: 'workspace.runtime-contract',
+  },
+  {
+    path: 'src/lib/taku-runtime/client.ts',
+    sha256: '11293c0d5d78db2da0733e6f5d6d2f456a2a3e40c52ca9c965d1f35f1b88742a',
+    code: 'workspace.runtime-contract',
+  },
+  {
+    path: 'src/lib/taku-runtime/contract.ts',
+    sha256: 'cd641d5e025eb8e3de18a962da5e0737fb310459750b3fe1744241cfc34f22ab',
+    code: 'workspace.runtime-contract',
+  },
+  {
+    path: 'src/lib/taku-runtime/crypto.ts',
+    sha256: 'bac7621cd68d1632f124ade60b7294354da1c2e8283845a11dce3a904e5b6218',
+    code: 'workspace.runtime-contract',
+  },
+  {
+    path: 'src/lib/taku-runtime/index.ts',
+    sha256: '4fc9d958ac6149e47ba9adbb417ad43a8f090002522e795237c1d68435526ae4',
+    code: 'workspace.runtime-contract',
+  },
+  {
+    path: 'src/lib/taku-runtime/run-journal.ts',
+    sha256: '4975e3ffbc53f9053ab1cfbcf6f4bd51ebdc69d5a13cf61e0a9f61df302d1651',
+    code: 'workspace.runtime-contract',
+  },
+  {
+    path: 'src/lib/taku-runtime/run-recovery.ts',
+    sha256: '54b2906937fc1c30c0026f7dbb50a2990ddc28fa92dfc38b06fec3b096312fba',
+    code: 'workspace.runtime-contract',
+  },
+  {
+    path: 'src/lib/taku-runtime/types.ts',
+    sha256: 'cb68622a71f496b256124d823da8c8bae17368e6a43ced807a5c5e6d7057284c',
+    code: 'workspace.runtime-contract',
+  },
+  {
+    path: 'src/lib/proxy/env.ts',
+    sha256: 'c5aea783986e9d72dfd3d43456722069f543955df6dbc8ef8b63e62329b657de',
+    code: 'workspace.runtime-contract',
+  },
+  {
+    path: 'src/lib/proxy/fetch.ts',
+    sha256: '3dfa992565852c45a00650a1d3bf219e518eeb36c4cf96a955e84bd444367b02',
+    code: 'workspace.runtime-contract',
   },
 ] as const;
 const DESKTOP_RUNTIME_SCRIPTS = {
@@ -136,6 +197,14 @@ const DESKTOP_RUNTIME_SCRIPTS = {
 const PRODUCT_TYPESCRIPT_TEST_PATTERN = /(?:^|\/)[^/]+\.(?:test|spec)\.(?:ts|tsx)$/;
 const PRODUCT_TEST_DISCOVERY_MAX_ENTRIES = 10_000;
 const TEST_CONTRACT_FILE_MAX_BYTES = 8 * 1024;
+const TEMPLATE_RUNTIME_TEST_DIGESTS = new Set([
+  'eb09839b371f15146c022a540caf9e8ac6c63c164207269ec259913bee9bcb1d',
+  '431624062ae48c84b1c8f4fe45b98dbe9c7c877debac236d24425ed8378e66e3',
+  '556cd3bd674d9b99d2d875132cedea5bc0cee51cac19de322e5a284be849747a',
+  'c57a5103e0627b488366e61297e236e3ff0e4d1cbabbed1365f4d131627caa60',
+  '735c27da8a092d966d1775fc4675601223f581db11c262dca82a0ae6d82d3a25',
+  'a9f05c2269d496a34fecfc0ea4145b9d0b8e0b50a86f02febb11d90b4882c046',
+]);
 const TEMPLATE_RPC_TEST_PATH = 'app/api/taku/rpc/route.test.ts';
 const TEMPLATE_RPC_TEST_DIGEST =
   '5a6cf17f4cbdd5f0a6e586c8474e3c3423e5b6d3fb2dc1b155b588d7cc7736d0';
@@ -279,6 +348,7 @@ interface TakuManifest {
   version?: string;
   actions?: Array<Record<string, unknown> & { name?: string }>;
   llm?: unknown;
+  runtimeCapabilities?: unknown;
   stax?: unknown;
   conversionStatus?: unknown;
 }
@@ -411,7 +481,7 @@ export async function validateSubAppWorkspace(
   await validateSourceOmissionEvidence(workspaceRoot, migration ?? rawMigration, add);
   const rawManifest = await readStrictJson<TakuManifest>(workspaceRoot, 'taku.manifest.json', add);
   const manifest = normalizeManifest(rawManifest, add);
-  const allowedManifestFields = new Set(['name', 'description', 'version', 'actions', 'llm']);
+  const allowedManifestFields = new Set(['name', 'description', 'version', 'actions', 'llm', 'runtimeCapabilities']);
   const unknownManifestFields = rawManifest
     ? Object.keys(rawManifest).filter(key => !allowedManifestFields.has(key))
     : [];
@@ -561,7 +631,7 @@ async function validateTemplateAuthorityContracts(
   add: (severity: ValidationSeverity, code: string, message: string, path?: string) => void
 ): Promise<void> {
   for (const contract of TEMPLATE_AUTHORITY_CONTRACTS) {
-    const contents = await readSafeContainedContractFile(workspaceRoot, contract.path);
+    const contents = await readSafeContainedContractFile(workspaceRoot, contract.path, 128 * 1024);
     const digest = contents ? createHash('sha256').update(contents).digest('hex') : null;
     if (digest !== contract.sha256) {
       add(
@@ -609,6 +679,8 @@ async function validateProductTestDiscovery(
   const productTests: string[] = [];
   for (const testPath of discovery.tests) {
     if (testPath === TEMPLATE_RPC_TEST_PATH) continue;
+    const templateTest = await readSafeContainedContractFile(workspaceRoot, posix.join('src', testPath), 128 * 1024);
+    if (templateTest && TEMPLATE_RUNTIME_TEST_DIGESTS.has(createHash('sha256').update(templateTest).digest('hex'))) continue;
     const templateOwnedCopy = await isUnchangedTemplateRpcTestCopy(
       workspaceRoot,
       testPath,
@@ -809,7 +881,8 @@ function isPathWithin(root: string, candidate: string): boolean {
 
 async function readSafeContainedContractFile(
   workspaceRoot: string,
-  relativePath: string
+  relativePath: string,
+  maxBytes = TEST_CONTRACT_FILE_MAX_BYTES
 ): Promise<Buffer | null> {
   const workspacePath = resolve(workspaceRoot);
   const rootMetadata = await lstat(workspacePath).catch(() => null);
@@ -834,7 +907,7 @@ async function readSafeContainedContractFile(
     if (!metadata || metadata.isSymbolicLink()) return null;
     const isLeaf = index === segments.length - 1;
     if (isLeaf) {
-      if (!metadata.isFile() || metadata.size > TEST_CONTRACT_FILE_MAX_BYTES) return null;
+      if (!metadata.isFile() || metadata.size > maxBytes) return null;
       leafSnapshot = {
         dev: metadata.dev,
         ino: metadata.ino,
@@ -857,7 +930,7 @@ async function readSafeContainedContractFile(
   }
 
   const contents = await readFile(cursor).catch(() => null);
-  if (contents === null || contents.byteLength > TEST_CONTRACT_FILE_MAX_BYTES) return null;
+  if (contents === null || contents.byteLength > maxBytes) return null;
   const finalMetadata = await lstat(cursor).catch(() => null);
   const finalCanonical = await realpath(cursor).catch(() => null);
   if (
@@ -1636,6 +1709,14 @@ function normalizeManifest(
   add: (severity: ValidationSeverity, code: string, message: string, path?: string) => void
 ): TakuManifest | null {
   if (!manifest) return null;
+  if (manifest.runtimeCapabilities !== undefined) {
+    try {
+      assertRuntimeCapabilities(manifest.runtimeCapabilities);
+    } catch (error) {
+      add('error', 'workspace.invalid-runtime-capabilities', String(error), 'taku.manifest.json');
+      return null;
+    }
+  }
   const invalid =
     (manifest.name !== undefined && typeof manifest.name !== 'string') ||
     (manifest.description !== undefined && typeof manifest.description !== 'string') ||
@@ -2300,6 +2381,7 @@ function isUnsafeAppRoute(relativePath: string): boolean {
   return ![
     'src/app/api/taku/rpc/route.ts',
     'src/app/api/taku/manifest/route.ts',
+    'src/app/api/taku/host-attestation/verify/route.ts',
   ].includes(relativePath);
 }
 
@@ -2358,7 +2440,7 @@ function validateRewriteSafety(
     add(
       'error',
       'workspace.unverifiable-rewrite',
-      'Next rewrites must be the single canonical literal mapping /__taku/:path* -> /api/taku/:path*.',
+      'Next rewrites must be the canonical ordered Host attestation and /__taku/:path* mappings.',
       relativePath
     );
   }
@@ -2435,30 +2517,24 @@ function bindingIsUsedOnlyAsDefaultExport(
 
 function isCanonicalRewriteArray(expression: ts.Expression): boolean {
   const value = unwrapParenthesizedExpression(expression);
-  if (!ts.isArrayLiteralExpression(value) || value.elements.length !== 1) return false;
-  const rewrite = unwrapParenthesizedExpression(value.elements[0]);
-  if (!ts.isObjectLiteralExpression(rewrite) || rewrite.properties.length !== 2) return false;
-
-  const expected = new Map([
-    ['source', '/__taku/:path*'],
-    ['destination', '/api/taku/:path*'],
-  ]);
-  for (const property of rewrite.properties) {
-    if (
-      !ts.isPropertyAssignment(property) ||
-      ts.isComputedPropertyName(property.name) ||
-      !ts.isIdentifier(property.name)
-    ) {
-      return false;
+  if (!ts.isArrayLiteralExpression(value) || value.elements.length !== 2) return false;
+  const pairs = [
+    ['/__taku/host-attestation/verify', '/api/taku/host-attestation/verify'],
+    ['/__taku/:path*', '/api/taku/:path*'],
+  ];
+  return value.elements.every((element, index) => {
+    const rewrite = unwrapParenthesizedExpression(element);
+    if (!ts.isObjectLiteralExpression(rewrite) || rewrite.properties.length !== 2) return false;
+    const expected = new Map([['source', pairs[index][0]], ['destination', pairs[index][1]]]);
+    for (const property of rewrite.properties) {
+      if (!ts.isPropertyAssignment(property) || ts.isComputedPropertyName(property.name) ||
+          !ts.isIdentifier(property.name)) return false;
+      const initializer = unwrapParenthesizedExpression(property.initializer);
+      if (!ts.isStringLiteral(initializer) || initializer.text !== expected.get(property.name.text)) return false;
+      expected.delete(property.name.text);
     }
-    const expectedValue = expected.get(property.name.text);
-    const initializer = unwrapParenthesizedExpression(property.initializer);
-    if (!expectedValue || !ts.isStringLiteral(initializer) || initializer.text !== expectedValue) {
-      return false;
-    }
-    expected.delete(property.name.text);
-  }
-  return expected.size === 0;
+    return expected.size === 0;
+  });
 }
 
 function propertyNameText(name: ts.PropertyName | undefined): string | null {
