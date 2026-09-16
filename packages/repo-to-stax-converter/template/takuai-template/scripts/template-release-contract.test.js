@@ -36,27 +36,27 @@ function createReleaseFixture(t) {
   return rootDir;
 }
 
-function runReleaseCheck(rootDir) {
+function runReleaseCheck(rootDir, tag = 'taku-3.0.3-template') {
   return childProcess.spawnSync(
     process.execPath,
     [
       path.join(rootDir, 'scripts/check-template-release-channel.js'),
       '--channel=taku3',
-      '--tag=taku-3.0.2-template',
+      `--tag=${tag}`,
     ],
     { cwd: rootDir, encoding: 'utf8' }
   );
 }
 
-test('Taku 3 template release contract is pinned to 0.3.2 and Node 20', () => {
+test('Taku 3 template release contract is pinned to 0.3.3 and Node 20', () => {
   const packageJson = require('../package.json');
   const manifest = require('../taku.manifest.json');
   const nodeVersionFile = fs.readFileSync(path.join(ROOT_DIR, '.nvmrc'));
 
-  assert.equal(packageJson.version, '0.3.2');
-  assert.equal(manifest.version, '0.3.2');
+  assert.equal(packageJson.version, '0.3.3');
+  assert.equal(manifest.version, '0.3.3');
   assert.equal(packageJson.packageManager, 'pnpm@10.15.1');
-  assert.match(packageJson.scripts['release:check'], /taku-3\.0\.2-template/);
+  assert.match(packageJson.scripts['release:check'], /taku-3\.0\.3-template/);
   assert.deepEqual(nodeVersionFile, Buffer.from('20.20.2\n'));
 });
 
@@ -65,6 +65,14 @@ test('template production build uses standard Next while Turbopack stays develop
 
   assert.equal(packageJson.scripts.build, 'next build');
   assert.equal(packageJson.scripts['dev:turbo'], 'next dev --turbopack');
+});
+
+test('release check rejects reusing the previously published immutable template tag', t => {
+  const fixtureRoot = createReleaseFixture(t);
+  const result = runReleaseCheck(fixtureRoot, 'taku-3.0.2-template');
+
+  assert.notEqual(result.status, 0, result.stdout);
+  assert.match(result.stderr, /tag 必须是 taku-3\.0\.3-template/);
 });
 
 test('template test contract uses the canonical TypeScript launcher and pinned runtime', () => {

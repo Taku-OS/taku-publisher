@@ -43,6 +43,18 @@ const DETECTOR_SOURCE_FILES = new Set([
 
 const ALLOWED_PUBLIC_LITERALS = [
   {
+    path: 'packages/repo-to-stax-converter/template/takuai-template/src/lib/proxy/taku-app-display-copy.test.ts',
+    name: 'accessToken',
+    value: 'copy-contract-access',
+    reason: 'Pinned upstream mock-fetch fixture; no external credential or request.',
+  },
+  {
+    path: 'packages/repo-to-stax-converter/template/takuai-template/src/lib/taku-runtime/contract.test.ts',
+    name: 'mutableMaterial.sessionId',
+    value: 'AAAAAAAAAAAAAAAAAAAAAA',
+    reason: 'Pinned upstream synthetic session mutation for an authentication test.',
+  },
+  {
     path: 'creator/scripts/creator-profile.mjs',
     name: 'DEFAULT_TAKU_SUPABASE_ANON_KEY',
     reason: 'Supabase anon key is explicitly public client configuration.',
@@ -63,9 +75,10 @@ function lineNumber(text, index) {
   return text.slice(0, index).split('\n').length;
 }
 
-function allowedPublicLiteral(relativePath, name) {
+function allowedPublicLiteral(relativePath, name, value) {
   return ALLOWED_PUBLIC_LITERALS.some(
-    (entry) => entry.path === relativePath && entry.name === name,
+    (entry) => entry.path === relativePath && entry.name === name &&
+      (entry.value === undefined || entry.value === value),
   );
 }
 
@@ -93,7 +106,7 @@ function auditText(relativePath, text) {
     if (!match) continue;
     const [, name, value] = match;
     if (
-      allowedPublicLiteral(relativePath, name) ||
+      allowedPublicLiteral(relativePath, name, value) ||
       PLACEHOLDER_PATTERN.test(value) ||
       /process\.env|os\.(?:environ|getenv)|\$\{[A-Z]/.test(value)
     ) {

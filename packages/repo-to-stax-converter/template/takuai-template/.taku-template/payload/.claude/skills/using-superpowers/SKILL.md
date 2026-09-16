@@ -1,9 +1,9 @@
 ---
 name: using-superpowers
-description: Use at the start of non-trivial SubApp development, migration, debugging, planning, or verification to select the relevant Superpowers workflow before acting.
+description: Use at the start of non-trivial Taku App development, migration, debugging, planning, or verification to select the relevant Superpowers workflow before acting.
 ---
 
-# Using Superpowers in a Taku SubApp
+# Using Superpowers in a Taku App
 
 Use the host's registered `superpowers:*` skills when they are available. If the host does not expose them, this project includes a read-only fallback bundle at `.agent-tools/superpowers/6.2.0/skills/`.
 

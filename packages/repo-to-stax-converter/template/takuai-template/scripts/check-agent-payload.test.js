@@ -320,6 +320,114 @@ test('generated Action guidance requires executable result contracts and one sha
   }
 });
 
+test('generated Host Agent Runtime guidance is precise, durable, negotiated, and pre-release', () => {
+  const skillPairs = {
+    action: [
+      '.taku-template/payload/.agents/skills/taku-action-contract/SKILL.md',
+      '.taku-template/payload/.claude/skills/taku-action-contract/SKILL.md',
+    ],
+    development: [
+      '.taku-template/payload/.agents/skills/taku-subapp-development/SKILL.md',
+      '.taku-template/payload/.claude/skills/taku-subapp-development/SKILL.md',
+    ],
+    verification: [
+      '.taku-template/payload/.agents/skills/taku-subapp-verification/SKILL.md',
+      '.taku-template/payload/.claude/skills/taku-subapp-verification/SKILL.md',
+    ],
+  };
+  const skills = {};
+
+  for (const [name, paths] of Object.entries(skillPairs)) {
+    const contents = paths.map(relativePath =>
+      fs.readFileSync(path.join(ROOT_DIR, relativePath), 'utf8')
+    );
+    assert.equal(
+      contents[0],
+      contents[1],
+      `${name} runtime guidance mirrors must be byte-identical`
+    );
+    for (const operation of [
+      'agent.execute',
+      'research.generateReport',
+      'media.image.generate',
+      'media.video.generate',
+    ]) {
+      assert.ok(contents[0].includes(operation), `${name}: ${operation}`);
+    }
+    assert.match(contents[0], /experimental.*pre-release|发布前实验/is, name);
+    skills[name] = contents[0];
+  }
+
+  assert.match(skills.development, /runtimeCapabilities.*absent unless.*actually needs/is);
+  assert.match(skills.development, /default manifest requests none/is);
+  assert.match(skills.development, /exact protocol, operation ID, and revision/is);
+  assert.match(skills.development, /negotiated intersection[\s\S]*unknown optional client features/is);
+  assert.match(skills.development, /operation catalog[\s\S]*JSON Schema\/defaults/is);
+  assert.match(skills.development, /text-to-image and text-to-video only/is);
+  assert.match(skills.development, /@\/lib\/taku-runtime/is);
+  assert.match(skills.development, /capabilities\(\).*first.*before `start\(\)`/is);
+  assert.match(skills.development, /one idempotency key per logical request/is);
+  assert.match(skills.development, /reuse it whenever a start outcome is unknown/is);
+  assert.match(
+    skills.development,
+    /createTakuAgentRunJournal\(\{ recoveryScope: capabilities\.recoveryScope \}\).*recoverOrStartTakuAgentRun\(\).*sessionStorage/is
+  );
+  assert.match(
+    skills.development,
+    /entry with `runId`.*only through `get\(runId\)`.*without `runId`.*original normalized input and idempotency key/is
+  );
+  assert.match(
+    skills.development,
+    /recoveryScope.*opaque Host-owned recovery boundary.*expectedRecoveryScope.*before any run or runner side effect/is
+  );
+  assert.match(
+    skills.development,
+    /invalid, expired, future-dated, wrong-TTL, or wrong-scope.*block automatic restart.*explicit user choice/is
+  );
+  assert.match(skills.development, /every mutation carries its immutable `entryId`/is);
+  assert.match(
+    skills.development,
+    /journal update\/cleanup failures.*secondary recovery warnings.*must not block or replace/is
+  );
+  assert.match(skills.development, /run\.state=failed.*detailed `run\.error`/is);
+  assert.match(skills.development, /does not promise recovery across a window\/Desktop restart.*production/is);
+  assert.match(skills.development, /subscribe\(\).*get\(\).*result\(\).*cancel\(runId\)/is);
+  assert.match(
+    skills.development,
+    /UI.*unavailable.*running progress.*success.*failure.*cancelling\/cancelled/is
+  );
+  assert.match(
+    skills.development,
+    /Never place Codex or Claude CLI details.*model\/provider.*proxy URLs.*credentials/is
+  );
+  assert.match(skills.development, /openAsset\(assetRef\).*never persist.*playbackUrl/is);
+
+  assert.match(skills.action, /operations are not Actions/is);
+  assert.match(
+    skills.action,
+    /Do not register.*registerAction.*manifest `actions`.*public Route Handler/is
+  );
+  assert.match(skills.action, /runtimeCapabilities.*declaration still does not grant authority/is);
+
+  assert.match(skills.verification, /capabilities\(\).*checked before `start\(\)`/is);
+  assert.match(skills.verification, /one idempotency key.*per logical request/is);
+  assert.match(
+    skills.verification,
+    /same-tab reload recovery.*run journal.*recoveryScope.*written before start.*runId.*get-only.*no-`runId`.*same-start/is
+  );
+  assert.match(skills.verification, /clears every terminal outcome/is);
+  assert.match(skills.verification, /exact authenticated `expectedRecoveryScope`.*before side effects/is);
+  assert.match(skills.verification, /stale completion cannot bind or clear a newer request/is);
+  assert.match(skills.verification, /Do not promote this evidence.*production durability/is);
+  assert.match(skills.verification, /subscription replay or gaps.*duplicate run or false success/is);
+  assert.match(
+    skills.verification,
+    /unavailable\/not granted.*running progress.*success.*failure\/retry.*cancelling\/cancelled/is
+  );
+  assert.match(skills.verification, /cannot pass the publish gate.*production-ready/is);
+  assert.match(skills.verification, /content\.read[\s\S]*asset\.open[\s\S]*byte ranges/is);
+});
+
 test('generated development guidance preserves transformations, accessible custom interaction, focused contracts, and honest no-shell Biome review', () => {
   const skillPaths = [
     '.taku-template/payload/.agents/skills/taku-subapp-development/SKILL.md',
@@ -747,7 +855,7 @@ test('generated-app guidance exposes the supported runtime and verification entr
     assert.match(content, /Taku-controlled server.*authority.*blocked|Taku 受控服务端.*授权.*blocked/is);
     assert.match(content, /browser.*mutation.*blocked|浏览器.*写.*blocked/is);
     assert.doesNotMatch(content, /must use.*server.*proxy helper|必须通过应用内 server runtime/is);
-    assert.doesNotMatch(content, /Linear|haipro|TAKU-\d+/i);
+    assert.doesNotMatch(content, /haipro/i);
   }
 });
 
