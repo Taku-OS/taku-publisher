@@ -2,18 +2,11 @@
 
 本文件为Coding Agent提供项目开发指导。
 
-## Linear 项目归属
-
-- 本仓库归 `Taku Desktop`，负责人为 haipro。
-- 正式 SubApp 模板及其 runtime/build contract 都是 Desktop 范围，不单独建立模板 Linear 项目。
-- 如任务包含 TAKU issue ID，编码前先读取 issue，交付前回写实现和验证结果。
-- 完成并验证后的工作停在 `In Review`，默认由 haipro 审核。只有 `haipro` 或 `Jacky` 能针对具体 issue 明确批准 `Done`；agent 代为切换时必须在 comment 中记录审批人。
-
 ## 模板产物边界
 
-- 根目录的 `AGENTS.md`、`CLAUDE.md`、`skills.md`、`.agents` 与 `.claude` 用于维护本模板仓库，不得进入用户创建的 SubApp。
+- 根目录的 `AGENTS.md` 与 `CLAUDE.md` 用于维护本模板仓库，不得进入用户创建的 Taku App。
 - `.taku-template.json` 声明需要移除的仓库文件，并将 `.taku-template/payload/` 中的用户版指南覆盖到生成项目。
-- 用户版指南只保留通用 SubApp 技术、质量与安全约束，不得包含内部 Linear 项目、负责人、issue 或完成审批规则。
+- 用户版指南只保留通用 Taku App 技术、质量与安全约束，不得包含内部仓库维护或团队协作规则。
 - 修改该边界后运行模板 `pnpm run release:check` 和 Desktop `pnpm run test:template-payload`。
 
 ## 技术栈
@@ -198,22 +191,26 @@ export async function GET() {
   - `className` 使用 `cn()` 合并
   - 避免引入大量额外依赖
 
-## SubApp Action 规范
+## Taku App Action 规范
 
-SubApp 通过 Action 机制与 Taku AIOS (Sommelier Agent) 交互，使 AI 能够操作用户创建的应用。
+Taku App 通过 Action 机制与 Taku AIOS (Sommelier Agent) 交互，使 AI 能够操作用户创建的应用。
+
+### Host Agent Runtime
+
+`src/lib/taku-runtime` 已提供 Host Agent Runtime v2 SDK，支持通用 Agent、报告、文生图、文生视频、大文本分页和媒体播放授权；具体见 [Taku App Host Agent Runtime](docs/subapp-agent-runtime.md)。模板调用的是 Desktop 托管的产品级 operation，不直接接 CLI 或供应商。正式路径必须以当前 Host 已认证的能力目录和真实服务端 grant 为准；开发 fixture 不代表生产可用，发布仍需从 Planner 创建应用完成真实端到端验收。真实 operation 可在 Host 对当前应用、当前运行授权后使用本地文件、终端和桌面工具；危险操作需明确确认，宿主长期密钥不下发。
 
 ### 桌面小组件边界
 
-桌面小组件由 Taku Desktop 的 DynamicWidget 子系统创建和运行，不属于 SubApp 模板契约。
+桌面小组件由 Taku Desktop 的 DynamicWidget 子系统创建和运行，不属于 Taku App 模板契约。
 
 - 不要在 `taku.manifest.json` 中添加根级 `widgets` 或 widget 专用 `refresh` 字段。
-- 不要在 SubApp 中创建 `taku:widget-worker`、`taku:widget-refresher` 脚本或 `src/taku/widgets/*` 注册表。
-- 用户需要桌面小组件时，由 Taku Desktop 在宿主侧创建 DynamicWidget；SubApp 只维护自己的页面、Actions、数据和 API。
+- 不要在 Taku App 中创建 `taku:widget-worker`、`taku:widget-refresher` 脚本或 `src/taku/widgets/*` 注册表。
+- 用户需要桌面小组件时，由 Taku Desktop 在宿主侧创建 DynamicWidget；Taku App 只维护自己的页面、Actions、数据和 API。
 - 普通 iframe、浮窗或窄容器页面仍应采用容器优先布局，但它们不是桌面小组件协议。
 
 ### 能力声明 (`taku.manifest.json`)
 
-在项目根目录创建 `taku.manifest.json` 声明 SubApp 的可调用 actions：
+在项目根目录创建 `taku.manifest.json` 声明 Taku App 的可调用 actions：
 
 ```json
 {
@@ -275,7 +272,7 @@ interface ActionResult {
 }
 ```
 
-> 📖 详细文档：[SubApp Action 架构](docs/subapp-action-architecture.md)
+> 📖 详细文档：[Taku App Action 架构](docs/subapp-action-architecture.md)
 
 ## 环境变量
 
@@ -284,8 +281,9 @@ interface ActionResult {
 DB_FILE_NAME=db.sqlite
 
 # AI 能力（可选）
-# - 本模板不内置 AI SDK 框架；如需 AI 能力，必须通过模板内置的 `@/lib/proxy`（server-only）调用宿主注入的 ai-proxy
-# - 不要在 SubApp 内直接持有/配置模型厂商 Key（Claude/Gemini/OpenAI 等）
+# - 新的托管 Agent、生图、生视频工作流优先使用 `@/lib/taku-runtime` 的已认证 Host 协议
+# - 现有 `@/lib/proxy` 与 `@/lib/ai/server` 为 server-only 集成基建，不是浏览器可直接调用的 AI 网关
+# - 不要在 Taku App 内直接持有/配置模型厂商 Key（Claude/Gemini/OpenAI 等）
 # - 运行在 Taku 宿主内时，会注入以下关键环境变量（不要要求用户手动配置）：
 #   - TAKU_SERVICE_API_BASE_URL：ai-proxy 根地址
 #   - TAKU_SERVICE_API_KEY：Supabase access token（Bearer）
@@ -294,7 +292,7 @@ DB_FILE_NAME=db.sqlite
 
 ## AI / Proxy 开发规范（必读）
 
-- 统一入口：`docs/proxy-ai-guide.md`
+- 托管 Agent 和多模态入口：`docs/subapp-agent-runtime.md`；其他既有 server-only 集成见 `docs/proxy-ai-guide.md`。
 - server-only 不等于已授权；不要向 browser 暴露通用 AI / Service gateway。
 - 只有真实 Taku 服务端 authority contract 完成身份、应用、资源、权限和计费归因验证后，领域 operation 才能调用 managed service；否则功能必须明确 blocked。
 

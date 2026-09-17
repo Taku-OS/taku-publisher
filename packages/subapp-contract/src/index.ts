@@ -1,3 +1,5 @@
+import { assertRuntimeCapabilities, type RuntimeCapabilities } from './runtime-capabilities.js';
+export { assertRuntimeCapabilities, type RuntimeCapabilities } from './runtime-capabilities.js';
 import { createHash } from 'node:crypto';
 
 export const SUBAPP_CONTRACT_VERSION = '0.1.0' as const;
@@ -259,6 +261,7 @@ export interface SubAppActionV1 {
 
 /** Runtime-only shape of the existing, intentionally unversioned taku.manifest.json. */
 export interface TakuSubAppRuntimeManifestV1 {
+  runtimeCapabilities?: RuntimeCapabilities;
   name: string;
   description?: string;
   version?: string;
@@ -582,7 +585,8 @@ export function assertSubAppValidationResult(value: unknown): SubAppValidationRe
 
 export function assertTakuSubAppRuntimeManifest(value: unknown): TakuSubAppRuntimeManifestV1 {
   const manifest = requireRecord(value, 'Taku SubApp runtime manifest');
-  assertExactKeys(manifest, ['name', 'description', 'version', 'iconPath', 'actions', 'llm'], 'Taku SubApp runtime manifest');
+  assertExactKeys(manifest, ['name', 'description', 'version', 'iconPath', 'actions', 'llm', 'runtimeCapabilities'], 'Taku SubApp runtime manifest');
+  if (manifest.runtimeCapabilities !== undefined) assertRuntimeCapabilities(manifest.runtimeCapabilities);
   requireText(manifest.name, 'runtime manifest name');
   if (manifest.description !== undefined) requireText(manifest.description, 'runtime manifest description', true);
   if (manifest.version !== undefined) requireText(manifest.version, 'runtime manifest version');
