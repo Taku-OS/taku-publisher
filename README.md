@@ -18,6 +18,7 @@ The repository deliberately separates reusable implementation from host-specific
 - `adapters/portable/taku-publisher`: portable Skill distribution notes.
 - `adapters/codex/taku-publisher`: thin Codex plugin manifest source.
 - `adapters/claude/taku-publisher`: thin Claude Code plugin manifest source.
+- `adapters/opencode`: OpenCode installation guidance for the portable Agent Skill.
 - `creator/` and `scripts/taku_publisher/`: current implementation and backward-compatible entrypoints.
 
 The canonical entrypoint is:
@@ -111,6 +112,14 @@ the npm registry or the official Cursor store. `npm run build:marketplace`
 generates the combined three-host GitHub bundle. Stax Challenge is an explicit,
 optional Card-to-one-Skill workflow; ordinary Card, Skill and SubApp routes remain available. See
 [Cursor installation and release gates](docs/cursor-release.md).
+
+OpenCode can load the portable artifact from its global
+`~/.config/opencode/skills/taku-publisher` directory or a project's
+`.opencode/skills/taku-publisher` directory. Gemini CLI and other Agent Skills
+compatible hosts can install the same artifact into their documented Skill
+directory. Core Stax Card, SubApp conversion, and Skill publishing workflows
+remain available; recent-project discovery and usage statistics are enabled only
+for hosts with a verified local metadata format.
 
 Creator-facing scans default to a bounded local usage-file budget so large
 session histories remain responsive. Pass `--max-usage-files <n>` only when a

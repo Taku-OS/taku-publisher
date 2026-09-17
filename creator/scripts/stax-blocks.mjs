@@ -964,6 +964,7 @@ function aiOption(value) {
   return {
     claude: { id: 'claude-code', label: 'CLAUDE', icon: 'claude' },
     cursor: { id: 'cursor', label: 'CURSOR', icon: 'cursor' },
+    opencode: { id: 'opencode', label: 'OPENCODE', icon: 'opencode' },
     gemini: { id: 'gemini', label: 'GEMINI', icon: 'gemini' },
     codex: { id: 'codex', label: 'CODEX', icon: 'codex' },
   }[family];
@@ -975,6 +976,7 @@ function aiFamily(value) {
   if (/(claude|sonnet|opus|haiku|anthropic)/.test(raw)) return 'claude';
   if (/(gemini|google)/.test(raw)) return 'gemini';
   if (/(cursor|composer)/.test(raw)) return 'cursor';
+  if (/(opencode|open code)/.test(raw)) return 'opencode';
   if (/(codex|openai|gpt|\bo[134]\b)/.test(raw)) return 'codex';
   return '';
 }

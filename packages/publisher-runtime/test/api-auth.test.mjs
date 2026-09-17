@@ -924,7 +924,7 @@ test('draft payload keeps canonical create fields and update listing inheritance
   assert.equal(createPayload.listing.authorshipKind, 'original');
   assert.equal(createPayload.listing.rightsBasis, 'self_owned');
   assert.deepEqual(createPayload.listing.categories, ['writing-content']);
-  assert.deepEqual(createPayload.listing.platforms, ['taku', 'codex', 'claude-code']);
+  assert.deepEqual(createPayload.listing.platforms, ['taku', 'codex', 'claude-code', 'cursor', 'opencode', 'gemini-cli']);
 
   const itemId = '11111111-1111-4111-8111-111111111111';
   const updatePayload = await draftCreatePayload({

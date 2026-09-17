@@ -444,6 +444,17 @@ test('allows a scanned local client to replace the invoking host default', () =>
   assert.equal(blockByKey(result, 'team').value.identityBasis, 'user-selection');
 });
 
+test('uses OpenCode as the invoking host for a portable Stax Card', () => {
+  const draft = fixtureDraft();
+  draft.card.primaryAi = 'opencode';
+  draft.aiIdentity.defaultClient = 'opencode';
+  draft.aiIdentity.options.unshift({ id: 'opencode', label: 'OPENCODE', icon: 'opencode' });
+
+  const result = buildStaxBlocks(draft);
+  assert.deepEqual(blockByKey(result, 'team').value.team, ['OPENCODE', 'opencode']);
+  assert.equal(blockByKey(result, 'team').value.identityBasis, 'invoking-host');
+});
+
 test('keeps model usage as a compatibility fallback for legacy drafts without host identity', () => {
   const draft = fixtureDraft();
   delete draft.card;

@@ -10,6 +10,7 @@ export * from './creator-init.js';
 export * from './creator-plan.js';
 export * from './discovery.js';
 export * from './file-upload.js';
+export * from './hosts.js';
 export * from './marketplace.js';
 export * from './project-discovery.js';
 export * from './project-import.js';

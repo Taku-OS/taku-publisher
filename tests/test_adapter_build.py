@@ -48,6 +48,7 @@ class AdapterBuildTests(unittest.TestCase):
     def test_portable_skill_contains_self_contained_runtime(self) -> None:
         self.assertTrue((PORTABLE_SKILL_ROOT / "SKILL.md").is_file())
         self.assertTrue((PORTABLE_SKILL_ROOT / "README.md").is_file())
+        self.assertTrue((PORTABLE_SKILL_ROOT / "OPENCODE.md").is_file())
         self.assertTrue(
             (
                 PORTABLE_SKILL_ROOT

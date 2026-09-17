@@ -30,11 +30,23 @@ test('recognizes older portable Skills in Cursor paths without a host marker', a
   }), 'cursor');
 });
 
+test('recognizes portable Skills in OpenCode and Gemini paths', async () => {
+  assert.equal(await detectInvokingAiClient({
+    moduleUrl: pathToFileURL(path.join(os.tmpdir(), '.config/opencode/skills/taku-publisher/creator/scripts/host-platform.mjs')).href,
+    markerPath: path.join(os.tmpdir(), 'missing-taku-opencode-marker.json'), env: {},
+  }), 'opencode');
+  assert.equal(await detectInvokingAiClient({
+    moduleUrl: pathToFileURL(path.join(os.tmpdir(), '.gemini/skills/taku-publisher/creator/scripts/host-platform.mjs')).href,
+    markerPath: path.join(os.tmpdir(), 'missing-taku-gemini-marker.json'), env: {},
+  }), 'gemini');
+});
+
 test('keeps the invoking host first and exposes other locally detected clients', async (context) => {
   const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-ai-clients-'));
   context.after(() => fs.rm(homeDir, { recursive: true, force: true }));
   await fs.mkdir(path.join(homeDir, '.codex'));
   await fs.mkdir(path.join(homeDir, '.claude'));
+  await fs.mkdir(path.join(homeDir, '.config', 'opencode'), { recursive: true });
 
   const result = await discoverAiClients({
     invokingHost: 'claude-code',
@@ -44,6 +56,6 @@ test('keeps the invoking host first and exposes other locally detected clients',
 
   assert.equal(result.schemaVersion, AI_CLIENTS_SCHEMA);
   assert.equal(result.defaultClient, 'claude-code');
-  assert.deepEqual(result.options.map((item) => item.id), ['claude-code', 'codex', 'cursor']);
+  assert.deepEqual(result.options.map((item) => item.id), ['claude-code', 'codex', 'cursor', 'opencode']);
   assert.deepEqual(result.options[0].detectedBy, ['invoking-host', 'local-install']);
 });

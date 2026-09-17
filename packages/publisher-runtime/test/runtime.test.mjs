@@ -13,6 +13,7 @@ import {
   discoverUnits,
   initializeDraft,
   installCodexSkill,
+  installSkill,
   installPreflight,
   marketplaceItems,
   openMarketplaceItemInTaku,
@@ -301,8 +302,8 @@ test('stages, scans, reviews, and packages deterministically in Node', async (t)
   assert.equal(packageManifest.channel, 'publish');
   assert.equal(packageManifest.capability.id, selected.state.unit.id);
   assert.equal(packageManifest.capability.kind, 'skill');
-  assert.deepEqual(packageManifest.compatibility.hosts, ['claude-code', 'codex', 'taku']);
-  assert.deepEqual(packageManifest.compatibility.platforms, ['claude-code', 'codex', 'taku']);
+  assert.deepEqual(packageManifest.compatibility.hosts, ['claude-code', 'codex', 'cursor', 'gemini-cli', 'opencode', 'taku']);
+  assert.deepEqual(packageManifest.compatibility.platforms, ['claude-code', 'codex', 'cursor', 'gemini-cli', 'opencode', 'taku']);
   assert.deepEqual(packageManifest.requiredSecrets, ['SAMPLE_API_KEY']);
   assert.ok(packageManifest.files.some((file) => file.path === '.taku/manifest.json'));
   assert.ok(packageManifest.files.some((file) => file.path === '.taku/requirements.json'));
@@ -401,4 +402,38 @@ test('Marketplace install requires exact confirmation and extracts atomically', 
   const installed = await installCodexSkill(client, response, { itemId, confirmItemId: itemId, installRoot: root });
   assert.equal(installed.status, 'installed');
   assert.equal(await fs.readFile(path.join(root, 'installed-skill', 'SKILL.md'), 'utf8'), '---\nname: installed-skill\n---\n');
+});
+
+test('installs the same Marketplace Skill into an OpenCode Skill root', async (t) => {
+  const root = await temporaryDirectory(t);
+  const itemId = '123e4567-e89b-12d3-a456-426614174001';
+  const packageBytes = createStoredZip([
+    { name: 'SKILL.md', data: Buffer.from('---\nname: portable-skill\ndescription: Portable fixture\n---\n'), mode: 0o644 },
+  ]);
+  const response = {
+    data: {
+      item: { id: itemId, name: 'Portable Skill', slug: 'portable-skill', type: 'skill', status: 'published' },
+      latestVersion: { versionNumber: 1 },
+      access: { allowed: true },
+      package: {
+        versionNumber: 1,
+        contentHash: createHash('sha256').update(packageBytes).digest('hex'),
+        fileSizeBytes: packageBytes.length,
+      },
+      downloadUrl: 'https://packages.example.test/portable-skill.zip',
+    },
+  };
+  const client = {
+    async downloadPublicPackage() { return packageBytes; },
+    async recordMarketplaceInstall() { return { ok: true }; },
+  };
+  const installed = await installSkill(client, response, {
+    itemId,
+    confirmItemId: itemId,
+    installRoot: root,
+    host: 'opencode',
+  });
+  assert.equal(installed.host, 'opencode');
+  assert.equal(installed.next_action, 'start_new_host_session');
+  assert.equal(await fs.readFile(path.join(root, 'portable-skill', 'SKILL.md'), 'utf8'), '---\nname: portable-skill\ndescription: Portable fixture\n---\n');
 });

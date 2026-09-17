@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -46,8 +45,9 @@ import {
   UNAVAILABLE_PUBLISH_TYPES,
 } from './constants.js';
 import { assertPublishTypeAvailable, discoverUnits } from './discovery.js';
+import { normalizeSkillHost, skillInstallRoot } from './hosts.js';
 import {
-  installCodexSkill,
+  installSkill,
   installPreflight,
   marketplaceItem,
   marketplaceItems,
@@ -328,23 +328,25 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
   }
   if (args.command === 'marketplace-install') {
     const itemId = requiredFlag(args, 'item-id');
+    const host = normalizeSkillHost(stringFlag(args, 'host', 'codex'));
     const client = await marketplaceInstallClient(args);
     const response = await client.getMarketplaceInstallPackage(itemId);
-    const root = codexSkillsRoot();
-    const preflight = installPreflight(response, itemId, root);
+    const root = skillInstallRoot(host);
+    const preflight = installPreflight(response, itemId, root, host);
     const confirmItemId = optionalFlag(args, 'confirm-item-id');
     if (!confirmItemId) {
       const item = record(preflight.item);
       return jsonOutput('confirmation_required', {
         item,
+        host,
         version: preflight.version,
         target_dir: preflight.target_dir,
         configuration_requirements: item.configuration_requirements,
         confirmation_rule: 'Rerun with --confirm-item-id exactly matching the selected item ID.',
       }, { requiresAction: true, actionType: 'confirm_marketplace_install' });
     }
-    const installed = await installCodexSkill(client, response, { itemId, confirmItemId, installRoot: root });
-    return jsonOutput(String(installed.status ?? 'installed'), installed, { requiresAction: true, actionType: 'start_new_codex_task' });
+    const installed = await installSkill(client, response, { itemId, confirmItemId, installRoot: root, host });
+    return jsonOutput(String(installed.status ?? 'installed'), installed, { requiresAction: true, actionType: 'start_new_host_session' });
   }
   if (args.command === 'discover') {
     const candidates = await discoverUnits(requiredFlag(args, 'workspace'), optionalFlag(args, 'source'));
@@ -1979,12 +1981,6 @@ function publicHttpsUrl(value: string): boolean {
   }
 }
 
-function codexSkillsRoot(): string {
-  const home = path.resolve(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'));
-  if (home === path.parse(home).root || home === path.resolve(os.homedir())) throw new PublisherError('Codex home is too broad for a safe Skill install.', 'unsafe_install_target');
-  return path.join(home, 'skills');
-}
-
 function locateCreatorScript(): string {
   const explicit = String(process.env.TAKU_PUBLISHER_SKILL_ROOT ?? '').trim();
   const starts = [
@@ -2114,7 +2110,8 @@ Commands:
   skill-conversion-check --candidate <same-candidate-path>
   remote-create, remote-get, remote-patch, remote-scan, remote-upload, remote-status
   auth-status, auth-refresh, auth-login, auth-logout
-  marketplace-search, marketplace-show, marketplace-open, marketplace-install
+  marketplace-search, marketplace-show, marketplace-open
+  marketplace-install --host codex|claude-code|cursor|opencode|gemini-cli|agent-skills --item-id <id> [--confirm-item-id <same-id>]
   subapp-assess --source <absolute-path|github-url> [--source-ref <ref>] [--service-catalog-url <trusted-url>] [--service-mappings <reviewed-json>] [--assessment-review <bound-review-json>] [developer: --converter-bin <path>]
   subapp-prepare --source <same-source> --output-root <absolute-dir> --confirm-assessment <token> [--source-ref <same-ref>] [--name <candidate-name>] [--service-catalog-url <same-url>] [--service-mappings <same-reviewed-json>] [--assessment-review <same-bound-review-json>] [developer: --converter-bin <path>]
   subapp-convert --candidate <absolute-candidate-path> [developer: --converter-bin <path>]
