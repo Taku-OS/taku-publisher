@@ -1,6 +1,6 @@
 # Taku Publisher Marketplace
 
-Release bundle: **0.3.19** — Publisher with Cursor integration.
+Release bundle: **0.3.20** — Publisher with Cursor integration.
 All three hosts share the same Node.js runtime. Stax Challenge is an explicit
 optional workflow; ordinary Card, Skill and SubApp entry behavior is preserved.
 
@@ -24,12 +24,12 @@ The root `.cursor-plugin/marketplace.json` describes the complete Cursor Agent
 plugin at `plugins/taku-publisher-cursor`. For GitHub import, choose this
 `marketplace` branch, not the source-only `main` branch.
 
-Alternatively download `taku-publisher-0.3.19.tgz` from the
-[GitHub release](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.3.19)
+Alternatively download `taku-publisher-0.3.20.tgz` from the
+[GitHub release](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.3.20)
 and run this command from the download directory (Node.js 20+):
 
 ```sh
-npx --yes --package ./taku-publisher-0.3.19.tgz taku-publisher install --host cursor
+npx --yes --package ./taku-publisher-0.3.20.tgz taku-publisher install --host cursor
 ```
 
 This installs the bundled Skill into `~/.cursor/skills/taku-publisher`.

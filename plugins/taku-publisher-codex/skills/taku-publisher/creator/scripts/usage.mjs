@@ -30,6 +30,7 @@ export const DEFAULT_MAX_USAGE_BYTES = 128 * 1024 * 1024;
 export const DEFAULT_MAX_USAGE_FILE_BYTES = 160 * 1024;
 export const DEFAULT_USAGE_SCAN_TIMEOUT_MS = 15_000;
 export const DEFAULT_USAGE_PERIOD_ID = 'last90Days';
+export const AI_BURN_USAGE_SCHEMA = 'taku.creator.ai-burn-usage.v2';
 export const CONTINUOUS_ACTIVITY_IDLE_MINUTES = 30;
 const DEFAULT_MAX_PROMPT_STYLE_CHARS = 20000;
 const BEHAVIOR_PROFILE_SCHEMA = 'taku.creator.behavior-profile.v1';
@@ -379,7 +380,13 @@ export function buildUsagePeriods(now) {
     { id: 'today', label: 'Today', startsAt: todayStart.toISOString(), endsAt },
     { id: 'last7Days', label: 'Last 7 Days', startsAt: last7DaysStart.toISOString(), endsAt },
     { id: 'last30Days', label: 'Last 30 Days', startsAt: last30DaysStart.toISOString(), endsAt },
-    { id: 'last90Days', label: 'Last 90 Days', startsAt: last90DaysStart.toISOString(), endsAt },
+    {
+      id: 'last90Days',
+      label: 'Last 90 Days',
+      startsAt: last90DaysStart.toISOString(),
+      endsAt,
+      usageSchema: AI_BURN_USAGE_SCHEMA,
+    },
     { id: 'thisMonth', label: 'This Month', startsAt: monthStart.toISOString(), endsAt },
     { id: 'allTimeLocal', label: 'All-Time Local', endsAt },
   ];
@@ -849,6 +856,7 @@ function summarizeUsagePeriod(records, availableSources, period) {
     label: period.label,
     startsAt: period.startsAt,
     endsAt: period.endsAt,
+    ...(period.usageSchema ? { usageSchema: period.usageSchema } : {}),
     scannedFileCount: scannedFileIds.size,
     sessionCount: sessionIds.size,
     eventCount,

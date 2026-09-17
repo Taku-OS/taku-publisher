@@ -1,6 +1,6 @@
 {
   "name": "taku-publisher",
-  "version": "0.3.19",
+  "version": "0.3.20",
   "description": "Generate editable Stax Cards, discover Cursor projects, and prepare Taku Skills or SubApps with the current Agent.",
   "author": { "name": "Taku", "url": "https://taku.ai/" },
   "homepage": "https://taku.ai/",

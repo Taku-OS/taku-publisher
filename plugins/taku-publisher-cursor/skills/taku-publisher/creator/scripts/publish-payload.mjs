@@ -795,7 +795,12 @@ function sanitizeBuilderProfileSnapshot(value, schemaVersion) {
       modelUsage: sanitizeModelUsage(usage.modelUsage ?? usage.model_usage),
       estimatedCost: sanitizeEstimatedCost(usage.estimatedCost ?? usage.estimated_cost),
       sources: sanitizeUsageSources(usage.sources),
-      periods: asArray(usage.periods).slice(0, 8).map(sanitizeUsagePeriod).filter(isNonNull),
+      periods: asArray(usage.periods)
+        .slice(0, 8)
+        .map((period) => stringValue(asRecord(period).id, 80) === 'last90Days'
+          ? sanitizeAiBurnPeriod(period)
+          : sanitizeUsagePeriod(period))
+        .filter(isNonNull),
       partial: usage.partial === true,
       scanCoverage: sanitizeScanCoverage(usage.scanCoverage ?? usage.scan_coverage),
       localActivity: sanitizeLocalActivity(usage.localActivity ?? usage.local_activity),
@@ -1050,6 +1055,83 @@ function sanitizeModelUsage(value) {
     modelCount: Math.max(rows.length, integerValue(raw.modelCount ?? raw.model_count)),
     topModels: rows,
     models: rows,
+  };
+}
+
+function sanitizeAiBurnModelUsage(value, source) {
+  const raw = asRecord(value);
+  const sourceRows = asArray(raw.models).length
+    ? asArray(raw.models)
+    : asArray(raw.topModels ?? raw.top_models);
+  const rows = sourceRows
+    .slice(0, 20)
+    .map((item) => {
+      const row = asRecord(item);
+      const modelId = stringValue(row.modelId ?? row.model_id ?? row.name, 160);
+      if (!modelId) return null;
+      const inputTokens = integerValue(
+        row.inputTokens ?? row.totalInputTokens ?? row.total_input_tokens
+      );
+      const outputTokens = integerValue(
+        row.outputTokens ?? row.totalOutputTokens ?? row.total_output_tokens
+      );
+      const cacheReadTokens = integerValue(
+        row.cacheReadTokens ?? row.totalCacheReadTokens ?? row.total_cache_read_tokens
+      );
+      const cacheCreationTokens = integerValue(
+        row.cacheCreationTokens ?? row.totalCacheCreationTokens ?? row.total_cache_creation_tokens
+      );
+      const reasoningTokens = integerValue(
+        row.reasoningTokens ?? row.totalReasoningTokens ?? row.total_reasoning_tokens
+      );
+      const totalTokens = integerValue(row.totalTokens ?? row.total_tokens) ||
+        (source === 'claude-code'
+          ? inputTokens + cacheReadTokens + cacheCreationTokens + outputTokens + reasoningTokens
+          : inputTokens + outputTokens + reasoningTokens);
+      if (totalTokens <= 0) return null;
+      return {
+        modelId,
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        cacheCreationTokens,
+        reasoningTokens,
+        totalTokens,
+      };
+    })
+    .filter(isNonNull);
+  if (!rows.length) return undefined;
+  return {
+    totalTokens: integerValue(raw.totalTokens ?? raw.total_tokens),
+    models: rows,
+  };
+}
+
+function sanitizeAiBurnSource(value) {
+  const raw = asRecord(value);
+  const source = stringValue(raw.source, 40);
+  if (source !== 'codex' && source !== 'claude-code') return null;
+  return {
+    source,
+    totalTokens: integerValue(raw.totalTokens ?? raw.total_tokens),
+    modelUsage: sanitizeAiBurnModelUsage(raw.modelUsage ?? raw.model_usage, source),
+    estimatedCost: sanitizeEstimatedCost(raw.estimatedCost ?? raw.estimated_cost),
+  };
+}
+
+function sanitizeAiBurnPeriod(value) {
+  const raw = asRecord(value);
+  return {
+    id: 'last90Days',
+    label: 'Last 90 Days',
+    startsAt: optionalString(raw.startsAt ?? raw.starts_at, 80),
+    endsAt: optionalString(raw.endsAt ?? raw.ends_at, 80),
+    usageSchema: optionalString(raw.usageSchema ?? raw.usage_schema, 100),
+    totalTokens: integerValue(raw.totalTokens ?? raw.total_tokens),
+    sources: asArray(raw.sources)
+      .slice(0, 8)
+      .map(sanitizeAiBurnSource)
+      .filter(isNonNull),
   };
 }
 
