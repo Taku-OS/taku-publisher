@@ -1,6 +1,6 @@
 {
   "name": "taku-publisher",
-  "version": "0.3.20",
+  "version": "0.3.21",
   "description": "Discover Codex, Claude Code, and Cursor projects, convert them into Taku SubApps or Skills, and safely publish tools.",
   "author": {
     "name": "Taku",
