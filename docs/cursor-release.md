@@ -1,17 +1,18 @@
-# Cursor 0.3.19
+# Cursor 0.3.20
 
-This preserves production 0.3.18's Cursor integration and installation packaging
-and adds the explicitly requested Stax Challenge workflow. The production plugin
+This preserves the production Cursor integration, installation packaging, and
+Stax Challenge workflow while adding complete recent-90-day, model-level Codex
+and Claude Code usage for AI Burn. The production plugin
 is still named `taku-publisher`, without a test-version suffix. Distribution is through the
-GitHub `marketplace` branch and the `v0.3.19` release assets. It is not
+GitHub `marketplace` branch and the `v0.3.20` release assets. It is not
 published to npm or listed in the official Cursor Marketplace.
 
-Download `taku-publisher-0.3.19.tgz` from the trusted
-[GitHub release](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.3.19),
+Download `taku-publisher-0.3.20.tgz` from the trusted
+[GitHub release](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.3.20),
 then run from the download directory (Node.js 20+):
 
 ```sh
-npx --yes --package ./taku-publisher-0.3.19.tgz taku-publisher install --host cursor
+npx --yes --package ./taku-publisher-0.3.20.tgz taku-publisher install --host cursor
 ```
 
 ## Build and install locally
@@ -43,14 +44,14 @@ For a previously manually copied, unmanaged Skill, explicit `--backup-existing`
 moves the entire old directory to a recoverable backup before installing.
 It does not bypass protections for edited managed installs.
 
-The local npm tarball is `dist/releases/taku-publisher-0.3.19.tgz`:
+The local npm tarball is `dist/releases/taku-publisher-0.3.20.tgz`:
 
 ```sh
-npx --yes --package ./dist/releases/taku-publisher-0.3.19.tgz taku-publisher install --host cursor
+npx --yes --package ./dist/releases/taku-publisher-0.3.20.tgz taku-publisher install --host cursor
 ```
 
 This tarball command uses a local file, not a released npm package. A public
-`npx --yes --package @taku/publisher@0.3.19 taku-publisher install --host cursor`
+`npx --yes --package @taku/publisher@0.3.20 taku-publisher install --host cursor`
 command must not be advertised until package ownership and npm publication
 are confirmed. Installation checks bundled file hashes; hashes detect
 corruption, not publisher authenticity. Obtain the package from a trusted source.
