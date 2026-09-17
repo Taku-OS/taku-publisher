@@ -99,15 +99,18 @@ Start a new Codex task or Claude Code session after installation so it picks up
 the Taku Publisher Skill. Version 0.3.21 preserves complete recent-90-day,
 model-level Codex and Claude Code usage through Stax draft generation for AI
 Burn, plus the existing Cursor Agent-plugin marketplace bundle and
-file-preserving local installer:
+file-preserving multi-host installer:
 
 ```sh
-npm run pack:cursor
+npm run pack:installer
 node dist/installers/cursor/bin/taku-publisher.mjs install --host cursor
+node dist/installers/cursor/bin/taku-publisher.mjs install --host agent-skills
 ```
 
-Start a new Cursor Agent chat and invoke `/taku-publisher`. GitHub production
-distribution uses the `marketplace` branch and `v0.3.21` release assets, not
+Start a new Cursor Agent chat and invoke `/taku-publisher`. The generic target
+installs to `~/.agents/skills/taku-publisher`, which OpenCode loads by default;
+start a new host session after installation. GitHub production distribution
+uses the `marketplace` branch and `v0.3.21` release assets, not
 the npm registry or the official Cursor store. `npm run build:marketplace`
 generates the combined three-host GitHub bundle. Stax Challenge is an explicit,
 optional Card-to-one-Skill workflow; ordinary Card, Skill and SubApp routes remain available. See
@@ -115,11 +118,13 @@ optional Card-to-one-Skill workflow; ordinary Card, Skill and SubApp routes rema
 
 OpenCode can load the portable artifact from its global
 `~/.config/opencode/skills/taku-publisher` directory or a project's
-`.opencode/skills/taku-publisher` directory. Gemini CLI and other Agent Skills
-compatible hosts can install the same artifact into their documented Skill
-directory. Core Stax Card, SubApp conversion, and Skill publishing workflows
-remain available; recent-project discovery and usage statistics are enabled only
-for hosts with a verified local metadata format.
+`.opencode/skills/taku-publisher` directory. The public `--host agent-skills`
+installer uses the shared `~/.agents/skills/taku-publisher` directory, which
+OpenCode also discovers automatically. Gemini CLI and other Agent Skills
+compatible hosts can use that same standard directory when supported. Core Stax
+Card, SubApp conversion, and Skill publishing workflows remain available;
+recent-project discovery and usage statistics are enabled only for hosts with a
+verified local metadata format.
 
 Creator-facing scans default to a bounded local usage-file budget so large
 session histories remain responsive. Pass `--max-usage-files <n>` only when a

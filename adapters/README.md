@@ -11,8 +11,9 @@ portable Skill with their current Agent.
 
 Cursor's complete GitHub-importable marketplace is generated under
 `dist/marketplaces/cursor/taku/`, with `.cursor-plugin/marketplace.json` at its
-root. `npm run pack:cursor` also creates a self-contained, file-preserving
-installer and local release archives. See [Cursor release gates](../docs/cursor-release.md).
+root. `npm run pack:installer` also creates a self-contained, file-preserving
+installer for Cursor and the shared Agent Skills directory, plus local release
+archives. See [installer and Cursor release gates](../docs/cursor-release.md).
 
 The build also creates a repo-local Codex Marketplace under
 `dist/marketplaces/codex/taku/`. Its `.agents/plugins/marketplace.json` points to

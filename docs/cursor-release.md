@@ -3,8 +3,9 @@
 This preserves the production Cursor integration, installation packaging, and
 Stax Challenge workflow while fixing preservation of complete recent-90-day,
 model-level Codex and Claude Code usage through Stax draft generation for AI
-Burn. The production plugin
-is still named `taku-publisher`, without a test-version suffix. Distribution is through the
+Burn. It also includes a shared Agent Skills installation target for OpenCode
+and other compatible hosts. The production plugin is still named
+`taku-publisher`, without a test-version suffix. Distribution is through the
 GitHub `marketplace` branch and the `v0.3.21` release assets. It is not
 published to npm or listed in the official Cursor Marketplace.
 
@@ -14,7 +15,12 @@ then run from the download directory (Node.js 20+):
 
 ```sh
 npx --yes --package ./taku-publisher-0.3.21.tgz taku-publisher install --host cursor
+npx --yes --package ./taku-publisher-0.3.21.tgz taku-publisher install --host agent-skills
 ```
+
+The `agent-skills` target installs to `~/.agents/skills/taku-publisher`.
+OpenCode discovers this shared directory by default. Quit and restart the host
+after installation so it loads the new Skill.
 
 ## Build and install locally
 
@@ -25,8 +31,9 @@ reported as unavailable; Card editing, project discovery and publishing remain u
 
 ```sh
 npm ci
-npm run pack:cursor
+npm run pack:installer
 node dist/installers/cursor/bin/taku-publisher.mjs install --host cursor
+node dist/installers/cursor/bin/taku-publisher.mjs install --host agent-skills
 ```
 
 The last command installs the complete Skill into the current user's
@@ -49,6 +56,7 @@ The local npm tarball is `dist/releases/taku-publisher-0.3.21.tgz`:
 
 ```sh
 npx --yes --package ./dist/releases/taku-publisher-0.3.21.tgz taku-publisher install --host cursor
+npx --yes --package ./dist/releases/taku-publisher-0.3.21.tgz taku-publisher install --host agent-skills
 ```
 
 This tarball command uses a local file, not a released npm package. A public

@@ -6,12 +6,34 @@ import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-const SCHEMA = 'taku.cursor.install.v1';
 const RECORD = '.taku-publisher-install.json';
 const REQUIRED = ['SKILL.md', 'package.json', 'publisher-version.json',
   'host-adapter.json', 'scripts/taku-publisher.mjs', 'creator/scripts/cursor-sqlite.mjs',
   'node_modules/@taku/publisher-runtime/dist/cli.js'];
+const HOSTS = {
+  cursor: {
+    schemaVersion: 'taku.cursor.install.v1',
+    indexFile: 'integrity.json',
+    payloadDirectory: 'payload',
+    homeDirectory: '.cursor',
+    restartLabel: 'Cursor Agent chat',
+  },
+  'agent-skills': {
+    schemaVersion: 'taku.agent-skills.install.v1',
+    indexFile: 'integrity-agent-skills.json',
+    payloadDirectory: 'payload-agent-skills',
+    homeDirectory: '.agents',
+    restartLabel: 'compatible Agent Skills host session',
+  },
+};
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
+
+function hostDefinition(value) {
+  const host = String(value || '').trim().toLowerCase();
+  if (!Object.hasOwn(HOSTS, host)) throw new Error('Specify --host cursor or --host agent-skills.');
+  const definition = HOSTS[host];
+  return { host, ...definition };
+}
 
 function safePath(value) {
   if (typeof value !== 'string' || value.length > 1024 || !value
@@ -68,8 +90,9 @@ async function directory(parent, name) {
   return target;
 }
 
-function validateIndex(index) {
-  if (index.schemaVersion !== SCHEMA || index.host !== 'cursor'
+function validateIndex(index, expectedHost) {
+  const definition = hostDefinition(expectedHost || index.host);
+  if (index.schemaVersion !== definition.schemaVersion || index.host !== definition.host
       || index.name !== 'taku-publisher' || !/^\d+\.\d+\.\d+$/.test(index.version)
       || !Array.isArray(index.files) || !index.files.length || index.files.length > 8000) {
     throw new Error('Invalid installer metadata.');
@@ -110,16 +133,17 @@ async function assertFiles(root, index, transported = false, installed = false) 
   }
 }
 
-export async function installCursor(options = {}) {
+export async function installSkill(options = {}) {
   if (Number(process.versions.node.split('.')[0]) < 20) throw new Error('Node.js 20 or later is required.');
+  const definition = hostDefinition(options.host);
   const bundle = await fs.realpath(options.bundle || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
-  const index = await readJson(path.join(bundle, 'integrity.json'));
-  validateIndex(index);
-  const payload = path.join(bundle, 'payload');
+  const index = await readJson(path.join(bundle, definition.indexFile));
+  validateIndex(index, definition.host);
+  const payload = path.join(bundle, definition.payloadDirectory);
   await assertFiles(payload, index, true);
   const version = await readJson(path.join(payload, payloadPath('publisher-version.json')));
   const adapter = await readJson(path.join(payload, payloadPath('host-adapter.json')));
-  if (version.version !== index.version || version.channel !== 'standard' || adapter.host !== 'cursor') {
+  if (version.version !== index.version || version.channel !== 'standard' || adapter.host !== definition.host) {
     throw new Error('Release version or host mismatch.');
   }
   const scope = options.scope || 'user';
@@ -127,10 +151,10 @@ export async function installCursor(options = {}) {
     throw new Error('Project scope requires --project <existing-directory>.');
   }
   const base = await fs.realpath(scope === 'project' ? options.project : options.homeDir || os.homedir());
-  const cursor = await directory(base, '.cursor');
-  const skills = await directory(cursor, 'skills');
+  const hostHome = await directory(base, definition.homeDirectory);
+  const skills = await directory(hostHome, 'skills');
   const target = path.join(skills, 'taku-publisher');
-  const lock = path.join(cursor, '.taku-publisher-install.lock');
+  const lock = path.join(hostHome, '.taku-publisher-install.lock');
   const handle = await fs.open(lock, 'wx', 0o600).catch((error) => {
     if (error.code === 'EEXIST') throw new Error('Another installer holds the lock.');
     throw error;
@@ -147,7 +171,7 @@ export async function installCursor(options = {}) {
         await inventory(target);
       } else {
         const previous = await readJson(record);
-        validateIndex(previous);
+        validateIndex(previous, definition.host);
         await assertFiles(target, previous, false, true);
         if (previous.version === index.version && JSON.stringify(previous.files) === JSON.stringify(index.files)) {
           return { ok: true, status: 'already_installed', version: index.version, target };
@@ -155,7 +179,7 @@ export async function installCursor(options = {}) {
         if (!options.update) throw new Error('Existing managed install; use --update to preserve a backup and replace it.');
       }
     }
-    staging = await fs.mkdtemp(path.join(cursor, '.publisher-install-'));
+    staging = await fs.mkdtemp(path.join(hostHome, '.publisher-install-'));
     for (const file of index.files) {
       const output = path.join(staging, file.path);
       await fs.mkdir(path.dirname(output), { recursive: true });
@@ -165,7 +189,7 @@ export async function installCursor(options = {}) {
     await assertFiles(staging, index);
     await fs.writeFile(path.join(staging, RECORD), `${JSON.stringify(index, null, 2)}\n`, { mode: 0o600 });
     if (await exists(target)) {
-      const backups = await directory(cursor, 'publisher-backups');
+      const backups = await directory(hostHome, 'publisher-backups');
       const backupRoot = await fs.mkdtemp(path.join(backups, 'taku-publisher-'));
       backup = path.join(backupRoot, 'skill');
       await fs.rename(target, backup);
@@ -173,7 +197,8 @@ export async function installCursor(options = {}) {
     try { await fs.rename(staging, target); staging = undefined; }
     catch (error) { if (backup) await fs.rename(backup, target); throw error; }
     return { ok: true, status: backup ? 'updated' : 'installed', version: index.version,
-      target, ...(backup ? { backup } : {}), next: 'Start a new Cursor Agent chat and invoke /taku-publisher.' };
+      host: definition.host, target, ...(backup ? { backup } : {}),
+      next: `Start a new ${definition.restartLabel} and invoke Taku Publisher.` };
   } finally {
     if (staging) await fs.rm(staging, { recursive: true, force: true });
     await handle.close();
@@ -181,10 +206,18 @@ export async function installCursor(options = {}) {
   }
 }
 
+export function installCursor(options = {}) {
+  return installSkill({ ...options, host: 'cursor' });
+}
+
+export function installAgentSkills(options = {}) {
+  return installSkill({ ...options, host: 'agent-skills' });
+}
+
 async function main() {
   const args = process.argv.slice(2);
   if (!args.length || args.includes('--help')) {
-    console.log('taku-publisher install --host cursor [--scope user|project --project <dir>] [--update] [--backup-existing]\nRequires Node.js >=20; preserves existing files.');
+    console.log('taku-publisher install --host cursor|agent-skills [--scope user|project --project <dir>] [--update] [--backup-existing]\nRequires Node.js >=20; preserves existing files.');
     return;
   }
   if (args.shift() !== 'install') throw new Error('Expected install command.');
@@ -197,8 +230,7 @@ async function main() {
     if (!keys[flag] || !args.length || args[0].startsWith('--')) throw new Error('Unknown or incomplete installer option.');
     options[keys[flag]] = args.shift();
   }
-  if (options.host !== 'cursor') throw new Error('Specify --host cursor.');
-  console.log(JSON.stringify(await installCursor(options), null, 2));
+  console.log(JSON.stringify(await installSkill(options), null, 2));
 }
 
 // npm bin symlinks and macOS /var -> /private/var aliases must still run main.
