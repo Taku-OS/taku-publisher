@@ -1011,10 +1011,10 @@ export function buildBuilderProfileSnapshot(draft) {
 
 function normalizeDraftModelUsage(modelUsage, limit = 4) {
   const empty = createEmptyModelUsageSummary();
-  const sourceRows = Array.isArray(modelUsage?.topModels) && modelUsage.topModels.length
-    ? modelUsage.topModels
-    : Array.isArray(modelUsage?.models)
-      ? modelUsage.models
+  const sourceRows = Array.isArray(modelUsage?.models) && modelUsage.models.length
+    ? modelUsage.models
+    : Array.isArray(modelUsage?.topModels)
+      ? modelUsage.topModels
       : [];
   const candidateRows = sourceRows
     .map((row) => ({
@@ -1314,18 +1314,32 @@ function normalizeDraftUsagePeriod(period) {
     label: cleanText(period.label || period.periodLabel, 80) || '',
     startsAt: cleanText(period.startsAt, 80) || undefined,
     endsAt: cleanText(period.endsAt, 80) || undefined,
+    usageSchema: cleanText(period.usageSchema, 100) || undefined,
+    totalInputTokens: Math.max(0, Math.floor(Number(period.totalInputTokens) || 0)),
+    totalOutputTokens: Math.max(0, Math.floor(Number(period.totalOutputTokens) || 0)),
+    totalCacheReadTokens: Math.max(0, Math.floor(Number(period.totalCacheReadTokens) || 0)),
+    totalCacheCreationTokens: Math.max(0, Math.floor(Number(period.totalCacheCreationTokens) || 0)),
+    totalReasoningTokens: Math.max(0, Math.floor(Number(period.totalReasoningTokens) || 0)),
     totalTokens: Math.max(0, Math.floor(Number(period.totalTokens) || 0)),
     sessionCount: Math.max(0, Math.floor(Number(period.sessionCount) || 0)),
     eventCount: Math.max(0, Math.floor(Number(period.eventCount) || 0)),
+    modelUsage: normalizeDraftModelUsage(period.modelUsage, 20),
     sources: (Array.isArray(period.sources) ? period.sources : [])
       .filter((source) => source?.totalTokens > 0)
       .map((source) => ({
-        source: source.source,
-        label: source.label,
-        totalTokens: source.totalTokens,
-        sessionCount: source.sessionCount,
+        source: cleanText(source.source, 40) || '',
+        label: cleanText(source.label, 80) || '',
+        totalInputTokens: Math.max(0, Math.floor(Number(source.totalInputTokens) || 0)),
+        totalOutputTokens: Math.max(0, Math.floor(Number(source.totalOutputTokens) || 0)),
+        totalCacheReadTokens: Math.max(0, Math.floor(Number(source.totalCacheReadTokens) || 0)),
+        totalCacheCreationTokens: Math.max(0, Math.floor(Number(source.totalCacheCreationTokens) || 0)),
+        totalReasoningTokens: Math.max(0, Math.floor(Number(source.totalReasoningTokens) || 0)),
+        totalTokens: Math.max(0, Math.floor(Number(source.totalTokens) || 0)),
+        sessionCount: Math.max(0, Math.floor(Number(source.sessionCount) || 0)),
+        modelUsage: normalizeDraftModelUsage(source.modelUsage, 20),
         estimatedCost: normalizeDraftEstimatedCost(source.estimatedCost || source.modelUsage?.estimatedCost),
-      })),
+      }))
+      .filter((source) => source.source),
   };
 }
 
