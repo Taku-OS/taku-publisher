@@ -1,6 +1,6 @@
-# SubApp Action 架构
+# Taku App Action 架构
 
-SubApp 用 `taku.manifest.json` 声明 Taku Host 可以发现和调用的能力。The manifest is the sole Host Action catalog；运行时 registry 只负责执行已经由 manifest 声明的 Action，不能反向成为能力发现入口。
+Taku App 用 `taku.manifest.json` 声明 Taku Host 可以发现和调用的能力。The manifest is the sole Host Action catalog；运行时 registry 只负责执行已经由 manifest 声明的 Action，不能反向成为能力发现入口。
 
 ## 唯一的 Host 调用链
 
@@ -15,7 +15,7 @@ taku.manifest.json
   -> durable store / managed service
 ```
 
-- Host 从 manifest 读取 Action 定义，不从 SubApp 的 HTTP runtime 拉取 catalog。
+- Host 从 manifest 读取 Action 定义，不从 Taku App 的 HTTP runtime 拉取 catalog。
 - `/__taku/rpc` 是唯一的 Host Action transport，必须在 `TAKU_CONTROL_TOKEN` 缺失、空或不匹配时 fail closed。
 - RPC route 模块顶层不得静态 side-effect import `src/actions/index.ts`。只有 token 存在且 request header 通过 `node:crypto` 的 `timingSafeEqual` 校验后，POST handler 才能 `await import('@/actions/index')`，并且必须先于任何 `hasAction` 或 `executeAction`。
 - `TAKU_CONTROL_TOKEN` 只证明请求来自本机 Taku Host transport。The control token is not user identity, app ownership, entitlement, or billing authority.
@@ -28,7 +28,7 @@ taku.manifest.json
 
 If the real Taku-controlled server authority contract is absent, the capability must remain visibly blocked. 不要用本地环境变量、客户端传入的 ID、隐藏 UI 状态或 Host control token 猜测授权。
 
-Host Action 仅操作当前 SubApp 私有本地数据时，仍需在 server-only domain operation 中做输入验证、领域约束与持久化。Browser-originated mutation remains blocked unless a real Taku-controlled server authority contract authenticates and authorizes it；`Server Action`、`server-only` 与领域专属 Route Handler 都不能单独充当认证边界。
+Host Action 仅操作当前 Taku App 私有本地数据时，仍需在 server-only domain operation 中做输入验证、领域约束与持久化。Browser-originated mutation remains blocked unless a real Taku-controlled server authority contract authenticates and authorizes it；`Server Action`、`server-only` 与领域专属 Route Handler 都不能单独充当认证边界。
 
 ## Manifest 与实现
 

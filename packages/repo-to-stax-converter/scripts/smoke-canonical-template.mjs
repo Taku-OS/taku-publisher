@@ -10,6 +10,7 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const explicit = process.env.TAKU_TEMPLATE_ROOT?.trim();
 const candidates = [
   explicit,
+  resolve(packageRoot, 'template', 'takuai-template'),
   resolve(packageRoot, '..', 'takuai-template-main'),
   resolve(packageRoot, '..', 'template'),
 ].filter(Boolean);
@@ -40,7 +41,7 @@ try {
     const provenance = JSON.parse(
       await readFile(join(result.workspaceRoot, '.taku', 'migration.json'), 'utf8')
     );
-    if (!result.workspaceValidation.ok || provenance.template.version !== '0.3.2') {
+    if (!result.workspaceValidation.ok || provenance.template.version !== '0.3.4') {
       throw new Error(`Canonical ${fixture.directory} smoke did not satisfy the workspace contract.`);
     }
     reports.push({

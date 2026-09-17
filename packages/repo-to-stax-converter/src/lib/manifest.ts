@@ -1,7 +1,9 @@
+import { assertRuntimeCapabilities, type RuntimeCapabilities } from './runtime-capabilities.js';
 import { join } from 'node:path';
 import { readJsonIfExists, writeJson } from './fs.js';
 
 interface RuntimeManifest {
+  runtimeCapabilities?: RuntimeCapabilities;
   name?: string;
   description?: string;
   version?: string;
@@ -27,6 +29,10 @@ export async function patchTakuManifest(params: {
   };
   if (source.llm && typeof source.llm === 'object' && !Array.isArray(source.llm)) {
     manifest.llm = source.llm;
+  }
+  if (source.runtimeCapabilities !== undefined) {
+    assertRuntimeCapabilities(source.runtimeCapabilities);
+    manifest.runtimeCapabilities = source.runtimeCapabilities;
   }
   await writeJson(manifestPath, manifest);
 }

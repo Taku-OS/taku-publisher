@@ -8,12 +8,15 @@
  * - 不启动 Drizzle Studio（避免拖慢速度）
  *
  * Ready marker（Taku 解析）：
- *   [TAKUAI-READY] kind:edit,port:3000,url:http://localhost:3000
+ *   [TAKUAI-READY] kind:edit,port:3000,url:http://127.0.0.1:3000
  */
 
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+
+const HOST_ATTESTATION_PATH = '/__taku/host-attestation/verify';
+const HOST_ATTESTATION_WARMUP_TIMEOUT_MS = 60_000;
 
 const colors = {
   green: '\x1b[32m',
@@ -100,9 +103,35 @@ async function waitForHttpReady(url, timeoutMs, childProcess) {
   return false;
 }
 
+async function warmHostAttestationRoute(baseUrl, childProcess) {
+  if (
+    childProcess &&
+    (childProcess.exitCode !== null || childProcess.signalCode !== null)
+  ) {
+    return false;
+  }
+  try {
+    const response = await fetch(`${baseUrl}${HOST_ATTESTATION_PATH}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+      signal: AbortSignal.timeout(HOST_ATTESTATION_WARMUP_TIMEOUT_MS),
+    });
+    const result = await response.json().catch(() => null);
+    return (
+      (response.status === 401 || response.status === 503) &&
+      result !== null &&
+      typeof result === 'object' &&
+      result.verified === false
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function startEdit() {
   const port = getPortFromEnv();
-  const url = `http://localhost:${port}`;
+  const url = `http://127.0.0.1:${port}`;
   const strictReady = String(process.env.TAKU_STRICT_READY ?? '0') === '1';
   let stopRequested = false;
 
@@ -113,7 +142,7 @@ async function startEdit() {
   log(colors.blue, '[TAKUAI-SERVER-START]', `Starting dev server on port ${port}...`);
 
   // pnpm v10: do NOT use `--` here, otherwise it will be forwarded to `next dev` and break arg parsing.
-  const child = spawn('pnpm', ['run', 'dev', '-p', String(port)], {
+  const child = spawn('pnpm', ['run', 'dev', '-p', String(port), '-H', '127.0.0.1'], {
     cwd: process.cwd(),
     env: { ...process.env, DEV_PORT: String(port), PORT: String(port) },
     stdio: ['inherit', 'pipe', 'pipe'],
@@ -127,6 +156,21 @@ async function startEdit() {
   const ready = await waitForHttpReady(url, 10 * 60_000, child);
   if (!ready) {
     log(colors.red, '[TAKUAI-ERROR]', `Edit server failed to become ready: ${url}`);
+    try {
+      child.kill('SIGTERM');
+    } catch {
+      // ignore
+    }
+    process.exit(1);
+  }
+
+  const attestationReady = await warmHostAttestationRoute(url, child);
+  if (!attestationReady) {
+    log(
+      colors.red,
+      '[TAKUAI-ERROR]',
+      `Host attestation route failed to become ready: ${url}${HOST_ATTESTATION_PATH}`
+    );
     try {
       child.kill('SIGTERM');
     } catch {
@@ -204,4 +248,3 @@ startEdit().catch((err) => {
   log(colors.red, '[TAKUAI-FULL-ERROR]', err instanceof Error ? err.message : String(err));
   process.exit(1);
 });
-

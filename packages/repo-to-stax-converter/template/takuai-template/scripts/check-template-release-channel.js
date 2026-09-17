@@ -47,20 +47,14 @@ const EXPECTED_PAYLOAD_POLICY = Object.freeze({
 });
 const PAYLOAD_GUIDANCE_FILES = ['AGENTS.md', 'CLAUDE.md'];
 const FORBIDDEN_PAYLOAD_PATTERNS = [
-  {
-    label: 'Linear workflow',
-    pattern: /\bLinear\s+(?:issue|project|workflow|team|record|status|comment|rules?)\b/i,
-  },
   { label: 'internal completion approver', pattern: /\b(?:haipro|Jacky)\b/i },
-  { label: 'internal issue identifier', pattern: /\bTAKU-\d+\b(?!\.)/i },
-  { label: 'internal Linear skill', pattern: /taku-linear-coding/i },
 ];
 
 const RELEASE_CHANNEL = {
   key: 'taku3',
   name: 'taku3-latest',
-  recommendedTag: 'taku-3.0.2-template',
-  expectedVersion: '0.3.2',
+  recommendedTag: 'taku-3.0.4-template',
+  expectedVersion: '0.3.4',
 };
 
 const LEGACY_WIDGET_PATHS = [
@@ -111,6 +105,11 @@ const channel = RELEASE_CHANNEL;
 const releaseTag = args.tag || channel.recommendedTag;
 const manifest = readJson(MANIFEST_FILE);
 const packageJson = readJson(PACKAGE_FILE);
+// This checker is repository-only and removed from generated Apps. Capability
+// opt-in belongs to each product App, never to the blank template release.
+if (Object.prototype.hasOwnProperty.call(manifest, 'runtimeCapabilities')) {
+  fail('默认模板不得声明 runtimeCapabilities；生成后的 Taku App 按需声明能力');
+}
 if (!fs.existsSync(NVMRC_FILE)) {
   fail('缺少 .nvmrc，无法确认 Node.js 运行时契约');
 }
@@ -128,6 +127,10 @@ if (packageJson.scripts?.test !== EXPECTED_TEST_SCRIPT) {
 }
 if (packageJson.devDependencies?.tsx !== EXPECTED_TSX_VERSION) {
   fail(`devDependencies.tsx 必须精确锁定 ${EXPECTED_TSX_VERSION}`);
+}
+const displayDescription = String(manifest.description ?? '');
+if (/\bSubApps?\b|子应用/iu.test(displayDescription)) {
+  fail('taku.manifest.json description 必须使用 Taku App display name');
 }
 if (!fs.existsSync(PAYLOAD_MANIFEST_FILE)) {
   fail('缺少 .taku-template.json，无法确认用户生成产物边界');

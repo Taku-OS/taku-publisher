@@ -14,6 +14,7 @@ import {
   REPO_TO_STAX_AGENT_HANDOFF_PROTOCOL,
   REPO_TO_STAX_CONVERSION_CHECK_PROTOCOL,
 } from '../src/agent-cli.js';
+import { validateSubAppWorkspace } from '../src/lib/validator.js';
 import { computeTreeDigest } from '../src/lib/tree-digest.js';
 
 test('prepares a validated candidate from the bundled pinned template', async () => {
@@ -48,7 +49,7 @@ test('prepares a validated candidate from the bundled pinned template', async ()
     assert.equal(result.protocol, REPO_TO_STAX_PREPARE_PROTOCOL);
     assert.equal(result.sourceDigest, sourceDigest);
     assert.equal((result.workspaceValidation as Record<string, unknown>).ok, true);
-    assert.equal((result.template as Record<string, unknown>).version, '0.3.2');
+    assert.equal((result.template as Record<string, unknown>).version, '0.3.4');
     const workspaceRoot = String(result.workspaceRoot);
     assert.match(await readFile(join(workspaceRoot, 'STAX_CONVERSION_PLAN.md'), 'utf8'), /One-Shot Agent Checklist/);
     assert.match(await readFile(join(workspaceRoot, '.taku', 'migration.json'), 'utf8'), /taku\.subapp-migration\.v2/);
@@ -65,6 +66,31 @@ test('prepares a validated candidate from the bundled pinned template', async ()
       join(workspaceRoot, 'src', 'app', 'page.tsx'),
       'export default function Page() { return <main>Converted workflow</main>; }\n',
     );
+    const templateOnly = await validateSubAppWorkspace(workspaceRoot, { level: 'conversion' });
+    assert.ok(templateOnly.findings.some(finding => finding.code === 'conversion.product-test-missing'));
+    const manifestPath = join(workspaceRoot, 'taku.manifest.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    assert.equal(manifest.runtimeCapabilities, undefined);
+    manifest.runtimeCapabilities = {
+      protocol: 'taku.agent.run/v2',
+      operations: [{ id: 'media.image.generate', revision: 1 }],
+    };
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    assert.equal((await validateSubAppWorkspace(workspaceRoot, { level: 'workspace' })).ok, true);
+    manifest.runtimeCapabilities.operations[0].provider = 'client-selected-provider';
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    assert.ok((await validateSubAppWorkspace(workspaceRoot, { level: 'workspace' })).findings
+      .some(finding => finding.code === 'workspace.invalid-runtime-capabilities'));
+    delete manifest.runtimeCapabilities.operations[0].provider;
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    for (const protectedFile of ['src/lib/taku-runtime/client.ts', 'src/app/api/taku/host-attestation/verify/route.ts', 'next.config.ts']) {
+      const target = join(workspaceRoot, protectedFile);
+      const approved = await readFile(target, 'utf8');
+      await writeFile(target, approved + '\n// unauthorized modification\n');
+      assert.equal((await validateSubAppWorkspace(workspaceRoot, { level: 'workspace' })).ok, false, protectedFile);
+      await writeFile(target, approved);
+    }
+
     await writeFile(
       join(workspaceRoot, 'src', 'converted-workflow.test.ts'),
       "import assert from 'node:assert/strict';\nimport test from 'node:test';\ntest('converted workflow', () => assert.equal(2 + 2, 4));\n",
