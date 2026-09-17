@@ -30,7 +30,9 @@ const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
 function hostDefinition(value) {
   const host = String(value || '').trim().toLowerCase();
-  if (!Object.hasOwn(HOSTS, host)) throw new Error('Specify --host cursor or --host agent-skills.');
+  if (!Object.prototype.hasOwnProperty.call(HOSTS, host)) {
+    throw new Error('Specify --host cursor or --host agent-skills.');
+  }
   const definition = HOSTS[host];
   return { host, ...definition };
 }
