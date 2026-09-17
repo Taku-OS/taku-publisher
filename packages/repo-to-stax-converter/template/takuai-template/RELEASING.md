@@ -5,7 +5,7 @@
 当前唯一受支持的模板线是 Taku 3：
 
 - GitHub `/releases/latest` 必须指向最新 Taku 3 模板 Release。
-- 每个版本仍创建不可变 tag（当前为 `taku-3.0.3-template`），用于固定版本、复现与回滚。
+- 每个版本仍创建不可变 tag（当前为 `taku-3.0.4-template`），用于固定版本、复现与回滚。
 
 Taku 2 模板通道已经下线；`v0.1.24` 等历史 tag/release 只作为历史记录保留，不再占用 `Latest`，也不再接受兼容发布。
 Taku App widget 协议已经移除；Taku 3 模板不得包含 manifest `widgets` / widget `refresh` 字段、widget worker/refresher scripts 或示例 widget 文件。桌面小组件由 Taku Desktop 的 DynamicWidget 子系统负责。
@@ -32,7 +32,7 @@ Taku App widget 协议已经移除；Taku 3 模板不得包含 manifest `widgets
 
 ### 1) 版本号更新
 
-- `package.json`：`version`（本次为 `0.3.3`）
+- `package.json`：`version`（本次为 `0.3.4`）
 - `taku.manifest.json`：`version`（必须与 package 版本一致）
 - `CHANGELOG.md`：新增对应版本段落（从 `Unreleased` 下沉）
 
@@ -55,9 +55,9 @@ pnpm run release:check
 ```bash
 git switch -c release/subapp-migration-workspace
 git add -A
-git commit -m "chore: release taku-3.0.3-template"
+git commit -m "chore: release taku-3.0.4-template"
 git push -u origin release/subapp-migration-workspace
-gh pr create --base main --title "Release taku-3.0.3-template"
+gh pr create --base main --title "Release taku-3.0.4-template"
 ```
 
 `main` 是受保护分支，必须通过 PR 合并，不要直接 push。
@@ -69,8 +69,8 @@ gh pr create --base main --title "Release taku-3.0.3-template"
 ```bash
 git switch main
 git pull --ff-only origin main
-git tag -a taku-3.0.3-template -m "taku-3.0.3-template"
-git push origin refs/tags/taku-3.0.3-template
+git tag -a taku-3.0.4-template -m "taku-3.0.4-template"
+git push origin refs/tags/taku-3.0.4-template
 ```
 
 只推送当前目标 tag，不使用 `git push --tags`。
@@ -82,8 +82,8 @@ git push origin refs/tags/taku-3.0.3-template
 #### 方式 A：GitHub Web UI
 
 - 进入 GitHub 仓库 → Releases → Draft a new release
-- Tag：`taku-3.0.3-template`
-- Title：`taku-3.0.3-template`
+- Tag：`taku-3.0.4-template`
+- Title：`taku-3.0.4-template`
 - 勾选：**Set as the latest release**
 - 取消勾选：`pre-release`（必须）
 - Release notes：复制 `CHANGELOG.md` 对应段落即可
@@ -91,7 +91,7 @@ git push origin refs/tags/taku-3.0.3-template
 #### 方式 B：GitHub CLI（gh）
 
 ```bash
-gh release create taku-3.0.3-template --title "taku-3.0.3-template" --notes "See CHANGELOG.md" --latest --verify-tag
+gh release create taku-3.0.4-template --title "taku-3.0.4-template" --notes "See CHANGELOG.md" --latest --verify-tag
 ```
 
 > 说明：你也可以把 `CHANGELOG.md` 中对应版本段落作为 `--notes` 内容粘进去。

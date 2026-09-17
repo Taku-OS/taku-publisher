@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.3.4
+
+- **Generated App checks**: 将默认模板不得预申请 AI 能力及不得包含 QA 页面这两项约束收回仓库发布检查；生成后的 Taku App 可以按产品需求声明 Host Runtime 能力，不再因此被模板测试误报失败。
+- **Cancellation guidance**: 为 Builder 开发指南和运行示例补充显式取消、重复点击保护及同任务取消确认重试；取消回执不冒充最终结果，不会自动启动替代任务。
+- **Cancellation status**: 由原任务订阅确认最终状态，已取消结果单独呈现；页面销毁或迟到 RPC 回执不会覆盖终态。
+- **Release channel**: 发布新的不可变 `taku-3.0.4-template`；保留历史 `taku-3.0.3-template` 不变。
+
 ## 0.3.3
 
 - **Taku App naming**: 统一模板、生成开发指南和 Skills 的产品称呼为 Taku App；保留既有协议、路径与 Skill ID，避免破坏已生成应用的兼容性

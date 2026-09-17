@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createRunCancellation, type RunCancellationView } from './run-cancellation';
 import {
   closeTakuAgentClient,
   createTakuAgentAssetPlayback,
@@ -99,7 +100,8 @@ type MediaPreview = {
 type OperationView =
   | { kind: 'idle' }
   | { kind: 'starting' }
-  | { kind: 'running'; runId: string; status: string; delta: string }
+  | { kind: 'running'; runId: string; status: string; delta: string; cancellation: RunCancellationView }
+  | { kind: 'cancelled' }
   | { kind: 'succeeded'; runId: string; text?: string; previews: MediaPreview[] }
   | { kind: 'failed'; error: FixtureError };
 
@@ -234,11 +236,13 @@ async function waitForTerminalRun(input: {
 
     // Settle the business result first. Journal cleanup remains best effort.
     if (message.event.type === 'run.result') {
+      input.onProgress('succeeded');
       resolveTerminal();
       safelyAdvanceJournal(input.journal, input.entryId, message, input.onWarning);
       return;
     }
     if (message.event.type === 'run.error') {
+      input.onProgress('failed');
       rejectTerminal(new TakuAgentError(message.event.error));
       safelyAdvanceJournal(input.journal, input.entryId, message, input.onWarning);
       return;
@@ -273,6 +277,7 @@ async function waitForTerminalRun(input: {
 
   try {
     if (isTerminal(subscription.snapshot)) {
+      input.onProgress(subscription.snapshot.state);
       try {
         input.journal.clear(input.entryId);
       } catch (error) {
@@ -391,6 +396,7 @@ function getCatalogDescriptor(
 export default function AgentRuntimeQaPanel() {
   const clientRef = useRef<TakuAgentClient | null>(null);
   const inFlightRef = useRef(new Set<TakuAgentOperationId>());
+  const cancellationsRef = useRef(new Map<TakuAgentOperationId, ReturnType<typeof createRunCancellation>>());
   const [capabilityView, setCapabilityView] = useState<CapabilityView>({ kind: 'loading' });
   const [operationViews, setOperationViews] = useState<
     Partial<Record<TakuAgentOperationId, OperationView>>
@@ -412,6 +418,8 @@ export default function AgentRuntimeQaPanel() {
   useEffect(() => {
     void refreshCapabilities();
     return () => {
+      for (const control of cancellationsRef.current.values()) control.dispose();
+      cancellationsRef.current.clear();
       closeTakuAgentClient();
       clientRef.current = null;
     };
@@ -460,6 +468,19 @@ export default function AgentRuntimeQaPanel() {
           input: SAMPLE_INPUTS[operation] as TakuAgentOperationInputMap[K],
         });
         const runId = restored.cursor.snapshot.runId;
+        const cancellation = createRunCancellation({
+          runId,
+          state: restored.cursor.snapshot.state,
+          cancel: id => client.cancel(id),
+          onChange(view) {
+            setOperationViews(current => {
+              const previous = current[operation];
+              if (previous?.kind !== 'running' || previous.runId !== runId) return current;
+              return { ...current, [operation]: { ...previous, cancellation: view } };
+            });
+          },
+        });
+        cancellationsRef.current.set(operation, cancellation);
         setOperationViews(current => ({
           ...current,
           [operation]: {
@@ -467,6 +488,7 @@ export default function AgentRuntimeQaPanel() {
             runId,
             status: restored.cursor.snapshot.state,
             delta: '',
+            cancellation: cancellation.view,
           },
         }));
         if (restored.cleanupError) {
@@ -479,6 +501,7 @@ export default function AgentRuntimeQaPanel() {
           entryId: restored.journalEntryId,
           cursor: restored.cursor,
           onProgress(status, delta = '') {
+            cancellation.observe(status);
             setOperationViews(current => {
               const previous = current[operation];
               return {
@@ -487,6 +510,7 @@ export default function AgentRuntimeQaPanel() {
                   kind: 'running',
                   runId,
                   status,
+                  cancellation: cancellation.view,
                   delta:
                     previous?.kind === 'running'
                       ? `${previous.delta}${delta}`.slice(-2_000)
@@ -510,9 +534,13 @@ export default function AgentRuntimeQaPanel() {
       } catch (error) {
         setOperationViews(current => ({
           ...current,
-          [operation]: { kind: 'failed', error: toFixtureError(error) },
+          [operation]: error instanceof FixtureCancelledError
+            ? { kind: 'cancelled' }
+            : { kind: 'failed', error: toFixtureError(error) },
         }));
       } finally {
+        cancellationsRef.current.get(operation)?.dispose();
+        cancellationsRef.current.delete(operation);
         inFlightRef.current.delete(operation);
       }
     },
@@ -618,6 +646,7 @@ export default function AgentRuntimeQaPanel() {
                   descriptor={getCatalogDescriptor(capabilityView.value, definition.id)}
                   view={operationViews[definition.id] ?? { kind: 'idle' }}
                   onRun={runOperation}
+                  onCancel={operation => cancellationsRef.current.get(operation)?.request()}
                 />
               ))}
             </div>
@@ -658,6 +687,7 @@ function OperationCard({
   descriptor,
   view,
   onRun,
+  onCancel,
 }: {
   operation: TakuAgentOperationId;
   fallbackTitle: string;
@@ -665,6 +695,7 @@ function OperationCard({
   descriptor?: TakuAgentOperationDescriptor;
   view: OperationView;
   onRun: <K extends TakuAgentOperationId>(operation: K) => Promise<void>;
+  onCancel: (operation: TakuAgentOperationId) => Promise<void> | undefined;
 }) {
   const busy = view.kind === 'starting' || view.kind === 'running';
   return (
@@ -711,7 +742,33 @@ function OperationCard({
               ? `${view.status}…`
               : 'Run or resume sample'}
         </button>
+        {view.kind === 'running' && view.cancellation.phase !== 'terminal' && (
+          <div data-slot="agent-runtime-qa-cancel-controls" className="space-y-2">
+            <button
+              data-slot="button-agent-runtime-qa-cancel"
+              type="button"
+              disabled={view.cancellation.phase !== 'available'}
+              onClick={() => void onCancel(operation)}
+              className="w-full rounded-xl border border-zinc-300 px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {view.cancellation.phase === 'available'
+                ? view.cancellation.error ? 'Retry cancellation' : 'Cancel run'
+                : 'Cancellation requested — waiting for Host…'}
+            </button>
+            {view.cancellation.error && (
+              <p role="alert" className="text-sm text-amber-800">
+                {view.cancellation.error}. The original run is still being tracked; retry cancellation.
+              </p>
+            )}
+          </div>
+        )}
       </div>
+
+      {view.kind === 'cancelled' && (
+        <output data-slot="agent-runtime-qa-cancelled" className="block border-t border-zinc-100 p-4 text-sm text-zinc-600">
+          Cancelled by the Host. No result was requested and no replacement run was started.
+        </output>
+      )}
 
       {view.kind === 'running' && view.delta && (
         <pre className="max-h-32 overflow-auto border-t border-zinc-100 bg-zinc-50 p-4 text-xs text-zinc-700">

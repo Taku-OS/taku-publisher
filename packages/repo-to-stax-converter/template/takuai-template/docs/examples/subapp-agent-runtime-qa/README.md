@@ -7,7 +7,7 @@
 在独立测试分支或一次性测试应用中完成下面三步，不要把这些临时接线留在产品页面：
 
 1. 备份根目录 `taku.manifest.json`，再临时用 `src/lib/taku-runtime/fixtures/agent-runtime-qa.manifest.json` 替换它。
-2. 将同目录的 `AgentRuntimeQaPanel.tsx` 复制到 `src/components/agent-runtime-qa-panel.tsx`。
+2. 将同目录的 `AgentRuntimeQaPanel.tsx` 复制到 `src/components/agent-runtime-qa-panel.tsx`，并将 `run-cancellation.ts` 一并复制到 `src/components/run-cancellation.ts`。
 3. 新建一个仅本地使用的 Next 页面，并渲染该组件：
 
    ```tsx
@@ -28,6 +28,7 @@
 - manifest 声明四项能力，但声明本身不等于授权；UI 只渲染 Host 返回的 grant。
 - 每个 operation 使用独立恢复账本。同一逻辑请求在投递结果未知或页面刷新后复用原 idempotency key，不会静默创建第二个 run。
 - 从 start cursor 的 `lastSequence` 订阅 replay + live event，等待真实 `run.result` / `run.error` / cancelled 终态，并将订阅错误作为当前等待的失败。
+- 运行中可点击「Cancel run」，只对当前 `runId` 调用 SDK `cancel()`；点击后防止重复提交，仍由原订阅确认真正取消。取消请求出错可重试取消同一任务，不重新生成；若任务先成功则保留成功结果，迟到的取消回执不会覆盖它。刷新或卸载不是取消。
 - 大文本只通过 `contentRef` + `readContentText()` 分页读取；不会自己拼接特权请求。
 - 图片和视频在 React state 中保留不透明 `assetRef` 及生成时的已认证 `recoveryScope`。`createTakuAgentAssetPlayback()` 管理短期 URL：到期前续签、网络错误一次补签、隐藏时暂停与显示时恢复；视频换源后恢复位置及播放/暂停状态。失败可点「Retry playback only」，不会重新生成。
 - 播放 URL 不持久化；完成后的预览仅在当前页面保留，整页刷新不会自动重建已清理账本的完成结果。不得把刷新页面当成已完成资产的恢复机制。

@@ -1,6 +1,6 @@
 {
   "name": "takuai-template",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "private": true,
   "packageManager": "pnpm@10.15.1",
   "scripts": {
@@ -15,7 +15,7 @@
     "prebuild": "pnpm run check:slots",
     "build": "next build",
     "start": "next start",
-    "release:check": "node scripts/check-template-release-channel.js --channel=taku3 --tag=taku-3.0.3-template",
+    "release:check": "node scripts/check-template-release-channel.js --channel=taku3 --tag=taku-3.0.4-template",
     "studio": "drizzle-kit studio",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",

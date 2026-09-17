@@ -49,7 +49,7 @@ test('prepares a validated candidate from the bundled pinned template', async ()
     assert.equal(result.protocol, REPO_TO_STAX_PREPARE_PROTOCOL);
     assert.equal(result.sourceDigest, sourceDigest);
     assert.equal((result.workspaceValidation as Record<string, unknown>).ok, true);
-    assert.equal((result.template as Record<string, unknown>).version, '0.3.3');
+    assert.equal((result.template as Record<string, unknown>).version, '0.3.4');
     const workspaceRoot = String(result.workspaceRoot);
     assert.match(await readFile(join(workspaceRoot, 'STAX_CONVERSION_PLAN.md'), 'utf8'), /One-Shot Agent Checklist/);
     assert.match(await readFile(join(workspaceRoot, '.taku', 'migration.json'), 'utf8'), /taku\.subapp-migration\.v2/);

@@ -2,9 +2,9 @@
   "schemaVersion": "taku.bundled-subapp-template.v1",
   "sourceKind": "github",
   "sourceUrl": "https://github.com/Taku-OS/takuai-template-main",
-  "requestedRef": "taku-3.0.3-template",
-  "resolvedRef": "taku-3.0.3-template",
-  "commit": "fbe79d41ba1592336b9a915877bc6c2bbd1cfd03",
+  "requestedRef": "taku-3.0.4-template",
+  "resolvedRef": "taku-3.0.4-template",
+  "commit": "834f1103599fe96ba1e98878bd5890b0d72d0b34",
   "dirty": false,
-  "version": "0.3.3"
+  "version": "0.3.4"
 }

@@ -41,7 +41,7 @@ try {
     const provenance = JSON.parse(
       await readFile(join(result.workspaceRoot, '.taku', 'migration.json'), 'utf8')
     );
-    if (!result.workspaceValidation.ok || provenance.template.version !== '0.3.3') {
+    if (!result.workspaceValidation.ok || provenance.template.version !== '0.3.4') {
       throw new Error(`Canonical ${fixture.directory} smoke did not satisfy the workspace contract.`);
     }
     reports.push({

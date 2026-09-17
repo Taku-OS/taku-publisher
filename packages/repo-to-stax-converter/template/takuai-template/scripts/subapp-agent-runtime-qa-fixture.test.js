@@ -27,13 +27,9 @@ const fixtureManifestPath = path.join(
   'agent-runtime-qa.manifest.json'
 );
 
-test('Agent Runtime QA remains opt-in and cannot alter the default SubApp surface', () => {
-  const defaultManifest = JSON.parse(fs.readFileSync(path.join(root, 'taku.manifest.json'), 'utf8'));
+test('Agent Runtime QA fixture declares its exact supported operation revisions', () => {
   const fixtureManifest = JSON.parse(fs.readFileSync(fixtureManifestPath, 'utf8'));
-  const rootPage = fs.readFileSync(path.join(root, 'src', 'app', 'page.tsx'), 'utf8');
 
-  assert.equal('runtimeCapabilities' in defaultManifest, false);
-  assert.equal(rootPage.includes('AgentRuntimeQaPanel'), false);
   assert.deepEqual(
     fixtureManifest.runtimeCapabilities.operations.map(operation => `${operation.id}@${operation.revision}`),
     [

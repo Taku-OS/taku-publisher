@@ -68,7 +68,7 @@ const TEST_CONTRACTS = [
   },
 ] as const;
 // Approved authority bytes from the current Taku template commit
-// fbe79d41ba1592336b9a915877bc6c2bbd1cfd03. Converted business Actions may change;
+// 834f1103599fe96ba1e98878bd5890b0d72d0b34. Converted business Actions may change;
 // Host routing, module resolution, and Action authority infrastructure may not.
 const TEMPLATE_AUTHORITY_CONTRACTS = [
   {
@@ -201,9 +201,10 @@ const TEMPLATE_RUNTIME_TEST_DIGESTS = new Set([
   'eb09839b371f15146c022a540caf9e8ac6c63c164207269ec259913bee9bcb1d',
   '431624062ae48c84b1c8f4fe45b98dbe9c7c877debac236d24425ed8378e66e3',
   '556cd3bd674d9b99d2d875132cedea5bc0cee51cac19de322e5a284be849747a',
-  'c57a5103e0627b488366e61297e236e3ff0e4d1cbabbed1365f4d131627caa60',
+  'fb1084653c952c5ef7bf59eebd1520f621de43255f6b7b14b309339b908b2579',
   '735c27da8a092d966d1775fc4675601223f581db11c262dca82a0ae6d82d3a25',
   'a9f05c2269d496a34fecfc0ea4145b9d0b8e0b50a86f02febb11d90b4882c046',
+  '64476310a04ab886e7790cd9aeea30f07e82c01ce2c584bfd379c6f1b333bf5f',
 ]);
 const TEMPLATE_RPC_TEST_PATH = 'app/api/taku/rpc/route.test.ts';
 const TEMPLATE_RPC_TEST_DIGEST =

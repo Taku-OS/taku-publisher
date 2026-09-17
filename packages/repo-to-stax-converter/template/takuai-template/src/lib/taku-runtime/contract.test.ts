@@ -586,7 +586,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-test('canonical v2 golden messages parse and only the QA fixture opts in', async () => {
+test('canonical v2 golden messages parse and the QA fixture declares its operations', async () => {
   assert.equal(GOLDEN.contractRevision, TAKU_AGENT_CONTRACT_REVISION);
   assert.deepEqual(parseTakuAgentHostMessage(GOLDEN.helloSuccess), GOLDEN.helloSuccess);
   assert.deepEqual(parseTakuAgentHostMessage(GOLDEN.helloFailure), GOLDEN.helloFailure);
@@ -617,13 +617,9 @@ test('canonical v2 golden messages parse and only the QA fixture opts in', async
     assert.equal(serializedGolden.includes(`"${forbidden}"`), false);
   }
 
-  const defaultManifest = JSON.parse(
-    readFileSync(new URL('../../../taku.manifest.json', import.meta.url), 'utf8')
-  ) as Record<string, unknown>;
   const qaManifest = JSON.parse(
     readFileSync(new URL('./fixtures/agent-runtime-qa.manifest.json', import.meta.url), 'utf8')
   ) as Record<string, unknown>;
-  assert.equal('runtimeCapabilities' in defaultManifest, false);
   assert.deepEqual(qaManifest.runtimeCapabilities, {
     protocol: TAKU_AGENT_PROTOCOL,
     operations: [
