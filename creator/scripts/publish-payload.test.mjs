@@ -209,6 +209,101 @@ test('publishes safe per-host usage cost summaries for activity ranking', async 
   assert.equal(payload.profileSnapshot.usage.sources[0].estimatedCost.totalUsd, 4.25);
 });
 
+test('publishes the last 90 day source and model token breakdown for AI Burn', async () => {
+  const privatePath = path.join(path.sep, 'Users', 'example', '.codex', 'sessions', 'private.jsonl');
+  const payload = await createStaxCreatorPublishPayload({
+    sections: [],
+    builderProfileSnapshot: {
+      schemaVersion: 'taku.creator.builder-profile-snapshot.v1',
+      privacy: { publicSummaryOnly: true },
+      usage: {
+        label: 'Last 90 Days',
+        periodId: 'last90Days',
+        periods: [
+          {
+            id: 'last90Days',
+            label: 'Last 90 Days',
+            startsAt: '2026-06-25T00:00:00.000Z',
+            endsAt: '2026-09-22T00:00:00.000Z',
+            usageSchema: 'taku.creator.ai-burn-usage.v2',
+            totalTokens: 300,
+            privatePath,
+            sources: [
+              {
+                source: 'codex',
+                totalTokens: 300,
+                modelUsage: {
+                  totalTokens: 300,
+                  models: [
+                    {
+                      modelId: 'gpt-5',
+                      inputTokens: 200,
+                      outputTokens: 100,
+                      reasoningTokens: 20,
+                      totalTokens: 300,
+                    },
+                  ],
+                },
+                estimatedCost: { totalUsd: 0.004 },
+              },
+            ],
+          },
+          { id: 'allTimeLocal', totalTokens: 999 },
+        ],
+      },
+    },
+    stats: {},
+  }, { items: [] }, publishOptions());
+
+  const period = payload.profileSnapshot.usage.periods.find(({ id }) => id === 'last90Days');
+  assert.deepEqual(period, {
+      id: 'last90Days',
+      label: 'Last 90 Days',
+      startsAt: '2026-06-25T00:00:00.000Z',
+      endsAt: '2026-09-22T00:00:00.000Z',
+      usageSchema: 'taku.creator.ai-burn-usage.v2',
+      totalTokens: 300,
+      sources: [
+        {
+          source: 'codex',
+          totalTokens: 300,
+          modelUsage: {
+            totalTokens: 300,
+            models: [
+              {
+                modelId: 'gpt-5',
+                inputTokens: 200,
+                outputTokens: 100,
+                cacheReadTokens: 0,
+                cacheCreationTokens: 0,
+                reasoningTokens: 20,
+                totalTokens: 300,
+              },
+            ],
+          },
+          estimatedCost: {
+            currency: 'USD',
+            estimated: true,
+            actualSpend: false,
+            pricingBasis: 'monthly-market-api-price-equivalent',
+            priceTableUpdatedAt: undefined,
+            totalUsd: 0.004,
+            totalObservedTokenCount: 0,
+            pricedTokenCount: 0,
+            unpricedTokenCount: 0,
+            coverageRatio: 0,
+            partial: false,
+            pricedModelCount: 0,
+            unpricedModelCount: 0,
+            topModels: [],
+            warnings: [],
+          },
+        },
+      ],
+    });
+  assert.equal(JSON.stringify(payload).includes('private.jsonl'), false);
+});
+
 test('publishes sanitized Stax block support data in the public profile snapshot', async () => {
   const privatePath = path.join(path.sep, 'Users', 'example', '.codex', 'sessions', 'private.jsonl');
   const payload = await createStaxCreatorPublishPayload({

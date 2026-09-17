@@ -5,6 +5,8 @@ import * as path from 'node:path';
 import test from 'node:test';
 
 import {
+  AI_BURN_USAGE_SCHEMA,
+  buildUsagePeriods,
   DEFAULT_MAX_USAGE_BYTES,
   DEFAULT_MAX_USAGE_FILE_BYTES,
   DEFAULT_MAX_USAGE_FILES,
@@ -18,6 +20,21 @@ test('uses a bounded default usage scan budget for host and onboarding flows', (
   assert.equal(DEFAULT_MAX_USAGE_BYTES, 128 * 1024 * 1024);
   assert.equal(DEFAULT_MAX_USAGE_FILE_BYTES, 160 * 1024);
   assert.equal(DEFAULT_USAGE_SCAN_TIMEOUT_MS, 15_000);
+});
+
+test('marks the rolling 90 day period as the AI Burn ranking payload', () => {
+  const now = new Date(2026, 8, 30, 16);
+  const expectedStart = new Date(2026, 6, 3);
+  const period = buildUsagePeriods(now)
+    .find((candidate) => candidate.id === 'last90Days');
+
+  assert.deepEqual(period, {
+    id: 'last90Days',
+    label: 'Last 90 Days',
+    startsAt: expectedStart.toISOString(),
+    endsAt: now.toISOString(),
+    usageSchema: AI_BURN_USAGE_SCHEMA,
+  });
 });
 
 test('tail-samples oversized JSONL logs and returns a usable partial result', async (context) => {
@@ -46,6 +63,10 @@ test('tail-samples oversized JSONL logs and returns a usable partial result', as
   assert.equal(result.scanCoverage.sampledFileCount, 1);
   assert.equal(result.sessionCount, 1);
   assert.equal(result.totalTokens, 150);
+  assert.equal(
+    result.periods.find((period) => period.id === 'last90Days')?.usageSchema,
+    AI_BURN_USAGE_SCHEMA,
+  );
   assert.match(result.warnings.join('\n'), /recent tails/i);
 });
 
