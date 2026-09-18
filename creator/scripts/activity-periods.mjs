@@ -1,4 +1,4 @@
-export const AI_BURN_USAGE_SCHEMA = 'taku.creator.ai-burn-usage.v2';
+export const AI_BURN_USAGE_SCHEMA = 'taku.creator.ai-burn-usage.v3';
 
 export const STAX_CHALLENGE_SCHEDULES = Object.freeze({
   productionTest: Object.freeze({

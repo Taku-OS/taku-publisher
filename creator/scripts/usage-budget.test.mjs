@@ -8,6 +8,7 @@ import {
   AI_BURN_PERIOD,
   AI_BURN_USAGE_SCHEMA,
   buildUsagePeriods,
+  DEFAULT_MAX_AI_BURN_EXACT_BYTES,
   DEFAULT_MAX_USAGE_BYTES,
   DEFAULT_MAX_USAGE_FILE_BYTES,
   DEFAULT_MAX_USAGE_FILES,
@@ -36,6 +37,7 @@ test('uses a bounded default usage scan budget for host and onboarding flows', (
   assert.equal(DEFAULT_MAX_USAGE_FILES, 2500);
   assert.equal(DEFAULT_MAX_USAGE_BYTES, 128 * 1024 * 1024);
   assert.equal(DEFAULT_MAX_USAGE_FILE_BYTES, 160 * 1024);
+  assert.equal(DEFAULT_MAX_AI_BURN_EXACT_BYTES, 1024 * 1024 * 1024);
   assert.equal(DEFAULT_USAGE_SCAN_TIMEOUT_MS, 15_000);
 });
 
@@ -127,6 +129,126 @@ test('attributes sampled Codex cumulative usage to the model found near the file
   assert.equal(result.totalTokens, 150);
   assert.equal(result.modelUsage.totalTokens, 150);
   assert.equal(result.modelUsage.topModels[0]?.modelId, 'gpt-5.6-sol');
+});
+
+test('counts only request-level token increments inside the AI Burn window', async (context) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-ai-burn-window-'));
+  context.after(() => fs.rm(homeDir, { recursive: true, force: true }));
+  const sessionsDir = path.join(homeDir, '.codex', 'sessions');
+  await fs.mkdir(sessionsDir, { recursive: true });
+  const rows = [
+    {
+      timestamp: '2026-09-16T15:00:00.000Z',
+      type: 'turn_context',
+      payload: { model: 'gpt-5.6-sol' },
+    },
+    {
+      timestamp: '2026-09-16T15:30:00.000Z',
+      type: 'event_msg',
+      payload: {
+        type: 'token_count',
+        info: {
+          total_token_usage: { input_tokens: 80, output_tokens: 20, total_tokens: 100 },
+          last_token_usage: { input_tokens: 80, output_tokens: 20, total_tokens: 100 },
+        },
+      },
+    },
+    {
+      timestamp: '2026-09-17T08:00:00.000Z',
+      type: 'event_msg',
+      payload: {
+        type: 'token_count',
+        info: {
+          total_token_usage: { input_tokens: 96, output_tokens: 24, total_tokens: 120 },
+          last_token_usage: { input_tokens: 16, output_tokens: 4, total_tokens: 20 },
+        },
+      },
+    },
+    {
+      timestamp: '2026-09-21T08:00:00.000Z',
+      type: 'event_msg',
+      payload: {
+        type: 'token_count',
+        info: {
+          total_token_usage: { input_tokens: 120, output_tokens: 30, total_tokens: 150 },
+          last_token_usage: { input_tokens: 24, output_tokens: 6, total_tokens: 30 },
+        },
+      },
+    },
+  ];
+  await fs.writeFile(
+    path.join(sessionsDir, 'cross-boundary.jsonl'),
+    `${rows.map((row) => JSON.stringify(row)).join('\n')}\n`,
+    'utf8',
+  );
+
+  const result = await scanUsage({
+    homeDir,
+    usagePeriodId: 'aiBurn',
+    maxFiles: 10,
+    maxBytes: 1024 * 1024,
+    maxFileBytes: 1024 * 1024,
+    timeoutMs: 5_000,
+    now: new Date('2026-09-19T00:00:00.000Z'),
+  });
+
+  assert.equal(result.totalInputTokens, 16);
+  assert.equal(result.totalOutputTokens, 4);
+  assert.equal(result.totalTokens, 20);
+  assert.equal(result.modelUsage.models[0]?.modelId, 'gpt-5.6-sol');
+  assert.equal(result.modelUsage.models[0]?.totalTokens, 20);
+});
+
+test('streams an oversized cross-boundary log for exact AI Burn increments', async (context) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-ai-burn-large-window-'));
+  context.after(() => fs.rm(homeDir, { recursive: true, force: true }));
+  const sessionsDir = path.join(homeDir, '.codex', 'sessions');
+  await fs.mkdir(sessionsDir, { recursive: true });
+  const before = JSON.stringify({
+    timestamp: '2026-09-16T15:30:00.000Z',
+    type: 'event_msg',
+    payload: {
+      type: 'token_count',
+      info: {
+        total_token_usage: { input_tokens: 80, output_tokens: 20, total_tokens: 100 },
+        last_token_usage: { input_tokens: 80, output_tokens: 20, total_tokens: 100 },
+      },
+    },
+  });
+  const inside = JSON.stringify({
+    timestamp: '2026-09-18T08:00:00.000Z',
+    type: 'event_msg',
+    payload: {
+      type: 'token_count',
+      info: {
+        total_token_usage: { input_tokens: 96, output_tokens: 24, total_tokens: 120 },
+        last_token_usage: { input_tokens: 16, output_tokens: 4, total_tokens: 20 },
+      },
+    },
+  });
+  const filler = JSON.stringify({
+    timestamp: '2026-09-17T08:00:00.000Z',
+    message: { role: 'assistant', content: 'x'.repeat(180) },
+  });
+  const filePath = path.join(sessionsDir, 'large-cross-boundary.jsonl');
+  await fs.writeFile(filePath, `${before}\n${`${filler}\n`.repeat(30)}${inside}\n`, 'utf8');
+  const fileSize = (await fs.stat(filePath)).size;
+
+  const result = await scanUsage({
+    homeDir,
+    usagePeriodId: 'aiBurn',
+    maxFiles: 10,
+    maxBytes: 1024 * 1024,
+    maxFileBytes: 1024,
+    timeoutMs: 5_000,
+    now: new Date('2026-09-19T00:00:00.000Z'),
+  });
+
+  assert.equal(result.totalTokens, 20);
+  assert.equal(result.scanCoverage.sampledFileCount, 1);
+  assert.equal(result.scanCoverage.inexactAiBurnFileCount, 0);
+  assert.equal(result.scanCoverage.scannedByteCount, 1024);
+  assert.equal(result.scanCoverage.aiBurnExactScannedByteCount, fileSize);
 });
 
 test('interleaves sources before consuming the file-count budget', async (context) => {

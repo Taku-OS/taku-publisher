@@ -30,6 +30,9 @@ import {
 export const DEFAULT_MAX_USAGE_FILES = 2500;
 export const DEFAULT_MAX_USAGE_BYTES = 128 * 1024 * 1024;
 export const DEFAULT_MAX_USAGE_FILE_BYTES = 160 * 1024;
+// Exact event-window totals may require streaming large overlapping transcripts.
+// Keep that I/O bounded separately so it does not consume the card's sample budget.
+export const DEFAULT_MAX_AI_BURN_EXACT_BYTES = 1024 * 1024 * 1024;
 export const DEFAULT_USAGE_SCAN_TIMEOUT_MS = 15_000;
 export const DEFAULT_USAGE_PERIOD_ID = 'last90Days';
 export const CONTINUOUS_ACTIVITY_IDLE_MINUTES = 30;
@@ -163,6 +166,10 @@ export async function scanUsage(options = {}) {
     maxBytes,
     positiveInteger(options.maxFileBytes, DEFAULT_MAX_USAGE_FILE_BYTES),
   );
+  const maxAiBurnExactBytes = positiveInteger(
+    options.maxAiBurnExactBytes,
+    DEFAULT_MAX_AI_BURN_EXACT_BYTES,
+  );
   const timeoutMs = positiveInteger(options.timeoutMs, DEFAULT_USAGE_SCAN_TIMEOUT_MS);
   const usagePeriodId = normalizeUsagePeriodId(options.usagePeriodId);
   const now = options.now instanceof Date ? options.now : new Date();
@@ -176,6 +183,7 @@ export async function scanUsage(options = {}) {
   const warnings = [];
   let scannedFileCount = 0;
   let scannedByteCount = 0;
+  let aiBurnExactScannedByteCount = 0;
   let sampledFileCount = 0;
   let oversizedJsonFileCount = 0;
   let candidateFileCount = 0;
@@ -194,8 +202,8 @@ export async function scanUsage(options = {}) {
   if (cursorStateUsage.found) {
     const cursorAvailability = ensureUsageAvailability(availability, 'cursor', 'Cursor');
     cursorAvailability.available = cursorStateUsage.exact;
-    candidateFileCount += 1;
     if (cursorStateUsage.scanned) {
+      candidateFileCount += 1;
       scannedFileCount += 1;
       scannedByteCount += Math.max(0, Number(cursorStateUsage.scannedByteCount) || 0);
       cursorDatabasePartial = Boolean(cursorStateUsage.partial);
@@ -203,6 +211,7 @@ export async function scanUsage(options = {}) {
         const fileUsage = summarizeUsageRecords(
           session.records,
           `${cursorStateUsage.stateDbPath}#${session.sessionId}`,
+          { usagePeriod: AI_BURN_PERIOD },
         );
         if (fileUsage.eventCount <= 0 && fileUsage.totals.totalTokens <= 0) continue;
         records.push({
@@ -274,14 +283,25 @@ export async function scanUsage(options = {}) {
       break;
     }
     const fileByteBudget = Math.min(maxFileBytes, remainingBytes);
+    const remainingAiBurnExactBytes = Math.max(
+      0,
+      maxAiBurnExactBytes - aiBurnExactScannedByteCount,
+    );
     try {
       const fileUsage = await readUsageFile(candidate.filePath, {
         includePromptStyle: Boolean(options.includePromptStyle),
         fileSize: candidate.size,
         maxBytes: fileByteBudget,
+        maxExactPeriodBytes: remainingAiBurnExactBytes,
+        deadlineMs,
+        usagePeriod: AI_BURN_PERIOD,
       });
       scannedFileCount += 1;
       scannedByteCount += Math.max(0, Number(fileUsage.__scanBytes) || 0);
+      aiBurnExactScannedByteCount += Math.max(
+        0,
+        Number(fileUsage.__exactPeriodScanBytes) || 0,
+      );
       if (fileUsage.__partialSample) sampledFileCount += 1;
       if (fileUsage.__skippedReason === 'oversized_json') oversizedJsonFileCount += 1;
       if (fileUsage.eventCount > 0 || fileUsage.totals.totalTokens > 0) {
@@ -297,10 +317,17 @@ export async function scanUsage(options = {}) {
     }
   }
 
-  if (!stoppedReason && candidates.length < candidateFileCount) stoppedReason = 'files';
+  if (!stoppedReason && scannedFileCount < candidateFileCount) stoppedReason = 'files';
   if (!stoppedReason && scannedByteCount >= maxBytes) stoppedReason = 'bytes';
+  const inexactAiBurnFileCount = records.filter(
+    (record) => record.file?.__periodUsage?.exact === false,
+  ).length;
   const partial = Boolean(
-    stoppedReason || sampledFileCount || oversizedJsonFileCount || cursorDatabasePartial,
+    stoppedReason
+      || sampledFileCount
+      || oversizedJsonFileCount
+      || cursorDatabasePartial
+      || inexactAiBurnFileCount,
   );
   if (stoppedReason === 'time') {
     warnings.push(`Stopped usage scan after reaching the ${timeoutMs}ms time budget.`);
@@ -314,6 +341,9 @@ export async function scanUsage(options = {}) {
   }
   if (oversizedJsonFileCount > 0) {
     warnings.push(`Skipped ${oversizedJsonFileCount} oversized JSON usage log(s) that cannot be safely tail-sampled.`);
+  }
+  if (inexactAiBurnFileCount > 0) {
+    warnings.push(`Excluded ${inexactAiBurnFileCount} usage log(s) that could not be measured exactly inside the AI Burn window.`);
   }
 
   const availableSources = Array.from(availability.values());
@@ -342,10 +372,13 @@ export async function scanUsage(options = {}) {
     sampledFileCount,
     oversizedJsonFileCount,
     cursorDatabasePartial,
+    inexactAiBurnFileCount,
     scannedByteCount,
+    aiBurnExactScannedByteCount,
     maxFiles,
     maxBytes,
     maxFileBytes,
+    maxAiBurnExactBytes,
     timeoutMs,
     periodFiltered: Number.isFinite(relevantAfterMs),
   };
@@ -557,8 +590,30 @@ async function readUsageJsonl(filePath, options = {}) {
           discardFirstLine: tailStart > 0,
         }),
       ];
-      return withUsageScanMetadata(summarizeUsageRecords(records, filePath, options), {
-        bytesRead: headRead.bytesRead + tailRead.bytesRead,
+      const sampled = summarizeUsageRecords(records, filePath, options);
+      const sampledBytes = headRead.bytesRead + tailRead.bytesRead;
+      if (
+        options.usagePeriod
+        && usageFileMayOverlapPeriod(sampled, options.usagePeriod)
+        && fileSize <= positiveInteger(options.maxExactPeriodBytes, 0)
+      ) {
+        const exactPeriod = await streamUsageWindowJsonl(filePath, options.usagePeriod, {
+          deadlineMs: options.deadlineMs,
+        });
+        if (exactPeriod.exact) {
+          attachUsagePeriodMetadata(sampled, exactPeriod);
+          return withUsageScanMetadata(sampled, {
+            bytesRead: sampledBytes,
+            exactPeriodBytes: fileSize,
+            partialSample: true,
+          });
+        }
+      }
+      if (options.usagePeriod && usageFileMayOverlapPeriod(sampled, options.usagePeriod)) {
+        attachUsagePeriodMetadata(sampled, { ...emptyUsageWindow(), exact: false });
+      }
+      return withUsageScanMetadata(sampled, {
+        bytesRead: sampledBytes,
         partialSample: true,
       });
     } finally {
@@ -605,6 +660,172 @@ function parseJsonlSample(text, options = {}) {
   return records;
 }
 
+async function streamUsageWindowJsonl(filePath, period, options = {}) {
+  const accumulator = createUsageWindowAccumulator(filePath, period);
+  const lines = createInterface({
+    input: createReadStream(filePath, { encoding: 'utf8' }),
+    crlfDelay: Infinity,
+  });
+  let index = 0;
+  for await (const line of lines) {
+    if (Number.isFinite(options.deadlineMs) && Date.now() >= options.deadlineMs) {
+      return { ...emptyUsageWindow(), exact: false };
+    }
+    if (!line.trim()) continue;
+    try {
+      accumulator.consume(JSON.parse(line), index);
+      index += 1;
+    } catch {
+      // Ignore non-JSON or truncated log lines.
+    }
+  }
+  return accumulator.finish();
+}
+
+function summarizeUsageWindow(records, filePath, period) {
+  const accumulator = createUsageWindowAccumulator(filePath, period);
+  records.forEach((record, index) => accumulator.consume(record, index));
+  return accumulator.finish();
+}
+
+function createUsageWindowAccumulator(filePath, period) {
+  const startsAtMs = new Date(period.startsAt).getTime();
+  const endsAtMs = new Date(period.endsAt).getTime();
+  const lastTotals = createZeroUsageNumbers();
+  const genericTotals = createZeroUsageNumbers();
+  const cumulativeTotals = createZeroUsageNumbers();
+  const lastModels = new Map();
+  const genericModels = new Map();
+  const cumulativeModels = new Map();
+  const seenEvents = new Set();
+  let sessionId = path.basename(filePath, path.extname(filePath));
+  let currentModelName;
+  let previousCumulative = createZeroUsageNumbers();
+  let hasPreviousCumulative = false;
+  let hasCumulativeUsage = false;
+  let hasLastUsage = false;
+  let missingTimestampUsage = false;
+  let lastEventCount = 0;
+  let genericEventCount = 0;
+  let cumulativeEventCount = 0;
+
+  return {
+    consume(record, index) {
+      sessionId = extractSessionId(record) || sessionId;
+      const recordModelName = extractModelName(record);
+      if (recordModelName) currentModelName = recordModelName;
+      const timestamp = extractUsageTimestamp(record);
+      const timestampMs = timestamp ? new Date(timestamp).getTime() : Number.NaN;
+      const inWindow = Number.isFinite(timestampMs)
+        && timestampMs >= startsAtMs
+        && timestampMs <= endsAtMs;
+
+      for (const candidate of extractUsageCandidates(record)) {
+        const numbers = readUsageNumbers(candidate.value);
+        if (!hasAnyUsage(numbers)) continue;
+        const candidateModelName = extractModelName(candidate.value) || recordModelName || currentModelName;
+        const isCumulative = candidate.path.includes('total_token_usage');
+        const isLastUsage = candidate.path.includes('last_token_usage');
+
+        if (!Number.isFinite(timestampMs)) missingTimestampUsage = true;
+        if (isCumulative) {
+          hasCumulativeUsage = true;
+          // Cumulative-only clients are converted back into request deltas at
+          // each checkpoint timestamp. Codex last_token_usage wins below when
+          // available because it is already the precise per-request increment.
+          const delta = hasPreviousCumulative
+            ? subtractUsageNumbers(numbers, previousCumulative)
+            : numbers;
+          previousCumulative = numbers;
+          hasPreviousCumulative = true;
+          if (inWindow && hasAnyUsage(delta)) {
+            mergeUsageNumbers(cumulativeTotals, delta);
+            addModelUsage(cumulativeModels, candidateModelName, delta, 1);
+            cumulativeEventCount += 1;
+          }
+          continue;
+        }
+
+        const eventId = extractUsageEventId(record) || String(index + 1);
+        const key = `${candidate.path}:${eventId}:${usageSignature(numbers)}`;
+        if (seenEvents.has(key)) continue;
+        seenEvents.add(key);
+        if (isLastUsage) hasLastUsage = true;
+        if (!inWindow) continue;
+        if (isLastUsage) {
+          mergeUsageNumbers(lastTotals, numbers);
+          addModelUsage(lastModels, candidateModelName, numbers, 1);
+          lastEventCount += 1;
+        } else {
+          mergeUsageNumbers(genericTotals, numbers);
+          addModelUsage(genericModels, candidateModelName, numbers, 1);
+          genericEventCount += 1;
+        }
+      }
+    },
+    finish() {
+      const totals = hasLastUsage
+        ? lastTotals
+        : hasCumulativeUsage
+          ? cumulativeTotals
+          : genericTotals;
+      const models = hasLastUsage
+        ? lastModels
+        : hasCumulativeUsage
+          ? cumulativeModels
+          : genericModels;
+      const eventCount = hasLastUsage
+        ? lastEventCount
+        : hasCumulativeUsage
+          ? cumulativeEventCount
+          : genericEventCount;
+      return {
+        sessionId,
+        exact: !missingTimestampUsage,
+        eventCount,
+        totals,
+        models: summarizeModelUsage(models).models,
+      };
+    },
+  };
+}
+
+function subtractUsageNumbers(current, previous) {
+  return {
+    inputTokens: Math.max(0, current.inputTokens - previous.inputTokens),
+    outputTokens: Math.max(0, current.outputTokens - previous.outputTokens),
+    cacheReadTokens: Math.max(0, current.cacheReadTokens - previous.cacheReadTokens),
+    cacheCreationTokens: Math.max(0, current.cacheCreationTokens - previous.cacheCreationTokens),
+    reasoningTokens: Math.max(0, current.reasoningTokens - previous.reasoningTokens),
+    totalTokens: Math.max(0, current.totalTokens - previous.totalTokens),
+  };
+}
+
+function usageFileMayOverlapPeriod(file, period) {
+  if (!period?.startsAt || !period?.endsAt) return false;
+  const startedAtMs = new Date(file.startedAt).getTime();
+  const lastActivityAtMs = new Date(file.lastActivityAt).getTime();
+  if (!Number.isFinite(startedAtMs) || !Number.isFinite(lastActivityAtMs)) return true;
+  return lastActivityAtMs >= new Date(period.startsAt).getTime()
+    && startedAtMs <= new Date(period.endsAt).getTime();
+}
+
+function emptyUsageWindow() {
+  return {
+    eventCount: 0,
+    totals: createZeroUsageNumbers(),
+    models: [],
+  };
+}
+
+function attachUsagePeriodMetadata(result, periodUsage) {
+  Object.defineProperty(result, '__periodUsage', {
+    value: periodUsage,
+    configurable: true,
+    enumerable: false,
+  });
+}
+
 function withUsageScanMetadata(result, metadata = {}) {
   Object.defineProperties(result, {
     __scanBytes: {
@@ -617,6 +838,10 @@ function withUsageScanMetadata(result, metadata = {}) {
     },
     __skippedReason: {
       value: metadata.skippedReason,
+      enumerable: false,
+    },
+    __exactPeriodScanBytes: {
+      value: Math.max(0, Number(metadata.exactPeriodBytes) || 0),
       enumerable: false,
     },
   });
@@ -758,6 +983,12 @@ function summarizeUsageRecords(records, filePath, options = {}) {
     behavior,
     promptStyle: finalizePromptStyleSummary(promptStyle),
   };
+  if (options.usagePeriod) {
+    attachUsagePeriodMetadata(
+      result,
+      summarizeUsageWindow(records, filePath, options.usagePeriod),
+    );
+  }
   if (workspaceKey) {
     Object.defineProperty(result, '__workspaceKey', {
       value: workspaceKey,
@@ -837,20 +1068,25 @@ function summarizeUsagePeriod(records, availableSources, period) {
     ensureUsageAccumulator(sourceAccumulators, source.source, source.label, source.available);
   }
   for (const record of records) {
-    if (record.file.eventCount <= 0 || !isUsageRecordInPeriod(record.file, period)) continue;
+    const exactWindow = period.usageSchema === AI_BURN_USAGE_SCHEMA
+      ? record.file.__periodUsage
+      : undefined;
+    const fileUsage = exactWindow || record.file;
+    if (period.usageSchema === AI_BURN_USAGE_SCHEMA && exactWindow?.exact !== true) continue;
+    if (fileUsage.eventCount <= 0 || (!exactWindow && !isUsageRecordInPeriod(record.file, period))) continue;
     const accumulator = ensureUsageAccumulator(sourceAccumulators, record.source, record.label, true);
     const fileId = `${record.source}:${record.sourceFileId}`;
     scannedFileIds.add(fileId);
     accumulator.scannedFileIds.add(fileId);
-    accumulator.eventCount += record.file.eventCount;
-    accumulator.sessionIds.add(record.file.sessionId);
+    accumulator.eventCount += fileUsage.eventCount;
+    accumulator.sessionIds.add(fileUsage.sessionId || record.file.sessionId);
     accumulator.tokenKinds.add(record.file.tokenKind || 'api');
-    sessionIds.add(`${record.source}:${record.file.sessionId}`);
-    eventCount += record.file.eventCount;
-    mergeUsageNumbers(accumulator, record.file.totals);
-    mergeUsageNumbers(total, record.file.totals);
-    mergeModelUsageRows(accumulator.modelCounts, record.file.models);
-    mergeModelUsageRows(modelCounts, record.file.models);
+    sessionIds.add(`${record.source}:${fileUsage.sessionId || record.file.sessionId}`);
+    eventCount += fileUsage.eventCount;
+    mergeUsageNumbers(accumulator, fileUsage.totals);
+    mergeUsageNumbers(total, fileUsage.totals);
+    mergeModelUsageRows(accumulator.modelCounts, fileUsage.models);
+    mergeModelUsageRows(modelCounts, fileUsage.models);
   }
   return {
     id: period.id,

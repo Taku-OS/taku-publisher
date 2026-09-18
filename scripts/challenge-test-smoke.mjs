@@ -27,7 +27,7 @@ for (const item of build.builds) {
     assert.deepEqual(AI_BURN_PERIOD, {
       id: 'aiBurn', label: 'Sep 17 - Sep 20, 2026',
       startsAt: '2026-09-16T16:00:00.000Z', endsAt: '2026-09-20T15:59:59.999Z',
-      usageSchema: 'taku.creator.ai-burn-usage.v2',
+      usageSchema: 'taku.creator.ai-burn-usage.v3',
     });
     assert.equal(buildStaxChallengeReviewUrl('http://localhost:3001', { launchContextId: 'opaque' }),
       'http://localhost:3001/stax?review=1&launch=opaque');

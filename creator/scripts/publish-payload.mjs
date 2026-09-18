@@ -797,7 +797,7 @@ function sanitizeBuilderProfileSnapshot(value, schemaVersion) {
       sources: sanitizeUsageSources(usage.sources),
       periods: asArray(usage.periods)
         .slice(0, 8)
-        .map((period) => stringValue(asRecord(period).usageSchema ?? asRecord(period).usage_schema, 100) === 'taku.creator.ai-burn-usage.v2'
+        .map((period) => stringValue(asRecord(period).usageSchema ?? asRecord(period).usage_schema, 100) === 'taku.creator.ai-burn-usage.v3'
           ? sanitizeAiBurnPeriod(period)
           : sanitizeUsagePeriod(period))
         .filter(isNonNull),

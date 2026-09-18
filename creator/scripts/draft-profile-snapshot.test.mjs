@@ -52,7 +52,7 @@ test('preserves scanned AI Burn model usage through draft normalization and publ
     label: 'Last 90 Days',
     startsAt: '2026-06-19T00:00:00.000Z',
     endsAt: '2026-09-17T00:00:00.000Z',
-    usageSchema: 'taku.creator.ai-burn-usage.v2',
+    usageSchema: 'taku.creator.ai-burn-usage.v3',
     totalInputTokens: 200,
     totalOutputTokens: 100,
     totalCacheReadTokens: 40,
@@ -125,7 +125,7 @@ test('preserves scanned AI Burn model usage through draft normalization and publ
   const snapshot = buildBuilderProfileSnapshot(draft);
   const normalizedPeriod = snapshot.usage.periods[0];
   const normalizedSource = normalizedPeriod.sources[0];
-  assert.equal(normalizedPeriod.usageSchema, 'taku.creator.ai-burn-usage.v2');
+  assert.equal(normalizedPeriod.usageSchema, 'taku.creator.ai-burn-usage.v3');
   assert.equal(normalizedPeriod.totalInputTokens, 200);
   assert.equal(normalizedPeriod.totalOutputTokens, 100);
   assert.equal(normalizedPeriod.totalCacheReadTokens, 40);
@@ -152,7 +152,7 @@ test('preserves scanned AI Burn model usage through draft normalization and publ
     }),
   });
   const publishedPeriod = payload.profileSnapshot.usage.periods[0];
-  assert.equal(publishedPeriod.usageSchema, 'taku.creator.ai-burn-usage.v2');
+  assert.equal(publishedPeriod.usageSchema, 'taku.creator.ai-burn-usage.v3');
   assert.deepEqual(publishedPeriod.sources[0].modelUsage.models[0], {
     modelId: 'gpt-5',
     inputTokens: 200,
@@ -178,7 +178,7 @@ test('keeps more than four models for the AI Burn period', () => {
         periods: [
           {
             id: 'last90Days',
-            usageSchema: 'taku.creator.ai-burn-usage.v2',
+            usageSchema: 'taku.creator.ai-burn-usage.v3',
             totalTokens,
             sources: [
               {
