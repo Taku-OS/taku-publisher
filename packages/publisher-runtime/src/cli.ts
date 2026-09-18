@@ -1359,9 +1359,15 @@ async function runCreatorCommand(command: string, creatorArgs: string[]): Promis
       payload.publisherAccountHint = accountHint;
       payload.savedToAccount = accountHint;
     }
-    payload.message = accountHint
-      ? `The private Studio draft was saved to Taku account ${accountHint}. Open editorUrl to review it.`
-      : 'The private Studio draft was saved to the current Taku account. Open editorUrl to review it.';
+    if (payload.challengeHandoff === true) {
+      payload.message = accountHint
+        ? `The private Card was saved to Taku account ${accountHint}. Open the Stax Challenge Review editorUrl, then choose one Skill in the current Agent or skip.`
+        : 'The private Card was saved to the current Taku account. Open the Stax Challenge Review editorUrl, then choose one Skill in the current Agent or skip.';
+    } else {
+      payload.message = accountHint
+        ? `The private Studio draft was saved to Taku account ${accountHint}. Open editorUrl to review it.`
+        : 'The private Studio draft was saved to the current Taku account. Open editorUrl to review it.';
+    }
   }
   payload._process_exit_code = result.code;
   return payload;

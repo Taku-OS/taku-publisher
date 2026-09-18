@@ -785,7 +785,10 @@ import fs from 'node:fs';
 fs.appendFileSync(process.env.MOCK_CREATOR_LOG, JSON.stringify({ args: process.argv.slice(2), token: process.env.TAKU_PUBLISH_TOKEN || '' }) + '\\n');
 const ok = process.env.TAKU_PUBLISH_TOKEN === 'replacement-publisher-token';
 console.log(JSON.stringify(ok
-  ? { ok: true, editorUrl: 'https://worker.taku.ai/stax/studio/editor?launch=test' }
+  ? { ok: true, editorUrl: process.argv.includes('--challenge-handoff')
+      ? 'http://localhost:3001/stax?review=1&launch=test'
+      : 'https://worker.taku.ai/stax/studio/editor?launch=test',
+      ...(process.argv.includes('--challenge-handoff') ? { challengeHandoff: true } : {}) }
   : { ok: false, needsAuth: true, status: 401, draftPath: '/private/generated-card.json' }));
 `);
   const launcher = `#!/usr/bin/env node
@@ -865,10 +868,12 @@ if (!response.ok) process.exitCode = 1;
   const authorization = new URL(await fs.readFile(browserLog, 'utf8'));
   assert.equal(authorization.searchParams.has('account_mode'), false);
   assert.equal(authorization.searchParams.get('intent'), 'publish_stax_card');
-  await dispatch({
+  const challengeResult = await dispatch({
     command: 'creator-draft', flags: new Map(),
     rest: ['--json', '--editor', '--challenge-handoff', '--worker-url', workerUrl, '--allow-custom-worker-url'],
   });
+  assert.equal(challengeResult.editorUrl, 'http://localhost:3001/stax?review=1&launch=test');
+  assert.match(String(challengeResult.message), /Stax Challenge Review/);
   const challengeInvocation = (await fs.readFile(creatorLog, 'utf8')).trim().split('\n').map(JSON.parse).at(-1);
   assert.equal(challengeInvocation.args.includes('--challenge-handoff'), true);
   assert.equal(challengeInvocation.token, 'replacement-publisher-token');

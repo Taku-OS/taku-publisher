@@ -13,8 +13,10 @@ import {
 import { readJsonFile } from './draft-state.mjs';
 import { readCursorStateUsage } from './cursor-sqlite.mjs';
 import { cleanText } from './privacy.mjs';
+import { AI_BURN_PERIOD, AI_BURN_USAGE_SCHEMA } from './activity-periods.mjs';
 
 export { composeUsageSummary } from '#taku-passport-core';
+export { AI_BURN_PERIOD, AI_BURN_USAGE_SCHEMA } from './activity-periods.mjs';
 import {
   createEmptyEstimatedCostSummary,
   estimateUsageCostForModel,
@@ -30,7 +32,6 @@ export const DEFAULT_MAX_USAGE_BYTES = 128 * 1024 * 1024;
 export const DEFAULT_MAX_USAGE_FILE_BYTES = 160 * 1024;
 export const DEFAULT_USAGE_SCAN_TIMEOUT_MS = 15_000;
 export const DEFAULT_USAGE_PERIOD_ID = 'last90Days';
-export const AI_BURN_USAGE_SCHEMA = 'taku.creator.ai-burn-usage.v2';
 export const CONTINUOUS_ACTIVITY_IDLE_MINUTES = 30;
 const DEFAULT_MAX_PROMPT_STYLE_CHARS = 20000;
 const BEHAVIOR_PROFILE_SCHEMA = 'taku.creator.behavior-profile.v1';
@@ -385,10 +386,10 @@ export function buildUsagePeriods(now) {
       label: 'Last 90 Days',
       startsAt: last90DaysStart.toISOString(),
       endsAt,
-      usageSchema: AI_BURN_USAGE_SCHEMA,
     },
     { id: 'thisMonth', label: 'This Month', startsAt: monthStart.toISOString(), endsAt },
     { id: 'allTimeLocal', label: 'All-Time Local', endsAt },
+    AI_BURN_PERIOD,
   ];
 }
 
@@ -396,7 +397,7 @@ export function selectUsagePeriod(periods, usagePeriodId) {
   const normalized = normalizeUsagePeriodId(usagePeriodId);
   const selected = periods.find((period) => period.id === normalized);
   if (!selected) {
-    throw new Error(`Invalid usage period "${usagePeriodId}". Use one of: today, last7Days, last30Days, last90Days, thisMonth, allTimeLocal.`);
+    throw new Error(`Invalid usage period "${usagePeriodId}". Use one of: today, last7Days, last30Days, last90Days, thisMonth, allTimeLocal, aiBurn.`);
   }
   return selected;
 }

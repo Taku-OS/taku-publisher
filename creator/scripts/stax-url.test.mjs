@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   buildStaxCardPageUrl,
+  buildStaxChallengeReviewUrl,
   buildStaxCreatorPageUrl,
   buildStaxProfilePageUrl,
   buildStaxPublishedLinks,
@@ -31,6 +32,17 @@ test('adds only an opaque launch context to the Studio URL', () => {
   assert.equal(url.searchParams.get('launch'), launchContextId);
   assert.equal(url.searchParams.has('token'), false);
   assert.equal(url.searchParams.has('email'), false);
+});
+
+test('builds the Stax Challenge Review URL on the configured LP', () => {
+  const launchContextId = `taku_studio_launch_${'c'.repeat(32)}`;
+  const url = new URL(buildStaxChallengeReviewUrl('http://localhost:3001', {
+    launchContextId,
+  }));
+  assert.equal(url.origin, 'http://localhost:3001');
+  assert.equal(url.pathname, '/stax');
+  assert.equal(url.searchParams.get('review'), '1');
+  assert.equal(url.searchParams.get('launch'), launchContextId);
 });
 
 test('publishes explicit profile and Stax links while preserving creator compatibility', () => {

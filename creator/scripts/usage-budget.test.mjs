@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import test from 'node:test';
 
 import {
+  AI_BURN_PERIOD,
   AI_BURN_USAGE_SCHEMA,
   buildUsagePeriods,
   DEFAULT_MAX_USAGE_BYTES,
@@ -14,6 +15,22 @@ import {
   scanUsage,
 } from './usage.mjs';
 import { selectUsageForDraft } from './draft.mjs';
+import { STAX_CHALLENGE_SCHEDULES } from './activity-periods.mjs';
+
+test('uses the configured production-test window for AI Burn', () => {
+  assert.deepEqual(AI_BURN_PERIOD, {
+    id: 'aiBurn',
+    label: 'Sep 17 - Sep 20, 2026',
+    startsAt: '2026-09-16T16:00:00.000Z',
+    endsAt: '2026-09-20T15:59:59.999Z',
+    usageSchema: AI_BURN_USAGE_SCHEMA,
+  });
+  assert.deepEqual(STAX_CHALLENGE_SCHEDULES.official, {
+    label: 'Sep 22 - Oct 30, 2026',
+    startsAt: '2026-09-21T16:00:00.000Z',
+    endsAt: '2026-10-30T15:59:59.999Z',
+  });
+});
 
 test('uses a bounded default usage scan budget for host and onboarding flows', () => {
   assert.equal(DEFAULT_MAX_USAGE_FILES, 2500);
@@ -22,7 +39,7 @@ test('uses a bounded default usage scan budget for host and onboarding flows', (
   assert.equal(DEFAULT_USAGE_SCAN_TIMEOUT_MS, 15_000);
 });
 
-test('marks the rolling 90 day period as the AI Burn ranking payload', () => {
+test('keeps the rolling 90 day period separate from the AI Burn ranking payload', () => {
   const now = new Date(2026, 8, 30, 16);
   const expectedStart = new Date(2026, 6, 3);
   const period = buildUsagePeriods(now)
@@ -33,8 +50,11 @@ test('marks the rolling 90 day period as the AI Burn ranking payload', () => {
     label: 'Last 90 Days',
     startsAt: expectedStart.toISOString(),
     endsAt: now.toISOString(),
-    usageSchema: AI_BURN_USAGE_SCHEMA,
   });
+  assert.deepEqual(
+    buildUsagePeriods(now).find((candidate) => candidate.id === 'aiBurn'),
+    AI_BURN_PERIOD,
+  );
 });
 
 test('tail-samples oversized JSONL logs and returns a usable partial result', async (context) => {
@@ -42,7 +62,7 @@ test('tail-samples oversized JSONL logs and returns a usable partial result', as
   context.after(() => fs.rm(homeDir, { recursive: true, force: true }));
   const sessionsDir = path.join(homeDir, '.codex', 'sessions');
   await fs.mkdir(sessionsDir, { recursive: true });
-  const timestamp = new Date().toISOString();
+  const timestamp = '2026-09-18T08:00:00.000Z';
   const filler = `${JSON.stringify({ timestamp, message: { role: 'assistant', content: 'x'.repeat(180) } })}\n`;
   const usage = `${JSON.stringify({
     timestamp,
@@ -57,6 +77,7 @@ test('tail-samples oversized JSONL logs and returns a usable partial result', as
     maxBytes: 1024,
     maxFileBytes: 1024,
     timeoutMs: 5_000,
+    now: new Date(timestamp),
   });
 
   assert.equal(result.partial, true);
@@ -64,7 +85,7 @@ test('tail-samples oversized JSONL logs and returns a usable partial result', as
   assert.equal(result.sessionCount, 1);
   assert.equal(result.totalTokens, 150);
   assert.equal(
-    result.periods.find((period) => period.id === 'last90Days')?.usageSchema,
+    result.periods.find((period) => period.id === 'aiBurn')?.usageSchema,
     AI_BURN_USAGE_SCHEMA,
   );
   assert.match(result.warnings.join('\n'), /recent tails/i);
