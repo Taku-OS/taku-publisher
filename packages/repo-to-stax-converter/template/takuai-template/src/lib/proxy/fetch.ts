@@ -163,7 +163,7 @@ async function throwProxyHttpError(params: {
     status === 401 ? 'UNAUTHORIZED' : status === 402 ? 'PAYMENT_REQUIRED' : ('HTTP_ERROR' as const);
   const hint =
     status === 401
-      ? '鉴权失败：token 过期或无效。请回到 Taku 重新登录后再重开/刷新 SubApp。'
+      ? '鉴权失败：token 过期或无效。请回到 Taku 重新登录后再重开/刷新 Taku App。'
       : status === 402
         ? '余额不足：credits 不足。请充值/升级套餐后再试。'
         : '上游服务返回错误状态码。';

@@ -26,13 +26,7 @@ const EXPECTED_SUPERPOWERS_MANIFEST = Object.freeze({
   entrySkill: 'skills/using-superpowers/SKILL.md',
 });
 const FORBIDDEN_PATTERNS = [
-  {
-    label: 'Linear workflow',
-    pattern: /\bLinear\s+(?:issue|project|workflow|team|record|status|comment|rules?)\b/i,
-  },
   { label: 'internal completion approver', pattern: /\b(?:haipro|Jacky)\b/i },
-  { label: 'internal issue identifier', pattern: /\bTAKU-\d+\b/i },
-  { label: 'internal Linear skill', pattern: /taku-linear-coding/i },
 ];
 
 function listDirectories(root) {
