@@ -68,7 +68,7 @@ function createContext(parsed, command, options = {}) {
     : readAuthorizedTakuToken(parsed, requiredScope);
   const workerUrl = options.workerUrl || resolveWorkerUrl(parsed);
   const siteUrl = options.siteUrl || resolveSiteUrl(parsed);
-  const client = options.client || (token ? createTakuStaxClient({ workerUrl, token }) : null);
+  const client = options.client || (token ? createTakuStaxClient({ workerUrl, token, siteUrl }) : null);
   return { requiredScope, token, workerUrl, siteUrl, client };
 }
 

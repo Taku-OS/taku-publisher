@@ -531,8 +531,8 @@ async function saveDraftResultToCloudStudio(parsed, draftResult) {
       ...saved,
       schemaVersion: 'taku.creator.editor-result.v1',
       draftPath,
-      primaryAction: 'retry_cloud_studio_sync',
-      message: saved.error || 'The private cloud Studio draft could not be created.',
+      primaryAction: saved.action_type || 'retry_cloud_studio_sync',
+      message: saved.message || saved.error || 'The private cloud Studio draft could not be created.',
     };
   }
 
@@ -689,7 +689,9 @@ main()
     process.exitCode = code;
   })
   .catch((error) => {
-    if (String(process.argv[2] || '').startsWith('challenge-') || process.argv.includes('--challenge-handoff')) {
+    if (error?.legalAction) {
+      console.log(JSON.stringify(error.legalAction, null, 2));
+    } else if (String(process.argv[2] || '').startsWith('challenge-') || process.argv.includes('--challenge-handoff')) {
       console.log(JSON.stringify({ ok: false, status: 'error', requires_action: true,
         error: { code: 'challenge_error', message: error instanceof Error ? error.message : String(error) } }, null, 2));
     } else {

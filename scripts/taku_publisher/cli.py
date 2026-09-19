@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from .legal_review import publisher_error_output
 from .api import (
     TakuPublisherClient,
     draft_create_payload,
@@ -212,11 +213,7 @@ def main(argv: list[str] | None = None) -> int:
         emit_json(result)
         return exit_code
     except PublisherError as error:
-        emit_json(json_output(
-            ok=False,
-            status="error",
-            error={"code": error.code, "message": str(error), "details": error.details},
-        ))
+        emit_json(publisher_error_output(error))
         return 1
     except KeyboardInterrupt:
         emit_json(json_output(
@@ -251,6 +248,7 @@ def _dispatch(args: argparse.Namespace) -> dict[str, Any]:
 
     if args.command == "auth-login":
         TakuPublisherClient(
+            site_url=getattr(args, "site_url", None),
             worker_url=args.worker_url,
             allow_custom_worker_url=args.allow_custom_worker_url,
         )
@@ -490,6 +488,8 @@ def _dispatch(args: argparse.Namespace) -> dict[str, Any]:
                     )
                 payload["listing"]["iconUrl"] = icon_url
             except PublisherError as error:
+                if error.code == "legal_review_required":
+                    raise
                 icon_error = {"code": error.code, "message": str(error), "details": error.details}
         response = client.create_draft(payload)
         remote_id = extract_remote_id(response, "draftId", "draft_id", "id")
@@ -629,6 +629,7 @@ def _run_creator_command(command: str, creator_args: list[str]) -> dict[str, Any
                 }
             )
             TakuPublisherClient(
+                site_url=site_url,
                 worker_url=worker_url,
                 allow_custom_worker_url=allow_custom_worker,
             )
@@ -776,6 +777,7 @@ def _marketplace_public_arguments(command: argparse.ArgumentParser) -> None:
 
 def _marketplace_public_client(args: argparse.Namespace) -> TakuPublisherClient:
     return TakuPublisherClient(
+        site_url=getattr(args, "site_url", None),
         worker_url=args.worker_url,
         timeout=args.timeout,
         allow_custom_worker_url=args.allow_custom_worker_url,
@@ -789,6 +791,7 @@ def _marketplace_install_client(args: argparse.Namespace) -> TakuPublisherClient
         "marketplace.installs.write",
     )
     client = TakuPublisherClient(
+        site_url=getattr(args, "site_url", None),
         worker_url=args.worker_url,
         token=auth.token,
         timeout=args.timeout,
@@ -812,6 +815,7 @@ def _marketplace_install_client(args: argparse.Namespace) -> TakuPublisherClient
             code="marketplace_auth_scope_missing",
         )
     return TakuPublisherClient(
+        site_url=getattr(args, "site_url", None),
         worker_url=client.worker_url,
         token=refreshed_auth.token,
         timeout=args.timeout,
@@ -835,6 +839,7 @@ def _codex_skills_root() -> Path:
 def _client(args: argparse.Namespace) -> TakuPublisherClient:
     auth = resolve_auth(token_env=args.token_env)
     client = TakuPublisherClient(
+        site_url=getattr(args, "site_url", None),
         worker_url=args.worker_url,
         token=auth.token,
         icon_token=auth.icon_token,
@@ -852,6 +857,7 @@ def _client(args: argparse.Namespace) -> TakuPublisherClient:
     )
     auth = resolve_auth(token_env=args.token_env)
     return TakuPublisherClient(
+        site_url=getattr(args, "site_url", None),
         worker_url=client.worker_url,
         token=auth.token,
         icon_token=auth.icon_token,

@@ -1,3 +1,4 @@
+import { legalReviewAction } from '#taku-publisher-runtime';
 import http from 'node:http';
 import https from 'node:https';
 import tls from 'node:tls';
@@ -297,6 +298,7 @@ export class TakuStaxClient {
   constructor(options = {}) {
     this.baseUrl = String(options.workerUrl || DEFAULT_WORKER_URL).replace(/\/+$/, '');
     this.token = options.token || undefined;
+    this.siteUrl = options.siteUrl;
     this.timeoutMs = Number(options.timeoutMs || DEFAULT_REQUEST_TIMEOUT_MS);
     this.fetchImpl = options.fetchImpl || fetchWithEnvProxy;
   }
@@ -347,13 +349,9 @@ export class TakuStaxClient {
         requestUrl = nextUrl.toString();
       }
       const rawText = await response.text();
+      let data;
       try {
-        return {
-          response,
-          data: rawText ? JSON.parse(rawText) : {},
-          parsedJson: true,
-          rawText,
-        };
+        data = rawText ? JSON.parse(rawText) : {};
       } catch {
         return {
           response,
@@ -362,6 +360,13 @@ export class TakuStaxClient {
           rawText,
         };
       }
+      const action = legalReviewAction(response.status, data, new URL(requestUrl).pathname, this.siteUrl);
+      if (action) {
+        const error = createRequestError(action.message, response.status);
+        error.legalAction = action;
+        throw error;
+      }
+      return { response, data, parsedJson: true, rawText };
     } catch (error) {
       if (controller.signal.aborted) {
         throw new Error('Stax API request timed out. Please try again.');

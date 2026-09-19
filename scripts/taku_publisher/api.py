@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlencode, urljoin, urlparse
 
+from .legal_review import legal_review_action
 from .auth import resolve_auth
 from .constants import (
     DEFAULT_WORKER_URL,
@@ -46,6 +47,7 @@ class TakuPublisherClient:
         self,
         *,
         worker_url: str = DEFAULT_WORKER_URL,
+        site_url: str | None = None,
         token: str | None = None,
         icon_token: str | None = None,
         timeout: float = 30.0,
@@ -53,6 +55,7 @@ class TakuPublisherClient:
         transport: Transport | None = None,
     ) -> None:
         self.worker_url = _validate_worker_url(worker_url, allow_custom_worker_url).rstrip("/")
+        self.site_url = site_url
         self.token = str(token or "").strip()
         self.icon_token = str(icon_token or "").strip()
         self.timeout = timeout
@@ -63,6 +66,7 @@ class TakuPublisherClient:
         cls,
         *,
         worker_url: str = DEFAULT_WORKER_URL,
+        site_url: str | None = None,
         token_env: str = "TAKU_BEARER_TOKEN",
         timeout: float = 30.0,
         allow_custom_worker_url: bool = False,
@@ -71,6 +75,7 @@ class TakuPublisherClient:
         auth = resolve_auth(token_env=token_env)
         return cls(
             worker_url=worker_url,
+            site_url=site_url,
             token=auth.token,
             icon_token=auth.icon_token,
             timeout=timeout,
@@ -283,6 +288,9 @@ class TakuPublisherClient:
         )
         parsed = _parse_json_response(response_body)
         if status < 200 or status >= 300:
+            action = legal_review_action(status, parsed, path, self.site_url)
+            if action:
+                raise PublisherError(action["message"], code="legal_review_required", details=action)
             message = parsed.get("error") or parsed.get("message") or f"HTTP {status}"
             response_preview = _body_preview(response_body)
             if request_token:

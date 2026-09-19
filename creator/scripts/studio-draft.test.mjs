@@ -381,3 +381,32 @@ test('Studio save preserves an authorization failure so the Publisher can retry 
   server.closeIdleConnections?.();
   server.closeAllConnections?.();
 });
+
+test('a legal gate at profile lookup keeps the draft and stops before Studio upload', async (t) => {
+  const previousNoProxy = process.env.NO_PROXY;
+  process.env.NO_PROXY = '127.0.0.1,localhost';
+  t.after(() => {
+    if (previousNoProxy === undefined) delete process.env.NO_PROXY;
+    else process.env.NO_PROXY = previousNoProxy;
+  });
+  const calls = [];
+  const server = createServer((request, response) => {
+    calls.push(`${request.method} ${request.url}`);
+    response.writeHead(428, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ error: 'REGISTRATION_REQUIRED' }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
+  const draft = { personaV2: { code: 'EILW' }, sections: [], stats: {} };
+  const before = structuredClone(draft);
+  const result = await saveDraftToTakuStudio({
+    draft, privateInventory: { items: [] }, token: 'fixture-auth',
+    workerUrl: `http://127.0.0.1:${server.address().port}`, siteUrl: 'http://127.0.0.1:3000',
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 'legal_review_required');
+  assert.equal(result.needsAuth, false);
+  assert.equal(result.review_url, 'http://127.0.0.1:3000/legal/accept');
+  assert.deepEqual(draft, before);
+  assert.deepEqual(calls, ['GET /stax/profile']);
+});
