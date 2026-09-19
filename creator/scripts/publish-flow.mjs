@@ -194,7 +194,10 @@ export async function publishDraftToTaku({
     publishContext
   );
   const client = createTakuStaxClient({ workerUrl, token, siteUrl });
-  const existingCardPayload = await client.getMyCard().catch(() => null);
+  const existingCardPayload = await client.getMyCard().catch(error => {
+    if (error?.legalAction) throw error;
+    return null;
+  });
   const replaceInventory = draft?.stats?.creatorToolSelectionMode === 'custom';
   const publishPayload = replaceInventory
     ? payload

@@ -230,7 +230,10 @@ export async function runCreatorCenterStats(parsed, options = {}) {
 
 async function getOptionalMyStaxProfile(client) {
   if (typeof client?.getMyStaxProfile !== 'function') return null;
-  return await client.getMyStaxProfile().catch(() => null);
+  return await client.getMyStaxProfile().catch(error => {
+    if (error?.legalAction) throw error;
+    return null;
+  });
 }
 
 function creatorCenterStatsFromStaxProfile(staxProfile, fallbackStatsPayload) {
