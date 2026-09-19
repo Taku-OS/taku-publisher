@@ -158,3 +158,81 @@ test('analyzeRepo still reports dynamic evaluation as a command-execution review
     true
   );
 });
+
+test('analyzeRepo does not treat README credential words as an external service', async () => {
+  const repoRoot = await makeTempRepo('readme-credential-words');
+  await writeFile(
+    join(repoRoot, 'README.md'),
+    '# Local Host integration\n\nThe Host injects a local control token. Never expose an API key.\n',
+  );
+
+  const analysis = await analyzeRepo({ repoRoot, source: { kind: 'local', path: repoRoot } });
+
+  assert.equal(
+    analysis.risks.includes('Credential/API key handling must be server-side or explicit BYOK'),
+    false,
+  );
+  assert.deepEqual(analysis.serviceRequirements, []);
+});
+
+test('analyzeRepo reports executable external API usage as a service requirement', async () => {
+  const repoRoot = await makeTempRepo('external-api-usage');
+  await writeFile(
+    join(repoRoot, 'src', 'app', 'page.tsx'),
+    "const key = process.env.EXAMPLE_API_KEY;\nexport async function load() { return fetch('https://api.example.com/data', { headers: { Authorization: `Bearer ${key}` } }); }\n",
+  );
+
+  const analysis = await analyzeRepo({ repoRoot, source: { kind: 'local', path: repoRoot } });
+
+  assert.equal(
+    analysis.risks.includes('Credential/API key handling must be server-side or explicit BYOK'),
+    true,
+  );
+  assert.equal(analysis.serviceRequirements.length, 1);
+  assert.equal(analysis.serviceRequirements[0].id, 'external-service-review');
+});
+
+test('analyzeRepo ignores unchanged trusted template files but rechecks modified copies', async () => {
+  const baselineRoot = await makeTempRepo('template-baseline');
+  const sourceRoot = await makeTempRepo('template-derived-source');
+  const credentialCode =
+    "export const token = process.env.TAKU_SERVICE_API_KEY;\n";
+  await mkdir(join(baselineRoot, 'src', 'lib'), { recursive: true });
+  await mkdir(join(sourceRoot, 'src', 'lib'), { recursive: true });
+  await writeFile(join(baselineRoot, 'src', 'lib', 'proxy.ts'), credentialCode);
+  await writeFile(join(sourceRoot, 'src', 'lib', 'proxy.ts'), credentialCode);
+
+  const unchanged = await analyzeRepo({
+    repoRoot: sourceRoot,
+    source: { kind: 'local', path: sourceRoot },
+    templateBaselineRoot: baselineRoot,
+  });
+  assert.deepEqual(unchanged.serviceRequirements, []);
+
+  await writeFile(
+    join(sourceRoot, 'src', 'lib', 'proxy.ts'),
+    `${credentialCode}export const changed = true;\n`,
+  );
+  const modified = await analyzeRepo({
+    repoRoot: sourceRoot,
+    source: { kind: 'local', path: sourceRoot },
+    templateBaselineRoot: baselineRoot,
+  });
+  assert.equal(modified.serviceRequirements.length, 1);
+});
+
+test('analyzeRepo fails closed when the trusted template baseline is unavailable', async () => {
+  const repoRoot = await makeTempRepo('missing-template-baseline');
+  await writeFile(
+    join(repoRoot, 'src', 'app', 'page.tsx'),
+    'export const token = process.env.TAKU_SERVICE_API_KEY;\n',
+  );
+
+  const analysis = await analyzeRepo({
+    repoRoot,
+    source: { kind: 'local', path: repoRoot },
+    templateBaselineRoot: join(repoRoot, 'missing-baseline'),
+  });
+
+  assert.equal(analysis.serviceRequirements.length, 1);
+});

@@ -103,7 +103,7 @@ the same mapping file to `subapp-prepare` so reassessment reproduces the same
 reviewed decision. Mapping documents cannot contain upstream URLs or secrets.
 
 Generated plugins bundle the compatible `repo-to-stax` runtime and
-require protocol `repo-to-stax.analyze.v1` at Converter version `0.2.0`.
+require protocol `repo-to-stax.analyze.v1` at Converter version `0.2.0` or `0.2.1`.
 `--converter-bin` and `TAKU_REPO_TO_STAX_BIN` are developer-only diagnostic
 overrides. Assessment returns a source-bound confirmation token for eligible
 projects. The creator can then prepare one isolated candidate with:
