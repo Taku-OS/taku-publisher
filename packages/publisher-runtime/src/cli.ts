@@ -9,7 +9,12 @@ import {
   draftCreatePayload,
   extractDraftListing,
   extractRemoteId,
+  hasUsablePublisherFlowchart,
   normalizeListingMetadata,
+  publisherFlowchartGenerationPayload,
+  publisherFlowchartIdempotencyKey,
+  publisherFlowchartListingFromResponse,
+  publisherFlowchartRequestHash,
   responseCandidates,
   TakuPublisherClient,
   validateWorkerUrl,
@@ -1215,10 +1220,21 @@ async function remoteCreate(
 ): Promise<JsonObject> {
   const payload = await draftCreatePayload(state);
   const metadataPath = optionalFlag(args, 'metadata');
+  let metadataProvidesFlowchart = false;
   if (metadataPath) {
     const metadata = normalizeListingMetadata(await readObject(metadataPath, 'Metadata must be a JSON object.', 'invalid_metadata'));
     assertPublicPayload(metadata);
+    metadataProvidesFlowchart = hasUsablePublisherFlowchart(metadata);
     payload.listing = { ...record(payload.listing), ...metadata };
+  }
+  if (state.mode !== 'update') {
+    await ensurePublisherFlowchartForCreate(
+      client,
+      directory,
+      state,
+      payload,
+      metadataProvidesFlowchart,
+    );
   }
   let iconError: JsonObject | null = null;
   const listing = record(payload.listing);
@@ -1901,6 +1917,57 @@ function iconGenerationPayload(payload: JsonObject, state: PublisherState): Json
     }],
     draft: { title, description, itemType: toolType, category, tags },
   };
+}
+
+async function ensurePublisherFlowchartForCreate(
+  client: TakuPublisherClient,
+  directory: string,
+  state: PublisherState,
+  payload: JsonObject,
+  metadataProvidesFlowchart: boolean,
+): Promise<void> {
+  if (state.mode === 'update' || !publisherFlowchartGenerationEnabled()) return;
+  const listing = record(payload.listing);
+  const request = publisherFlowchartGenerationPayload(payload);
+  const requestHash = publisherFlowchartRequestHash(request);
+  const generation = record(state.flowchart_generation);
+  const previousRequestHash = String(generation.request_sha256 ?? '').trim();
+  const hasFlowchart = hasUsablePublisherFlowchart(listing);
+
+  if (hasFlowchart && metadataProvidesFlowchart) {
+    state.listing = listing;
+    state.flowchart_generation = null;
+    state.updated_at = nowIso();
+    await saveState(directory, state);
+    return;
+  }
+  if (hasFlowchart && (!previousRequestHash || previousRequestHash === requestHash)) {
+    return;
+  }
+
+  const idempotencyKey = publisherFlowchartIdempotencyKey(state, requestHash);
+  const generated = publisherFlowchartListingFromResponse(
+    await client.generateFlowchart(request, idempotencyKey),
+  );
+  Object.assign(listing, generated);
+  payload.listing = listing;
+  state.listing = listing;
+  state.flowchart_generation = {
+    schema_version: 'taku.publisher.flowchart-generation.v1',
+    request_sha256: requestHash,
+    idempotency_key: idempotencyKey,
+    status: 'generated',
+    generated_at: nowIso(),
+  };
+  state.updated_at = nowIso();
+  await saveState(directory, state);
+}
+
+export function publisherFlowchartGenerationEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const value = String(env.TAKU_PUBLISHER_GENERATE_FLOWCHART ?? '').trim().toLowerCase();
+  return ['1', 'true', 'yes', 'on', 'enabled'].includes(value);
 }
 
 function publicHttpsUrl(value: string): boolean {

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -27,6 +28,10 @@ import { isRecord, PublisherError } from './util.js';
 
 const DEFAULT_MARKETPLACE_CATEGORY = 'writing-content';
 const FLOWCHART_GENERATION_TIMEOUT_MS = 120_000;
+const PUBLISHER_FLOWCHART_NAME_MAX_LENGTH = 120;
+const PUBLISHER_FLOWCHART_SHORT_DESCRIPTION_MAX_LENGTH = 500;
+const PUBLISHER_FLOWCHART_DESCRIPTION_MAX_LENGTH = 20_000;
+const PUBLISHER_FLOWCHART_TYPES = new Set(['app', 'skill', 'action', 'agent', 'plugin']);
 const LISTING_KEY_ALIASES = new Map([
   ['short_description', 'shortDescription'],
   ['flowchart_intro', 'flowchartIntro'],
@@ -344,6 +349,7 @@ export async function draftCreatePayload(state: PublisherState): Promise<JsonObj
   const toolType = unit.type;
   const toolName = String(unit.name ?? unit.id ?? '').trim();
   const description = String(unit.description ?? '').trim();
+  const flowchartListing = publisherFlowchartListing(state);
   const generatedListing: JsonObject = {
     title: toolName,
     sourceKind: 'local_upload',
@@ -353,6 +359,7 @@ export async function draftCreatePayload(state: PublisherState): Promise<JsonObj
     description: defaultListingDescription(toolName, description, String(toolType ?? '')),
     examples: defaultListingExamples(toolName, String(toolType ?? '')),
     platforms: [...SUPPORTED_RUNTIME_PLATFORMS],
+    ...flowchartListing,
     ...await inferredSourceAndSupportListing(state),
     ...await inferredLicenseListing(state),
   };
@@ -384,6 +391,126 @@ export async function draftCreatePayload(state: PublisherState): Promise<JsonObj
     payload.inheritListing = true;
   }
   return payload;
+}
+
+function publisherFlowchartListing(state: PublisherState): JsonObject {
+  const listing = normalizeListingMetadata(isRecord(state.listing) ? state.listing : {});
+  if (!hasUsablePublisherFlowchart(listing)) return {};
+  const preserved: JsonObject = { flowchartIntro: listing.flowchartIntro };
+  if (usableGeneratedFlowchartI18n(listing.flowchartIntroI18n)) {
+    preserved.flowchartIntroI18n = listing.flowchartIntroI18n;
+  }
+  return preserved;
+}
+
+export function hasUsablePublisherFlowchart(listing: JsonObject): boolean {
+  const normalized = normalizeListingMetadata(listing);
+  if (!usableFlowchart(normalized.flowchartIntro)) return false;
+  return normalized.flowchartIntroI18n === undefined
+    || normalized.flowchartIntroI18n === null
+    || usableGeneratedFlowchartI18n(normalized.flowchartIntroI18n);
+}
+
+export function publisherFlowchartGenerationPayload(payload: JsonObject): JsonObject {
+  const listing = isRecord(payload.listing) ? payload.listing : {};
+  const tool = isRecord(payload.tool) ? payload.tool : {};
+  const type = String(payload.toolType ?? tool.type ?? '').trim().toLowerCase();
+  const name = truncateUtf16(
+    String(listing.title ?? tool.name ?? '').replace(/\s+/g, ' ').trim(),
+    PUBLISHER_FLOWCHART_NAME_MAX_LENGTH,
+  );
+  const shortDescription = truncateUtf16(
+    String(listing.shortDescription ?? tool.description ?? '').replace(/\s+/g, ' ').trim(),
+    PUBLISHER_FLOWCHART_SHORT_DESCRIPTION_MAX_LENGTH,
+  );
+  const description = truncateUtf16(
+    String(listing.description ?? tool.description ?? shortDescription).trim(),
+    PUBLISHER_FLOWCHART_DESCRIPTION_MAX_LENGTH,
+  );
+  if (!PUBLISHER_FLOWCHART_TYPES.has(type)) {
+    throw new PublisherError(
+      'Flowchart generation requires a supported Publisher type.',
+      'invalid_flowchart_generation_input',
+    );
+  }
+  if (!name || !description) {
+    throw new PublisherError(
+      'Flowchart generation requires a non-empty title and description.',
+      'invalid_flowchart_generation_input',
+    );
+  }
+  return {
+    type,
+    name,
+    ...(shortDescription ? { shortDescription } : {}),
+    description,
+    locale: 'auto',
+  };
+}
+
+export function publisherFlowchartRequestHash(payload: JsonObject): string {
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
+export function publisherFlowchartIdempotencyKey(
+  state: PublisherState,
+  requestHash: string,
+): string {
+  if (!/^[a-f0-9]{64}$/.test(requestHash)) {
+    throw new PublisherError(
+      'Flowchart request hash is invalid.',
+      'invalid_flowchart_generation_input',
+    );
+  }
+  const localDraftHash = createHash('sha256')
+    .update(String(state.draft_id ?? ''))
+    .digest('hex')
+    .slice(0, 24);
+  return `publisher-flowchart:v1:${localDraftHash}:${requestHash}`;
+}
+
+export function publisherFlowchartListingFromResponse(response: JsonObject): JsonObject {
+  for (const candidate of responseCandidates(response)) {
+    const flowchartIntro = candidate.flowchartIntro ?? candidate.flowchart_intro;
+    const flowchartIntroI18n = candidate.flowchartIntroI18n ?? candidate.flowchart_intro_i18n;
+    if (
+      usableFlowchart(flowchartIntro)
+      && usableGeneratedFlowchartI18n(flowchartIntroI18n)
+    ) {
+      return { flowchartIntro, flowchartIntroI18n };
+    }
+  }
+  throw new PublisherError(
+    'Taku Flowchart generation did not return a valid default, en-US, and zh-CN Flowchart.',
+    'invalid_generated_flowchart',
+  );
+}
+
+function usableFlowchart(value: JsonValue | undefined): boolean {
+  if (!isRecord(value)) return false;
+  const nodes = Array.isArray(value.nodes) ? value.nodes.filter(isRecord) : [];
+  const ids = new Set(nodes.map((node) => String(node.id ?? '').trim()).filter(Boolean));
+  if (
+    nodes.length < 2
+    || ids.size !== nodes.length
+    || nodes.some((node) => !String(node.title ?? '').trim())
+  ) return false;
+  const edges = Array.isArray(value.edges) ? value.edges.filter(isRecord) : [];
+  return edges.some((edge) => (
+    ids.has(String(edge.from ?? '').trim())
+    && ids.has(String(edge.to ?? '').trim())
+  ));
+}
+
+function usableGeneratedFlowchartI18n(value: JsonValue | undefined): boolean {
+  return isRecord(value)
+    && usableFlowchart(value['en-US'])
+    && usableFlowchart(value['zh-CN']);
+}
+
+function truncateUtf16(value: string, maxLength: number): string {
+  const shortened = value.slice(0, maxLength);
+  return /[\uD800-\uDBFF]$/.test(shortened) ? shortened.slice(0, -1) : shortened;
 }
 
 export function normalizeListingMetadata(input: JsonObject): JsonObject {
