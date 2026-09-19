@@ -94,3 +94,24 @@ test('reads the signed-in Stax profile through the shared client', async () => {
     authorization: 'Bearer test-token',
   }]);
 });
+
+test('both Creator client request paths expose legal review without reauth or writes', async () => {
+  for (const method of ['fetchJson', 'requestJson']) {
+    const calls = [];
+    const client = new TakuStaxClient({
+      workerUrl: 'https://worker.taku.ai', siteUrl: 'http://127.0.0.1:3000', token: 'fixture-auth',
+      fetchImpl: async (url, init) => {
+        calls.push({ url, method: init.method });
+        return Response.json({ error: 'LEGAL_ACCEPTANCE_REQUIRED', documents: ['service', 'publisher'] }, { status: 428 });
+      },
+    });
+    await assert.rejects(client[method]('/stax/studio/cards/me', { method: 'GET' }), error => {
+      assert.equal(error.status, 428);
+      assert.equal(error.legalAction.requires_action, true);
+      assert.equal(error.legalAction.needsAuth, false);
+      assert.equal(new URL(error.legalAction.review_url).origin, 'http://127.0.0.1:3000');
+      return true;
+    });
+    assert.deepEqual(calls, [{ url: 'https://worker.taku.ai/stax/studio/cards/me', method: 'GET' }]);
+  }
+});

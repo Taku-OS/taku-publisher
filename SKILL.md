@@ -18,6 +18,16 @@ This skill has six product surfaces:
 - Marketplace publisher flow: package and publish one installable Skill with staged files, deterministic scan, semantic review, and remote artifact verification. Action, Agent, and Plugin publishing are not currently available.
 - SubApp conversion flow: assess one existing App directory or public GitHub repository, prepare an isolated candidate after exact confirmation, migrate it with the current host Agent (Codex, Claude Code, or Cursor) under a bounded contract, run confirmed trusted validation, create the deterministic Desktop dual-archive release, install/open it locally through the packaged Taku Desktop client after separate confirmation, and optionally upload/register one private App draft version. Public release and packaged-client catalog installation are not yet supported.
 
+## Registration and terms review
+
+When a command returns `status: legal_review_required` and `action_type: review_legal_terms`, show its `review_url` and ask the creator to finish the review in Taku Web using the same Taku account. This is not an expired session: do not clear credentials or restart browser authorization to fix it.
+
+Only the creator may enter their birthday, accept account terms, or confirm the current artifact and distribution license. Never collect a birthday in chat, call `/legal/accept`, fabricate consent fields, or click agreement controls for them. Do not promise that opening the page completed acceptance.
+
+Keep the existing draft and artifact. Wait for the creator to confirm completion before continuing. For a blocked Card save, resume with `creator-editor --json --draft <returned draftPath>` and the same site/Worker options; do not regenerate the Card. For other account gates, retry the interrupted command once, and stop again if review is still required. When the Web review submitted a publication, read `remote-status` instead of submitting it again. A local scan approval is not consent to legal terms or a distribution license.
+
+Review links are built from the configured Taku site and known routes, never from arbitrary URLs in an API error. When testing another environment, supply its `--site-url` or `TAKU_SITE_URL`; no browser action or acceptance happens automatically.
+
 ## Host and Project Selection
 
 Use the current workspace directly when the creator asks about "this project".

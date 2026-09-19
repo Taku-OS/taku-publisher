@@ -29,3 +29,4 @@ export * from './types.js';
 export * from './util.js';
 export * from './workspace.js';
 export * from './zip.js';
+export * from './legal-review.js';
