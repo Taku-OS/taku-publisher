@@ -51,6 +51,7 @@ test('keeps the invoking host first and exposes other locally detected clients',
   const result = await discoverAiClients({
     invokingHost: 'claude-code',
     homeDir,
+    env: {},
     usageSources: [{ source: 'cursor', label: 'Cursor' }],
   });
 
