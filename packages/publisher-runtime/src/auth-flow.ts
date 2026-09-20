@@ -1,0 +1,156 @@
+import { fork } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { authHasScope, publisherSessionPath, readSession, resolveAuth } from './auth.js';
+import type { BrowserAuthOptions } from './browser-auth.js';
+import { publisherHome } from './constants.js';
+import type { JsonObject } from './types.js';
+import { atomicWriteJson, jsonOutput, PublisherError, secureDirectory } from './util.js';
+
+export type AuthFlowOptions = Pick<BrowserAuthOptions, 'workerUrl' | 'siteUrl' | 'intent' | 'timeoutMs' | 'openBrowser'> & {
+  requiredScopes: string[];
+  requiredFlowchartToken?: boolean;
+};
+export const activeAuthStates = new Set(['starting', 'authorization_required', 'awaiting_authorization', 'redeeming_authorization']);
+export function authFlowPaths(env = process.env) {
+  const root = path.join(publisherHome(env), 'auth-flow');
+  return { root, state: path.join(root, 'state.json'), lock: path.join(root, 'lock.json') };
+}
+export function processAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === 'EPERM'; }
+}
+export async function readAuthFlow(env = process.env): Promise<JsonObject | null> {
+  try { return JSON.parse(await fs.readFile(authFlowPaths(env).state, 'utf8')) as JsonObject; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }
+}
+async function withLock<T>(env: NodeJS.ProcessEnv, action: () => Promise<T>): Promise<T> {
+  const paths = authFlowPaths(env);
+  await secureDirectory(paths.root);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const handle = await fs.open(paths.lock, 'wx', 0o600);
+      try {
+        await handle.writeFile(JSON.stringify({ pid: process.pid }));
+        return await action();
+      } finally { await handle.close(); await fs.rm(paths.lock, { force: true }); }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      let owner: { pid?: number } = {};
+      try { owner = JSON.parse(await fs.readFile(paths.lock, 'utf8')); } catch { /* Another caller may still be writing its lock. */ }
+      if (owner.pid && !processAlive(owner.pid)) { await fs.rm(paths.lock, { force: true }); continue; }
+      throw new PublisherError('Another login operation is starting. Retry auth-check shortly.', 'auth_flow_busy');
+    }
+  }
+  throw new PublisherError('Unable to acquire the login lock.', 'auth_flow_busy');
+}
+export async function checkAuthFlow(requestId?: string, env = process.env): Promise<JsonObject> {
+  const state = await readAuthFlow(env);
+  if (!state || (requestId && state.request_id !== requestId)) return jsonOutput('login_required', {}, { requiresAction: true, actionType: 'start_authorization' });
+  const status = String(state.status);
+  const base = { request_id: state.request_id, intent: state.intent, expires_at: state.expires_at };
+  if (activeAuthStates.has(status)) {
+    if (!processAlive(Number(state.pid)) || Date.now() - Number(state.heartbeat_at) > 15_000) {
+      return jsonOutput('authorization_interrupted', base, { requiresAction: true, actionType: 'restart_authorization' });
+    }
+    return jsonOutput('awaiting_authorization', {
+      ...base, phase: status, authorization_url: state.authorization_url ?? null,
+      browser_launch: state.browser_launch ?? { status: 'pending' },
+      message: 'Complete sign-in in your external browser, then return and say continue.',
+    }, { requiresAction: true, actionType: 'sign_in_then_continue' });
+  }
+  if (status === 'authenticated') {
+    const session = readSession(publisherSessionPath(env));
+    const auth = await resolveAuth({ env: { ...env, TAKU_BEARER_TOKEN: '', TAKU_PUBLISH_TOKEN: '' }, allowDesktopSession: false });
+    const scopes = state.required_scopes as string[];
+    if (
+      session?.createdAt !== state.session_created_at
+      || auth.source !== 'publisher_session'
+      || !auth.token
+      || !scopes.every(scope => authHasScope(auth, scope))
+      || (state.required_flowchart_token === true && !auth.flowchartToken)
+    ) {
+      return jsonOutput('login_required', base, { requiresAction: true, actionType: 'start_authorization' });
+    }
+    return jsonOutput('authenticated', { ...base, account_hint: state.account_hint ?? null, message: 'Sign-in is complete. Resume the original command.' });
+  }
+  return jsonOutput(status, { ...base, error_code: state.error_code ?? null }, { requiresAction: true, actionType: 'restart_authorization' });
+}
+export async function startAuthFlow(options: AuthFlowOptions, env = process.env): Promise<JsonObject> {
+  return withLock(env, async () => {
+    const previous = await readAuthFlow(env);
+    if (previous && activeAuthStates.has(String(previous.status)) && processAlive(Number(previous.pid))) {
+      if (
+        previous.intent !== (options.intent ?? 'publish_tool')
+        || previous.worker_url !== options.workerUrl
+        || previous.site_url !== (options.siteUrl ?? 'https://taku.ai')
+        || JSON.stringify(previous.required_scopes) !== JSON.stringify(options.requiredScopes)
+        || previous.required_flowchart_token !== (options.requiredFlowchartToken === true)
+      ) {
+        throw new PublisherError('A different authorization is pending. Finish it or run auth-cancel before starting another.', 'auth_flow_conflict');
+      }
+      if (Date.now() - Number(previous.heartbeat_at) > 15_000) throw new PublisherError('The login receiver stopped responding. Run auth-cancel before retrying.', 'auth_receiver_unresponsive');
+      return checkAuthFlow(String(previous.request_id), env);
+    }
+    const paths = authFlowPaths(env);
+    const requestId = randomUUID();
+    const timeoutMs = Math.min(600_000, Math.max(1_000, options.timeoutMs ?? 300_000));
+    const state: JsonObject = {
+      request_id: requestId, status: 'starting', pid: process.pid,
+      intent: options.intent ?? 'publish_tool', worker_url: options.workerUrl,
+      site_url: options.siteUrl ?? 'https://taku.ai', required_scopes: options.requiredScopes,
+      required_flowchart_token: options.requiredFlowchartToken === true,
+      expires_at: new Date(Date.now() + timeoutMs).toISOString(), heartbeat_at: Date.now(),
+    };
+    await atomicWriteJson(paths.state, state);
+    // No inherited terminal/stdio: the callback receiver survives the caller exiting.
+    const child = fork(fileURLToPath(new URL('./auth-flow-worker.js', import.meta.url)), [], {
+      detached: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'], env, execArgv: [],
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new PublisherError('Login receiver did not start. Check local callback and storage permissions.', 'auth_receiver_start_failed')), 8_000);
+        const finish = (error?: Error) => { clearTimeout(timer); error ? reject(error) : resolve(); };
+        child.once('error', error => finish(error));
+        child.once('exit', () => finish(new PublisherError('Login receiver exited before it was ready.', 'auth_receiver_start_failed')));
+        child.once('message', () => finish());
+        child.send({ options: { ...options, timeoutMs }, state });
+      });
+    } catch (error) {
+      if (child.pid && child.exitCode === null && child.signalCode === null) {
+        const exited = new Promise<void>(resolve => child.once('exit', () => resolve()));
+        child.kill();
+        await exited;
+      }
+      await atomicWriteJson(paths.state, { ...state, status: 'authorization_failed', error_code: 'auth_receiver_start_failed' });
+      throw error;
+    } finally {
+      if (child.connected) child.disconnect();
+      child.unref();
+    }
+    return checkAuthFlow(requestId, env);
+  });
+}
+export async function cancelAuthFlow(env = process.env, afterCancel?: () => Promise<void>): Promise<JsonObject> {
+  return withLock(env, async () => {
+    const state = await readAuthFlow(env);
+    if (!state || !activeAuthStates.has(String(state.status))) {
+      await afterCancel?.();
+      return jsonOutput('authorization_cancelled');
+    }
+    const cancelPath = path.join(authFlowPaths(env).root, `${state.request_id}.cancel`);
+    await fs.writeFile(cancelPath, '', { mode: 0o600 });
+    // Wait for acknowledgement, not a PID signal (PIDs can be reused).
+    for (let i = 0; i < 100; i++) {
+      const latest = await readAuthFlow(env);
+      if (!latest || !activeAuthStates.has(String(latest.status)) || !processAlive(Number(latest.pid))) {
+        await fs.rm(cancelPath, { force: true });
+        await afterCancel?.();
+        return jsonOutput('authorization_cancelled');
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new PublisherError('Login cancellation is still pending. Retry before logging out.', 'auth_cancel_pending');
+  });
+}

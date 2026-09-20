@@ -29,6 +29,8 @@ import {
 import { buildBundle, verifyLocalBundle } from './bundle.js';
 import { publisherErrorOutput } from './legal-review.js';
 import { DEFAULT_SITE_URL, loginWithBrowser } from './browser-auth.js';
+import { launchBrowser } from './browser-launch.js';
+import { startAuthFlow, checkAuthFlow, cancelAuthFlow, type AuthFlowOptions } from './auth-flow.js';
 import { initializeCreator } from './creator-init.js';
 import {
   createCreatorPublishPlan,
@@ -178,6 +180,19 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
 }
 
 export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
+  try { return await dispatchCommand(args); } catch (error) {
+    if (error instanceof PublisherError && error.code === 'authorization_deferred') return error.details;
+    throw error;
+  }
+}
+
+async function authorizeForCommand(options: AuthFlowOptions, wait = false): Promise<void> {
+  if (wait) { await loginWithBrowser(options); return; }
+  const result = await startAuthFlow(options);
+  if (result.status !== 'authenticated') throw new PublisherError('Complete sign-in, then say continue.', 'authorization_deferred', result);
+}
+
+async function dispatchCommand(args: ParsedArguments): Promise<JsonObject> {
   const creatorCommand = CREATOR_COMMANDS.get(args.command);
   if (creatorCommand) return runCreatorCommand(creatorCommand, args.rest);
 
@@ -268,19 +283,36 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
       actionType: authenticated ? null : 'sign_in_to_taku',
     });
   }
-  if (args.command === 'auth-login') {
+  if (args.command === 'auth-check') return checkAuthFlow(optionalFlag(args, 'request-id'));
+  if (args.command === 'auth-cancel') return cancelAuthFlow();
+  if (args.command === 'auth-login' || args.command === 'auth-start') {
     const workerUrl = stringFlag(args, 'worker-url', DEFAULT_WORKER_URL);
     validateWorkerUrl(workerUrl, booleanFlag(args, 'allow-custom-worker-url'));
-    const status = await loginWithBrowser({
+    const intent = stringFlag(args, 'intent', 'publish_tool');
+    const scopes: Record<string, string[]> = {
+      publish_tool: ['publisher.drafts.write'],
+      publish_stax_card: ['creator.profile.read', 'creator.studio-draft.write'],
+      marketplace_install: ['marketplace.packages.read', 'marketplace.installs.write'],
+      github_connect: ['github.connection.read', 'github.connection.write', 'github.repositories.read'],
+    };
+    if (!scopes[intent]) throw new PublisherError('Unsupported login intent.', 'invalid_auth_intent');
+    const options: AuthFlowOptions = {
+      requiredScopes: scopes[intent],
+      requiredFlowchartToken: intent === 'publish_tool' && publisherFlowchartGenerationEnabled(),
       workerUrl,
       siteUrl: stringFlag(args, 'site-url', DEFAULT_SITE_URL),
+      intent,
       timeoutMs: numberFlag(args, 'timeout', 300) * 1000,
       openBrowser: !booleanFlag(args, 'no-open-browser'),
-    });
+    };
+    if (!booleanFlag(args, 'wait')) return startAuthFlow(options);
+    const status = await loginWithBrowser(options);
     return jsonOutput('authenticated', { auth: status });
   }
   if (args.command === 'auth-logout') {
-    return jsonOutput('logged_out', { publisher_session_removed: await clearPublisherSession() });
+    let removed = false;
+    await cancelAuthFlow(process.env, async () => { removed = await clearPublisherSession(); });
+    return jsonOutput('logged_out', { publisher_session_removed: removed });
   }
   if (args.command === 'marketplace-search') {
     const limit = numberFlag(args, 'limit', 20);
@@ -1333,12 +1365,13 @@ async function runCreatorCommand(command: string, creatorArgs: string[]): Promis
         workerUrl,
         creatorArgs.includes('--allow-custom-worker-url') || trustedCreatorWorker,
       );
-      await loginWithBrowser({
+      await authorizeForCommand({
+        requiredScopes,
         workerUrl,
         siteUrl: creatorAuthorizationSiteUrl(effectiveCreatorArgs),
-        intent: command === 'center-unpublish' ? 'creator_center_unpublish' : centerScope[command] ? 'creator_center' : 'publish_stax_card',
         openBrowser: !creatorArgs.includes('--no-open-browser'),
-      });
+        intent: command === 'center-unpublish' ? 'creator_center_unpublish' : centerScope[command] ? 'creator_center' : 'publish_stax_card',
+      }, creatorArgs.includes('--wait-for-auth'));
       auth = await resolveAuth({ allowDesktopSession: !strictPublisherBinding });
       if (creatorAuthorizationRequired(auth, requiredScopes)) throw new PublisherError(
         'Taku authorization did not grant the requested Creator access.',
@@ -1355,6 +1388,7 @@ async function runCreatorCommand(command: string, creatorArgs: string[]): Promis
   const passthrough = localEditor && (command === 'editor' || (command === 'draft' && effectiveCreatorArgs.includes('--editor')));
   const env = creatorEnvironment();
   if (auth?.token && !env.TAKU_PUBLISH_TOKEN) env.TAKU_PUBLISH_TOKEN = auth.token;
+  if (cloudStudio) process.stderr.write(`${JSON.stringify({ status: 'scan_started' })}\n`);
   let result = await spawnNode(script, [command, ...effectiveCreatorArgs], env, passthrough);
   if (passthrough) return { _skip_emit: true, _process_exit_code: result.code };
   let payload = parseCreatorCommandPayload(result);
@@ -1390,6 +1424,11 @@ async function runCreatorCommand(command: string, creatorArgs: string[]): Promis
       payload.message = accountHint
         ? `The private Studio draft was saved to Taku account ${accountHint}. Open editorUrl to review it.`
         : 'The private Studio draft was saved to the current Taku account. Open editorUrl to review it.';
+    }
+    if (payload.editorUrl) {
+      payload.editor_open_required = true;
+      payload.next_action = 'open_editor_url';
+      process.stderr.write(`${JSON.stringify({ status: 'studio_ready' })}\n`);
     }
   }
   payload._process_exit_code = result.code;
@@ -1522,12 +1561,14 @@ async function marketplaceInstallClient(args: ParsedArguments): Promise<TakuPubl
     allowCustomWorkerUrl: booleanFlag(args, 'allow-custom-worker-url'),
   });
   if (requiredScopes.every((scope) => authHasScope(auth, scope)) || booleanFlag(args, 'no-browser-login')) return client;
-  await loginWithBrowser({
+  await authorizeForCommand({
+    requiredScopes,
     workerUrl: client.workerUrl,
     siteUrl: stringFlag(args, 'site-url', DEFAULT_SITE_URL),
     intent: 'marketplace_install',
+    openBrowser: !booleanFlag(args, 'no-open-browser'),
     timeoutMs: numberFlag(args, 'auth-timeout', 300) * 1000,
-  });
+  }, booleanFlag(args, 'wait-for-auth'));
   auth = await resolveAuth({ tokenEnv });
   if (!requiredScopes.every((scope) => authHasScope(auth, scope))) throw new PublisherError('Taku authorization did not grant Marketplace install access.', 'marketplace_auth_scope_missing');
   client = new TakuPublisherClient({ siteUrl: client.siteUrl, workerUrl: client.workerUrl, token: auth.token, timeoutMs: numberFlag(args, 'timeout', 30) * 1000, uploadTimeoutMs: numberFlag(args, 'upload-timeout', 300) * 1000, allowCustomWorkerUrl: true });
@@ -1551,12 +1592,14 @@ async function githubClient(args: ParsedArguments): Promise<TakuPublisherClient>
     allowCustomWorkerUrl: booleanFlag(args, 'allow-custom-worker-url'),
   });
   if (requiredScopes.every((scope) => authHasScope(auth, scope)) || booleanFlag(args, 'no-browser-login')) return client;
-  await loginWithBrowser({
+  await authorizeForCommand({
+    requiredScopes,
     workerUrl: client.workerUrl,
     siteUrl: stringFlag(args, 'site-url', DEFAULT_SITE_URL),
     intent: 'github_connect',
+    openBrowser: !booleanFlag(args, 'no-open-browser'),
     timeoutMs: numberFlag(args, 'auth-timeout', 300) * 1000,
-  });
+  }, booleanFlag(args, 'wait-for-auth'));
   auth = await resolveAuth({ tokenEnv, allowDesktopSession: false });
   if (!requiredScopes.every((scope) => authHasScope(auth, scope))) {
     throw new PublisherError('Taku authorization did not grant GitHub project access.', 'github_auth_scope_missing');
@@ -1590,12 +1633,15 @@ async function authenticatedClient(args: ParsedArguments): Promise<TakuPublisher
     (authHasScope(auth, 'publisher.drafts.write') && (!flowchartAuthRequired || Boolean(auth.flowchartToken)))
     || booleanFlag(args, 'no-browser-login')
   ) return client;
-  await loginWithBrowser({
+  await authorizeForCommand({
+    requiredScopes: ['publisher.drafts.write'],
+    requiredFlowchartToken: flowchartAuthRequired,
     workerUrl: client.workerUrl,
     siteUrl: stringFlag(args, 'site-url', DEFAULT_SITE_URL),
     intent: 'publish_tool',
+    openBrowser: !booleanFlag(args, 'no-open-browser'),
     timeoutMs: numberFlag(args, 'auth-timeout', 300) * 1000,
-  });
+  }, booleanFlag(args, 'wait-for-auth'));
   auth = await resolveAuth({ tokenEnv });
   client = new TakuPublisherClient({ siteUrl: client.siteUrl, workerUrl: client.workerUrl, token: auth.token, iconToken: auth.iconToken, flowchartToken: auth.flowchartToken, timeoutMs: numberFlag(args, 'timeout', 30) * 1000, uploadTimeoutMs: numberFlag(args, 'upload-timeout', 300) * 1000, allowCustomWorkerUrl: true });
   return client;
@@ -1660,20 +1706,8 @@ function nullableText(value: JsonValue | undefined): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-function openExternalUrl(url: string): Promise<boolean> {
-  const command = process.platform === 'darwin'
-    ? { file: 'open', args: [url] }
-    : process.platform === 'win32'
-      ? { file: 'cmd', args: ['/c', 'start', '', url] }
-      : { file: 'xdg-open', args: [url] };
-  return new Promise((resolve) => {
-    const child = spawn(command.file, command.args, { detached: true, stdio: 'ignore', windowsHide: true });
-    child.once('error', () => resolve(false));
-    child.once('spawn', () => {
-      child.unref();
-      resolve(true);
-    });
-  });
+async function openExternalUrl(url: string): Promise<boolean> {
+  return (await launchBrowser(url)).status === 'requested';
 }
 
 async function uploadScanReport(client: TakuPublisherClient, directory: string, state: PublisherState, remoteId: string): Promise<JsonObject> {
@@ -2125,7 +2159,9 @@ Commands:
   skill-convert --candidate <absolute-candidate-path>
   skill-conversion-check --candidate <same-candidate-path>
   remote-create, remote-get, remote-patch, remote-scan, remote-upload, remote-status
-  auth-status, auth-refresh, auth-login, auth-logout
+  auth-status, auth-refresh, auth-logout
+  auth-start, auth-login [--intent publish_tool|publish_stax_card] [--no-open-browser] [--timeout 300] [--wait]
+  auth-check [--request-id <id>], auth-cancel
   marketplace-search, marketplace-show, marketplace-open
   marketplace-install --host codex|claude-code|cursor|opencode|gemini-cli|agent-skills --item-id <id> [--confirm-item-id <same-id>]
   subapp-assess --source <absolute-path|github-url> [--source-ref <ref>] [--service-catalog-url <trusted-url>] [--service-mappings <reviewed-json>] [--assessment-review <bound-review-json>] [developer: --converter-bin <path>]
