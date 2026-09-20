@@ -151,6 +151,68 @@ test('keeps tool drafts, Studio drafts, and public card writes isolated', () => 
   }
 });
 
+test('Publisher auth takes priority over a stale legacy Supabase token', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'taku-publisher-token-priority-'));
+  const sessionPath = path.join(directory, 'session.json');
+  const previous = {
+    TAKU_BEARER_TOKEN: process.env.TAKU_BEARER_TOKEN,
+    TAKU_PUBLISH_TOKEN: process.env.TAKU_PUBLISH_TOKEN,
+    SUPABASE_ACCESS_TOKEN: process.env.SUPABASE_ACCESS_TOKEN,
+    TAKU_PUBLISHER_SESSION_PATH: process.env.TAKU_PUBLISHER_SESSION_PATH,
+  };
+  try {
+    writeFileSync(sessionPath, JSON.stringify({
+      accessToken: 'taku_pub_test-studio-session-token',
+      expiresAt: Date.now() + 60_000,
+      scopes: ['creator.profile.read', 'creator.studio-draft.write'],
+      iconToken: 'test-studio-icon-token',
+      iconExpiresAt: Date.now() + 60_000,
+    }));
+    process.env.TAKU_PUBLISHER_SESSION_PATH = sessionPath;
+    process.env.SUPABASE_ACCESS_TOKEN = 'stale-legacy-supabase-token';
+    process.env.TAKU_PUBLISH_TOKEN = 'taku_pub_test-studio-session-token';
+    delete process.env.TAKU_BEARER_TOKEN;
+
+    assert.equal(readStudioDraftToken(parseArgs([])), 'taku_pub_test-studio-session-token');
+    assert.equal(readIconAuthToken(parseArgs([])), 'test-studio-icon-token');
+
+    delete process.env.TAKU_PUBLISH_TOKEN;
+    assert.equal(readStudioDraftToken(parseArgs([])), 'taku_pub_test-studio-session-token');
+    assert.equal(readIconAuthToken(parseArgs([])), 'test-studio-icon-token');
+  } finally {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('legacy Supabase auth remains available only as a final fallback', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'taku-publisher-legacy-auth-'));
+  const previous = {
+    TAKU_BEARER_TOKEN: process.env.TAKU_BEARER_TOKEN,
+    TAKU_PUBLISH_TOKEN: process.env.TAKU_PUBLISH_TOKEN,
+    SUPABASE_ACCESS_TOKEN: process.env.SUPABASE_ACCESS_TOKEN,
+    TAKU_PUBLISHER_SESSION_PATH: process.env.TAKU_PUBLISHER_SESSION_PATH,
+  };
+  try {
+    delete process.env.TAKU_BEARER_TOKEN;
+    delete process.env.TAKU_PUBLISH_TOKEN;
+    process.env.SUPABASE_ACCESS_TOKEN = 'legacy-supabase-token';
+    process.env.TAKU_PUBLISHER_SESSION_PATH = path.join(directory, 'missing-session.json');
+
+    assert.equal(readStudioDraftToken(parseArgs([])), 'legacy-supabase-token');
+    assert.equal(readIconAuthToken(parseArgs([])), 'legacy-supabase-token');
+  } finally {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('persists a local auth result as a reusable publisher session', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'taku-publisher-write-auth-'));
   const sessionPath = path.join(directory, 'session.json');
