@@ -58,3 +58,37 @@ test('supports explicit projects and platform-specific Cursor paths', async (t) 
   assert.equal(projects.length, 1);
   assert.deepEqual(projects[0].hosts, ['other']);
 });
+
+test('discovers OpenCode projects from bounded database metadata', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-opencode-projects-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const workspace = path.join(root, 'opencode-project');
+  const stateDbPath = path.join(root, 'opencode.db');
+  await fs.mkdir(workspace, { recursive: true });
+  await fs.writeFile(path.join(workspace, 'SKILL.md'), '# Example\n');
+  await fs.writeFile(stateDbPath, 'fixture');
+
+  const projects = await discoverRecentProjects({
+    host: 'opencode',
+    homeDir: root,
+    openCodeStateDbPath: stateDbPath,
+    openCodeQueryDatabase: async (_databasePath, options) => {
+      assert.equal(options.kind, 'projects');
+      return {
+        rows: [{
+          project_id: 'project-1',
+          worktree: workspace,
+          name: 'Stored name is not trusted over root metadata',
+          time_updated: '2026-09-20T10:00:00.000Z',
+        }],
+      };
+    },
+  });
+
+  assert.equal(projects.length, 1);
+  assert.equal(projects[0].name, 'opencode-project');
+  assert.deepEqual(projects[0].hosts, ['opencode']);
+  assert.equal(projects[0].routeHint, 'existing-skill');
+  assert.equal(projects[0].path, await fs.realpath(workspace));
+  assert.equal(normalizeProjectHost('OpenCode'), 'opencode');
+});

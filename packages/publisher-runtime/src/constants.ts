@@ -6,7 +6,14 @@ export const PUBLISHER_USER_AGENT = 'Taku-Publisher/1.0 (+https://taku.ai)';
 export const SUPPORTED_TYPES = ['skill'] as const;
 export const UNAVAILABLE_PUBLISH_TYPES = ['action', 'agent', 'plugin'] as const;
 export const SUPPORTED_MODES = ['create', 'update'] as const;
-export const SUPPORTED_RUNTIME_PLATFORMS = ['taku', 'codex', 'claude-code'] as const;
+export const SUPPORTED_RUNTIME_PLATFORMS = [
+  'taku',
+  'codex',
+  'claude-code',
+  'cursor',
+  'opencode',
+  'gemini-cli',
+] as const;
 export const DEFAULT_WORKER_URL = 'https://worker.taku.ai';
 export const MAX_APP_STORE_PACKAGE_BYTES = 20 * 1024 * 1024;
 

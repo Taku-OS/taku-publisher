@@ -21,6 +21,10 @@ import {
   loginWithBrowser,
   publisherDraftArtifactCompletePath,
   publisherDraftPath,
+  publisherFlowchartGenerationPayload,
+  publisherFlowchartIdempotencyKey,
+  publisherFlowchartListingFromResponse,
+  publisherFlowchartRequestHash,
   PublisherError,
   resolveAuth,
   savePublisherSession,
@@ -46,6 +50,85 @@ async function listenOnLoopback(t, server) {
   const address = server.address();
   assert.ok(address && typeof address !== 'string');
   return `http://127.0.0.1:${address.port}`;
+}
+
+function flowchartGraph(title) {
+  return {
+    title,
+    nodes: [
+      { id: 'input', title: `${title} input` },
+      { id: 'output', title: `${title} output` },
+    ],
+    edges: [{ from: 'input', to: 'output' }],
+  };
+}
+
+function generatedFlowchartResponse() {
+  return {
+    flowchartIntro: flowchartGraph('Default'),
+    flowchartIntroI18n: {
+      'en-US': flowchartGraph('English'),
+      'zh-CN': flowchartGraph('中文'),
+    },
+  };
+}
+
+function setTestEnvironment(t, values) {
+  const previous = Object.fromEntries(
+    Object.keys(values).map((name) => [name, process.env[name]]),
+  );
+  Object.assign(process.env, values);
+  t.after(() => {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  });
+}
+
+async function initializeFlowchartDraft(t, options = {}) {
+  const root = await temporaryDirectory(t);
+  const workspace = path.join(root, 'workspace');
+  const skill = path.join(workspace, 'skill');
+  await fs.mkdir(skill, { recursive: true });
+  await fs.writeFile(path.join(skill, 'SKILL.md'), [
+    '---',
+    'name: flowchart-fixture',
+    'description: Creates a bilingual Marketplace Flowchart fixture.',
+    '---',
+    '# Flowchart fixture',
+    '',
+  ].join('\n'));
+  setTestEnvironment(t, {
+    TAKU_PUBLISHER_HOME: path.join(root, 'publisher-home'),
+    TAKU_TEST_FLOWCHART_TOKEN: 'publisher-flowchart-test-token',
+    TAKU_PUBLISHER_GENERATE_FLOWCHART: 'true',
+  });
+  const mode = options.mode ?? 'create';
+  const flags = [
+    ['workspace', workspace],
+    ['source', skill],
+    ['type', 'skill'],
+    ['mode', mode],
+    ['draft-id', options.draftId ?? `flowchart-${mode}-fixture`],
+  ];
+  if (mode === 'update') {
+    flags.push(['item-id', '11111111-1111-4111-8111-111111111111']);
+  }
+  const initialized = await dispatch({ command: 'init', flags: new Map(flags), rest: [] });
+  return { root, initialized };
+}
+
+function remoteCreateArguments(draftId, workerUrl, metadataPath) {
+  const flags = [
+    ['draft-id', draftId],
+    ['worker-url', workerUrl],
+    ['allow-custom-worker-url', true],
+    ['token-env', 'TAKU_TEST_FLOWCHART_TOKEN'],
+    ['no-browser-login', true],
+  ];
+  if (metadataPath) flags.push(['metadata', metadataPath]);
+  return { command: 'remote-create', flags: new Map(flags), rest: [] };
 }
 
 test('scoped Publisher session is resolved without exposing or widening scopes', async (t) => {
@@ -180,6 +263,282 @@ test('API client generates Flowchart data with scoped auth and idempotency', asy
     () => client.generateFlowchart({ type: 'app', name: 'Demo', description: 'A useful app.' }, ''),
     error => error instanceof PublisherError && error.code === 'invalid_idempotency_key',
   );
+});
+
+test('Flowchart request and response helpers bind content and require bilingual graphs', () => {
+  const state = {
+    draft_id: 'local-flowchart-request',
+    status: 'selected',
+    mode: 'create',
+    source_path: '',
+    unit: {},
+  };
+  const request = publisherFlowchartGenerationPayload({
+    toolType: 'skill',
+    tool: { type: 'skill', name: 'Research Skill', description: 'Researches a topic.' },
+    listing: {
+      title: 'Research Skill',
+      shortDescription: 'Researches a topic.',
+      description: 'Researches a topic and returns a sourced summary.',
+    },
+  });
+  const requestHash = publisherFlowchartRequestHash(request);
+  assert.equal(request.type, 'skill');
+  assert.match(requestHash, /^[a-f0-9]{64}$/);
+  assert.equal(
+    publisherFlowchartIdempotencyKey(state, requestHash),
+    publisherFlowchartIdempotencyKey(state, requestHash),
+  );
+  assert.match(
+    publisherFlowchartIdempotencyKey(state, requestHash),
+    /^publisher-flowchart:v1:[a-f0-9]{24}:[a-f0-9]{64}$/,
+  );
+  const listing = publisherFlowchartListingFromResponse(generatedFlowchartResponse());
+  assert.equal(listing.flowchartIntro.nodes.length, 2);
+  assert.equal(listing.flowchartIntroI18n['en-US'].nodes.length, 2);
+  assert.equal(listing.flowchartIntroI18n['zh-CN'].nodes.length, 2);
+  assert.throws(
+    () => publisherFlowchartListingFromResponse({
+      flowchartIntro: flowchartGraph('Default'),
+      flowchartIntroI18n: { 'en-US': flowchartGraph('English') },
+    }),
+    (error) => error instanceof PublisherError && error.code === 'invalid_generated_flowchart',
+  );
+});
+
+test('remote create generates and injects Flowchart before icon and draft creation', async (t) => {
+  const { initialized } = await initializeFlowchartDraft(t, { draftId: 'flowchart-order-fixture' });
+  const requests = [];
+  const server = http.createServer((request, response) => {
+    const chunks = [];
+    request.on('data', (chunk) => chunks.push(chunk));
+    request.on('end', () => {
+      requests.push({
+        path: request.url,
+        idempotencyKey: String(request.headers['idempotency-key'] ?? ''),
+        body: chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : null,
+      });
+      response.setHeader('content-type', 'application/json');
+      if (request.url === '/publisher/flowchart/generate') {
+        response.end(JSON.stringify(generatedFlowchartResponse()));
+      } else if (request.url === '/marketplace/icons/generate') {
+        response.end('{"imageUrl":"https://cdn.example.test/icon.png"}');
+      } else if (request.url === '/stax/publisher/drafts') {
+        response.end('{"id":"remote-flowchart-order"}');
+      } else {
+        response.statusCode = 404;
+        response.end('{"error":"not found"}');
+      }
+    });
+  });
+  const workerUrl = await listenOnLoopback(t, server);
+
+  await dispatch(remoteCreateArguments(initialized.draft_id, workerUrl));
+
+  assert.deepEqual(requests.map((request) => request.path), [
+    '/publisher/flowchart/generate',
+    '/marketplace/icons/generate',
+    '/stax/publisher/drafts',
+  ]);
+  assert.match(
+    requests[0].idempotencyKey,
+    /^publisher-flowchart:v1:[a-f0-9]{24}:[a-f0-9]{64}$/,
+  );
+  assert.equal(requests[0].body.type, 'skill');
+  assert.equal(requests[2].body.listing.flowchartIntro.nodes.length, 2);
+  assert.equal(requests[2].body.listing.flowchartIntroI18n['en-US'].nodes.length, 2);
+  assert.equal(requests[2].body.listing.flowchartIntroI18n['zh-CN'].nodes.length, 2);
+});
+
+test('remote create preserves a valid custom Flowchart and skips generation', async (t) => {
+  const { root, initialized } = await initializeFlowchartDraft(t, { draftId: 'flowchart-custom-fixture' });
+  const custom = {
+    flowchart_intro: flowchartGraph('Creator default'),
+    flowchart_intro_i18n: {
+      'en-US': flowchartGraph('Creator English'),
+      'zh-CN': flowchartGraph('创作者中文'),
+    },
+  };
+  const metadataPath = path.join(root, 'metadata.json');
+  await fs.writeFile(metadataPath, JSON.stringify(custom));
+  const requests = [];
+  let createdPayload;
+  const server = http.createServer((request, response) => {
+    const chunks = [];
+    request.on('data', (chunk) => chunks.push(chunk));
+    request.on('end', () => {
+      requests.push(request.url);
+      response.setHeader('content-type', 'application/json');
+      if (request.url === '/marketplace/icons/generate') {
+        response.end('{"imageUrl":"https://cdn.example.test/icon.png"}');
+      } else if (request.url === '/stax/publisher/drafts') {
+        createdPayload = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        response.end('{"id":"remote-flowchart-custom"}');
+      } else {
+        response.statusCode = 500;
+        response.end('{"error":"unexpected Flowchart generation"}');
+      }
+    });
+  });
+  const workerUrl = await listenOnLoopback(t, server);
+
+  await dispatch(remoteCreateArguments(initialized.draft_id, workerUrl, metadataPath));
+
+  assert.deepEqual(requests, ['/marketplace/icons/generate', '/stax/publisher/drafts']);
+  assert.deepEqual(createdPayload.listing.flowchartIntro, custom.flowchart_intro);
+  assert.deepEqual(createdPayload.listing.flowchartIntroI18n, custom.flowchart_intro_i18n);
+});
+
+test('remote update inherits its listing and skips Flowchart and icon generation', async (t) => {
+  const { initialized } = await initializeFlowchartDraft(t, {
+    mode: 'update',
+    draftId: 'flowchart-update-fixture',
+  });
+  const requests = [];
+  let createdPayload;
+  const server = http.createServer((request, response) => {
+    const chunks = [];
+    request.on('data', (chunk) => chunks.push(chunk));
+    request.on('end', () => {
+      requests.push(request.url);
+      createdPayload = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      response.setHeader('content-type', 'application/json');
+      response.end('{"id":"remote-flowchart-update"}');
+    });
+  });
+  const workerUrl = await listenOnLoopback(t, server);
+
+  await dispatch(remoteCreateArguments(initialized.draft_id, workerUrl));
+
+  assert.deepEqual(requests, ['/stax/publisher/drafts']);
+  assert.equal(createdPayload.inheritListing, true);
+  assert.deepEqual(createdPayload.listing, {});
+});
+
+test('Flowchart retries reuse the same content-bound idempotency key', async (t) => {
+  const { initialized } = await initializeFlowchartDraft(t, { draftId: 'flowchart-retry-key-fixture' });
+  const flowchartKeys = [];
+  let flowchartAttempts = 0;
+  const server = http.createServer((request, response) => {
+    request.resume();
+    request.on('end', () => {
+      response.setHeader('content-type', 'application/json');
+      if (request.url === '/publisher/flowchart/generate') {
+        flowchartAttempts += 1;
+        flowchartKeys.push(String(request.headers['idempotency-key'] ?? ''));
+        if (flowchartAttempts === 1) {
+          response.statusCode = 503;
+          response.end('{"error":"retryable fixture"}');
+        } else {
+          response.end(JSON.stringify(generatedFlowchartResponse()));
+        }
+      } else if (request.url === '/marketplace/icons/generate') {
+        response.end('{"imageUrl":"https://cdn.example.test/icon.png"}');
+      } else {
+        response.end('{"id":"remote-flowchart-retry-key"}');
+      }
+    });
+  });
+  const workerUrl = await listenOnLoopback(t, server);
+  const invocation = remoteCreateArguments(initialized.draft_id, workerUrl);
+
+  await assert.rejects(
+    dispatch(invocation),
+    (error) => error instanceof PublisherError
+      && error.code === 'api_error'
+      && error.details.status === 503,
+  );
+  await dispatch(invocation);
+
+  assert.equal(flowchartAttempts, 2);
+  assert.equal(flowchartKeys[0], flowchartKeys[1]);
+});
+
+test('remote draft retry reuses persisted Flowchart without generating twice', async (t) => {
+  const { initialized } = await initializeFlowchartDraft(t, { draftId: 'flowchart-draft-retry-fixture' });
+  let flowchartAttempts = 0;
+  let draftAttempts = 0;
+  const server = http.createServer((request, response) => {
+    request.resume();
+    request.on('end', () => {
+      response.setHeader('content-type', 'application/json');
+      if (request.url === '/publisher/flowchart/generate') {
+        flowchartAttempts += 1;
+        response.end(JSON.stringify(generatedFlowchartResponse()));
+      } else if (request.url === '/marketplace/icons/generate') {
+        response.end('{"imageUrl":"https://cdn.example.test/icon.png"}');
+      } else {
+        draftAttempts += 1;
+        if (draftAttempts === 1) {
+          response.statusCode = 500;
+          response.end('{"error":"draft retry fixture"}');
+        } else {
+          response.end('{"id":"remote-flowchart-draft-retry"}');
+        }
+      }
+    });
+  });
+  const workerUrl = await listenOnLoopback(t, server);
+  const invocation = remoteCreateArguments(initialized.draft_id, workerUrl);
+
+  await assert.rejects(dispatch(invocation), (error) => error instanceof PublisherError);
+  await dispatch(invocation);
+
+  assert.equal(flowchartAttempts, 1);
+  assert.equal(draftAttempts, 2);
+});
+
+test('Flowchart authorization, credit, throttling, server, and validation failures stop before draft creation', async (t) => {
+  for (const status of [401, 403, 402, 429, 500, 503]) {
+    await t.test(`HTTP ${status}`, async (subtest) => {
+      const { initialized } = await initializeFlowchartDraft(subtest, {
+        draftId: `flowchart-failure-${status}`,
+      });
+      const requests = [];
+      const server = http.createServer((request, response) => {
+        requests.push(request.url);
+        request.resume();
+        request.on('end', () => {
+          response.writeHead(status, { 'content-type': 'application/json' });
+          response.end(JSON.stringify({ error: `Flowchart failure ${status}` }));
+        });
+      });
+      const workerUrl = await listenOnLoopback(subtest, server);
+
+      await assert.rejects(
+        dispatch(remoteCreateArguments(initialized.draft_id, workerUrl)),
+        (error) => error instanceof PublisherError
+          && error.code === 'api_error'
+          && error.details.status === status,
+      );
+      assert.deepEqual(requests, ['/publisher/flowchart/generate']);
+    });
+  }
+
+  await t.test('invalid response', async (subtest) => {
+    const { initialized } = await initializeFlowchartDraft(subtest, {
+      draftId: 'flowchart-failure-invalid-response',
+    });
+    const requests = [];
+    const server = http.createServer((request, response) => {
+      requests.push(request.url);
+      request.resume();
+      request.on('end', () => {
+        response.setHeader('content-type', 'application/json');
+        response.end(JSON.stringify({
+          flowchartIntro: flowchartGraph('Default'),
+          flowchartIntroI18n: { 'en-US': flowchartGraph('English') },
+        }));
+      });
+    });
+    const workerUrl = await listenOnLoopback(subtest, server);
+
+    await assert.rejects(
+      dispatch(remoteCreateArguments(initialized.draft_id, workerUrl)),
+      (error) => error instanceof PublisherError && error.code === 'invalid_generated_flowchart',
+    );
+    assert.deepEqual(requests, ['/publisher/flowchart/generate']);
+  });
 });
 
 test('API client uses scoped auth for GitHub connection and repository discovery', async () => {
@@ -565,7 +924,7 @@ test('draft payload keeps canonical create fields and update listing inheritance
   assert.equal(createPayload.listing.authorshipKind, 'original');
   assert.equal(createPayload.listing.rightsBasis, 'self_owned');
   assert.deepEqual(createPayload.listing.categories, ['writing-content']);
-  assert.deepEqual(createPayload.listing.platforms, ['taku', 'codex', 'claude-code']);
+  assert.deepEqual(createPayload.listing.platforms, ['taku', 'codex', 'claude-code', 'cursor', 'opencode', 'gemini-cli']);
 
   const itemId = '11111111-1111-4111-8111-111111111111';
   const updatePayload = await draftCreatePayload({
@@ -785,7 +1144,10 @@ import fs from 'node:fs';
 fs.appendFileSync(process.env.MOCK_CREATOR_LOG, JSON.stringify({ args: process.argv.slice(2), token: process.env.TAKU_PUBLISH_TOKEN || '' }) + '\\n');
 const ok = process.env.TAKU_PUBLISH_TOKEN === 'replacement-publisher-token';
 console.log(JSON.stringify(ok
-  ? { ok: true, editorUrl: 'https://worker.taku.ai/stax/studio/editor?launch=test' }
+  ? { ok: true, editorUrl: process.argv.includes('--challenge-handoff')
+      ? 'http://localhost:3001/stax?review=1&launch=test'
+      : 'https://worker.taku.ai/stax/studio/editor?launch=test',
+      ...(process.argv.includes('--challenge-handoff') ? { challengeHandoff: true } : {}) }
   : { ok: false, needsAuth: true, status: 401, draftPath: '/private/generated-card.json' }));
 `);
   const launcher = `#!/usr/bin/env node
@@ -865,10 +1227,12 @@ if (!response.ok) process.exitCode = 1;
   const authorization = new URL(await fs.readFile(browserLog, 'utf8'));
   assert.equal(authorization.searchParams.has('account_mode'), false);
   assert.equal(authorization.searchParams.get('intent'), 'publish_stax_card');
-  await dispatch({
+  const challengeResult = await dispatch({
     command: 'creator-draft', flags: new Map(),
     rest: ['--json', '--editor', '--challenge-handoff', '--worker-url', workerUrl, '--allow-custom-worker-url'],
   });
+  assert.equal(challengeResult.editorUrl, 'http://localhost:3001/stax?review=1&launch=test');
+  assert.match(String(challengeResult.message), /Stax Challenge Review/);
   const challengeInvocation = (await fs.readFile(creatorLog, 'utf8')).trim().split('\n').map(JSON.parse).at(-1);
   assert.equal(challengeInvocation.args.includes('--challenge-handoff'), true);
   assert.equal(challengeInvocation.token, 'replacement-publisher-token');

@@ -21,7 +21,13 @@ const nextConfig: NextConfig = {
     // Next.js App Router treats folders starting with "_" as private (not routable).
     // We still want public endpoints like "/__taku/rpc" & "/__taku/manifest".
     // So we implement handlers under "/api/__taku/*" and rewrite to them here.
-    return [{ source: '/__taku/:path*', destination: '/api/taku/:path*' }];
+    return [
+      {
+        source: '/__taku/host-attestation/verify',
+        destination: '/api/taku/host-attestation/verify',
+      },
+      { source: '/__taku/:path*', destination: '/api/taku/:path*' },
+    ];
   },
   // 其他配置...
 };
@@ -33,15 +39,31 @@ if (process.env.TAKU_RUNTIME_KIND === 'edit' && process.env.NODE_ENV === 'develo
     const port = process.env.DEV_PORT || process.env.PORT || '3000';
     console.log('\x1b[36m%s\x1b[0m', '[TAKUAI-INFO]', `Dev server booting on port ${port}`);
 
-    // 延迟访问首页进行预编译，增加重试机制
+    // 提前编译独立的 Host attestation route，避免首次 SDK 握手被路由编译拖过 3s。
     const checkCompilation = async (retries = 3) => {
       for (let attempt = 1; attempt <= retries; attempt++) {
         try {
-          const response = await fetch(`http://localhost:${port}`, {
-            signal: AbortSignal.timeout(5000)
-          });
-          if (response.ok) {
-            console.log('\x1b[36m%s\x1b[0m', '[TAKUAI-COMPILED]', `Template homepage compiled and accessible`);
+          const response = await fetch(
+            `http://127.0.0.1:${port}/__taku/host-attestation/verify`,
+            {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: '{}',
+              signal: AbortSignal.timeout(60_000),
+            }
+          );
+          const result = (await response.json().catch(() => null)) as {
+            verified?: unknown;
+          } | null;
+          if (
+            (response.status === 401 || response.status === 503) &&
+            result?.verified === false
+          ) {
+            console.log(
+              '\x1b[36m%s\x1b[0m',
+              '[TAKUAI-COMPILED]',
+              'Host attestation route compiled and accessible'
+            );
             return;
           }
         } catch (error: unknown) {

@@ -10,7 +10,7 @@ import type { JsonObject } from './types.js';
 import { isRecord, PublisherError, secureDirectory } from './util.js';
 
 const RUNTIME_PROTOCOL = 'repo-to-stax.trusted-runtime.v1';
-const SUPPORTED_CONVERTER_VERSIONS = new Set(['0.2.0']);
+const SUPPORTED_CONVERTER_VERSIONS = new Set(['0.2.0', '0.2.1']);
 const REQUIRED_COMMANDS = [
   'install',
   'test',

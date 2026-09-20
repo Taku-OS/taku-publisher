@@ -117,7 +117,10 @@ class ApiClientTests(unittest.TestCase):
         self.assertNotIn("iconUrl", payload["listing"])
         self.assertIn("Capabilities", payload["listing"]["description"])
         self.assertEqual(["writing-content"], payload["listing"]["categories"])
-        self.assertEqual(["taku", "codex", "claude-code"], payload["listing"]["platforms"])
+        self.assertEqual(
+            ["taku", "codex", "claude-code", "cursor", "opencode", "gemini-cli"],
+            payload["listing"]["platforms"],
+        )
         self.assertTrue(payload["listing"]["examples"])
         self.assertEqual("skill-demo", payload["tool"]["id"])
 

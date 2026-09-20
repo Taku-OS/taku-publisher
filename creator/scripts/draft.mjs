@@ -1448,6 +1448,7 @@ function normalizePrimaryAiClient(value) {
   if (normalized === 'codex') return 'codex';
   if (['claude', 'claude-code', 'cc'].includes(normalized)) return 'claude-code';
   if (normalized === 'cursor') return 'cursor';
+  if (normalized === 'opencode' || normalized === 'open-code') return 'opencode';
   if (normalized === 'gemini') return 'gemini';
   return '';
 }

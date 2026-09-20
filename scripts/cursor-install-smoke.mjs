@@ -41,6 +41,30 @@ try {
     'taku-publisher', 'install', '--host', 'cursor', '--scope', 'project', '--project', npmProject],
   { cwd: temporary, encoding: 'utf8' }));
   if (!npmResult.ok || npmResult.version !== version) throw new Error('npm one-command installation failed.');
+  const agentProject = path.join(temporary, 'agent-project');
+  await fs.mkdir(agentProject);
+  const agentArgs = [bin, 'install', '--host', 'agent-skills', '--scope', 'project', '--project', agentProject];
+  const agentResult = JSON.parse(execFileSync('npm', ['exec', '--yes', '--offline',
+    '--cache', path.join(temporary, 'agent-npm-cache'),
+    '--package', path.join(root, `dist/releases/taku-publisher-${version}.tgz`), '--',
+    'taku-publisher', 'install', '--host', 'agent-skills', '--scope', 'project', '--project', agentProject],
+  { cwd: temporary, encoding: 'utf8' }));
+  if (!agentResult.ok || agentResult.version !== version || agentResult.host !== 'agent-skills') {
+    throw new Error('Packaged Agent Skills installer failed.');
+  }
+  if (agentResult.target !== path.join(await fs.realpath(agentProject), '.agents/skills/taku-publisher')) {
+    throw new Error('Agent Skills installer chose the wrong target.');
+  }
+  const agentAdapter = JSON.parse(await fs.readFile(path.join(agentResult.target, 'host-adapter.json'), 'utf8'));
+  if (agentAdapter.host !== 'agent-skills') throw new Error('Agent Skills marker mismatch.');
+  const portable = await inventory(path.join(root, 'dist/skills/taku-publisher'));
+  const agentActual = (await inventory(agentResult.target)).filter((file) =>
+    !['.taku-publisher-install.json', 'host-adapter.json'].includes(file.path));
+  if (normalized(agentActual) !== normalized(portable)) {
+    throw new Error('Agent Skills installation lost portable runtime files.');
+  }
+  const repeatedAgent = JSON.parse(execFileSync(process.execPath, agentArgs, { encoding: 'utf8' }));
+  if (repeatedAgent.status !== 'already_installed') throw new Error('Agent Skills install is not idempotent.');
   const marketplace = path.join(root, 'dist/marketplaces/cursor/taku');
   const entries = readZip(await fs.readFile(path.join(root, `dist/releases/taku-publisher-cursor-marketplace-${version}.zip`)));
   const marketplaceFiles = await inventory(marketplace);
@@ -51,7 +75,8 @@ try {
   }
   console.log(JSON.stringify({ ok: true, status: 'cursor_package_install_smoke_passed',
     version, runtimeFiles: actual.length, marketplaceFiles: entries.length,
-    defaultHost: 'cursor', globalInstallationModified: false }));
+    defaultHost: 'cursor', agentSkillsFiles: agentActual.length,
+    globalInstallationModified: false }));
 } finally {
   await fs.rm(temporary, { recursive: true, force: true });
 }

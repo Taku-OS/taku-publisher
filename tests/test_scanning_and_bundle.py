@@ -190,8 +190,9 @@ class ScanningAndBundleTests(unittest.TestCase):
         self.assertEqual("publish", package_manifest["channel"])
         self.assertEqual(state["unit"]["id"], package_manifest["capability"]["id"])
         self.assertEqual("skill", package_manifest["capability"]["kind"])
-        self.assertEqual(["claude-code", "codex", "taku"], package_manifest["compatibility"]["hosts"])
-        self.assertEqual(["claude-code", "codex", "taku"], package_manifest["compatibility"]["platforms"])
+        expected_platforms = ["claude-code", "codex", "cursor", "gemini-cli", "opencode", "taku"]
+        self.assertEqual(expected_platforms, package_manifest["compatibility"]["hosts"])
+        self.assertEqual(expected_platforms, package_manifest["compatibility"]["platforms"])
         self.assertEqual(["INTERNAL_GATE", "OPENAI_API_KEY"], package_manifest["requiredSecrets"])
         package_file_paths = {item["path"] for item in package_manifest["files"]}
         self.assertIn(".taku/manifest.json", package_file_paths)

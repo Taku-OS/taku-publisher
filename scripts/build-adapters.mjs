@@ -87,6 +87,10 @@ async function buildPortableSkill() {
     path.join(repositoryRoot, 'adapters', 'portable', pluginName, 'README.md'),
     path.join(skillRoot, 'README.md'),
   );
+  await copyOptionalFile(
+    path.join(repositoryRoot, 'adapters', 'opencode', 'README.md'),
+    path.join(skillRoot, 'OPENCODE.md'),
+  );
   await fs.mkdir(path.join(skillRoot, 'scripts'), { recursive: true });
   await fs.copyFile(
     path.join(repositoryRoot, 'scripts', 'taku-publisher.mjs'),

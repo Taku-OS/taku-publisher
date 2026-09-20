@@ -10,7 +10,7 @@ The repository deliberately separates reusable implementation from host-specific
 - `packages/passport-core`: host-independent TypeScript/ESM core for deterministic Snapshot, inventory and privacy rules.
 - `packages/creator-core`: deprecated compatibility alias for `@taku/passport-core`.
 - `packages/publisher-runtime`: canonical TypeScript/ESM runtime for discovery,
-  Codex/Claude Code/Cursor project import, bounded Skill generation, staging,
+  Codex/Claude Code/Cursor/OpenCode project import, bounded Skill generation, staging,
   scanning, packaging, authorization, Marketplace installation, and Worker
   orchestration.
 - `packages/publisher-cli`: stable Node.js workspace entrypoints for the creator
@@ -18,6 +18,7 @@ The repository deliberately separates reusable implementation from host-specific
 - `adapters/portable/taku-publisher`: portable Skill distribution notes.
 - `adapters/codex/taku-publisher`: thin Codex plugin manifest source.
 - `adapters/claude/taku-publisher`: thin Claude Code plugin manifest source.
+- `adapters/opencode`: OpenCode installation guidance for the portable Agent Skill.
 - `creator/` and `scripts/taku_publisher/`: current implementation and backward-compatible entrypoints.
 
 The canonical entrypoint is:
@@ -26,12 +27,13 @@ The canonical entrypoint is:
 node scripts/taku-publisher.mjs --help
 ```
 
-Recent local projects can be discovered from Codex, Claude Code, or Cursor
+Recent local projects can be discovered from Codex, Claude Code, Cursor, or OpenCode
 metadata and assessed without executing them:
 
 ```bash
 node scripts/taku-publisher.mjs project-discover --host all
 node scripts/taku-publisher.mjs project-discover --host cursor
+node scripts/taku-publisher.mjs project-discover --host opencode
 node scripts/taku-publisher.mjs project-assess --source /absolute/path/to/project
 ```
 
@@ -40,6 +42,12 @@ reader uses only explicit token counters in `state.vscdb`; missing counters are
 reported as unavailable and are never estimated from conversation text. A
 Cursor-compatible host uses the portable Skill with its current Agent; it does
 not ship an independent AI runner.
+
+OpenCode discovery reads only project paths and activity timestamps from its
+local database, with a bounded legacy project-metadata fallback. Its usage
+reader selects only explicit session model and token columns; it never queries
+message, prompt, account, or credential tables and never estimates missing
+usage.
 
 The assessment routes one selected project to existing Skill publishing,
 SubApp migration, bounded Skill generation, or reference-only handling.
@@ -95,22 +103,35 @@ claude plugin install taku-publisher@taku
 ```
 
 Start a new Codex task or Claude Code session after installation so it picks up
-the Taku Publisher Skill. Version 0.3.21 preserves complete recent-90-day,
-model-level Codex and Claude Code usage through Stax draft generation for AI
-Burn, plus the existing Cursor Agent-plugin marketplace bundle and
-file-preserving local installer:
+the Taku Publisher Skill. Version 0.3.22 adds bounded OpenCode project discovery
+and exact local Token counters, fixes Publisher session authentication for
+Studio drafts, and ships the current Stax Challenge and SubApp conversion flow
+through the file-preserving multi-host installer:
 
 ```sh
-npm run pack:cursor
+npm run pack:installer
 node dist/installers/cursor/bin/taku-publisher.mjs install --host cursor
+node dist/installers/cursor/bin/taku-publisher.mjs install --host agent-skills
 ```
 
-Start a new Cursor Agent chat and invoke `/taku-publisher`. GitHub production
-distribution uses the `marketplace` branch and `v0.3.21` release assets, not
+Start a new Cursor Agent chat and invoke `/taku-publisher`. The generic target
+installs to `~/.agents/skills/taku-publisher`, which OpenCode loads by default;
+start a new host session after installation. GitHub production distribution
+uses the `marketplace` branch and `v0.3.22` release assets, not
 the npm registry or the official Cursor store. `npm run build:marketplace`
 generates the combined three-host GitHub bundle. Stax Challenge is an explicit,
 optional Card-to-one-Skill workflow; ordinary Card, Skill and SubApp routes remain available. See
 [Cursor installation and release gates](docs/cursor-release.md).
+
+OpenCode can load the portable artifact from its global
+`~/.config/opencode/skills/taku-publisher` directory or a project's
+`.opencode/skills/taku-publisher` directory. The public `--host agent-skills`
+installer uses the shared `~/.agents/skills/taku-publisher` directory, which
+OpenCode also discovers automatically. Gemini CLI and other Agent Skills
+compatible hosts can use that same standard directory when supported. Core Stax
+Card, SubApp conversion, and Skill publishing workflows remain available;
+OpenCode recent-project discovery and explicit local usage statistics are also
+available when its local database schema is present.
 
 Creator-facing scans default to a bounded local usage-file budget so large
 session histories remain responsive. Pass `--max-usage-files <n>` only when a

@@ -1,32 +1,41 @@
-# Cursor 0.3.21
+# Cursor and Agent Skills installer 0.3.22
 
-This preserves the production Cursor integration, installation packaging, and
-Stax Challenge workflow while fixing preservation of complete recent-90-day,
-model-level Codex and Claude Code usage through Stax draft generation for AI
-Burn. The production plugin
-is still named `taku-publisher`, without a test-version suffix. Distribution is through the
-GitHub `marketplace` branch and the `v0.3.21` release assets. It is not
+This preserves the production Cursor integration and adds bounded OpenCode
+project discovery and exact local Token counters to the shared Agent Skills
+target. It also includes the Stax Challenge workflow, the current SubApp
+template, and Publisher session authentication for Studio drafts. The production plugin is still named
+`taku-publisher`, without a test-version suffix. Distribution is through the
+GitHub `marketplace` branch and the `v0.3.22` release assets. It is not
 published to npm or listed in the official Cursor Marketplace.
 
-Download `taku-publisher-0.3.21.tgz` from the trusted
-[GitHub release](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.3.21),
+Download `taku-publisher-0.3.22.tgz` from the trusted
+[GitHub release](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.3.22),
 then run from the download directory (Node.js 20+):
 
 ```sh
-npx --yes --package ./taku-publisher-0.3.21.tgz taku-publisher install --host cursor
+npx --yes --package ./taku-publisher-0.3.22.tgz taku-publisher install --host cursor
+npx --yes --package ./taku-publisher-0.3.22.tgz taku-publisher install --host agent-skills
 ```
+
+The `agent-skills` target installs to `~/.agents/skills/taku-publisher`.
+OpenCode discovers this shared directory by default. Its local adapter reads
+bounded project metadata and explicit per-session Token counters without
+querying prompts or messages. Quit and restart the host after installation so
+it loads the new Skill.
 
 ## Build and install locally
 
 Requires Node.js 20+ (npm is only needed to build or use a tarball).
-Exact local Cursor token reading additionally uses the optional `sqlite3`
-command. If it is missing or Cursor has no explicit counters, token usage is
-reported as unavailable; Card editing, project discovery and publishing remain usable.
+Exact local Cursor and OpenCode token reading additionally uses the optional
+`sqlite3` command. If it is missing or a host has no explicit counters, token
+usage is reported as unavailable; Card editing, project discovery and publishing
+remain usable.
 
 ```sh
 npm ci
-npm run pack:cursor
+npm run pack:installer
 node dist/installers/cursor/bin/taku-publisher.mjs install --host cursor
+node dist/installers/cursor/bin/taku-publisher.mjs install --host agent-skills
 ```
 
 The last command installs the complete Skill into the current user's
@@ -45,14 +54,15 @@ For a previously manually copied, unmanaged Skill, explicit `--backup-existing`
 moves the entire old directory to a recoverable backup before installing.
 It does not bypass protections for edited managed installs.
 
-The local npm tarball is `dist/releases/taku-publisher-0.3.21.tgz`:
+The local npm tarball is `dist/releases/taku-publisher-0.3.22.tgz`:
 
 ```sh
-npx --yes --package ./dist/releases/taku-publisher-0.3.21.tgz taku-publisher install --host cursor
+npx --yes --package ./dist/releases/taku-publisher-0.3.22.tgz taku-publisher install --host cursor
+npx --yes --package ./dist/releases/taku-publisher-0.3.22.tgz taku-publisher install --host agent-skills
 ```
 
 This tarball command uses a local file, not a released npm package. A public
-`npx --yes --package @taku/publisher@0.3.21 taku-publisher install --host cursor`
+`npx --yes --package @taku/publisher@0.3.22 taku-publisher install --host cursor`
 command must not be advertised until package ownership and npm publication
 are confirmed. Installation checks bundled file hashes; hashes detect
 corruption, not publisher authenticity. Obtain the package from a trusted source.

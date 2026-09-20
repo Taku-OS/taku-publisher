@@ -9,7 +9,14 @@ PUBLISHER_USER_AGENT = "Taku-Publisher/1.0 (+https://taku.ai)"
 SUPPORTED_TYPES = ("skill",)
 UNAVAILABLE_PUBLISH_TYPES = ("action", "agent", "plugin")
 SUPPORTED_MODES = ("create", "update")
-SUPPORTED_RUNTIME_PLATFORMS = ("taku", "codex", "claude-code")
+SUPPORTED_RUNTIME_PLATFORMS = (
+    "taku",
+    "codex",
+    "claude-code",
+    "cursor",
+    "opencode",
+    "gemini-cli",
+)
 DEFAULT_WORKER_URL = "https://worker.taku.ai"
 
 MAX_FILES = 1_000

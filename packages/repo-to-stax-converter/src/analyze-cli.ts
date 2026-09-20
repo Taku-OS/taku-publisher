@@ -8,7 +8,7 @@ import { prepareRepoSource } from './lib/repo-source.js';
 import { computeTreeDigest } from './lib/tree-digest.js';
 
 export const REPO_TO_STAX_ANALYZE_PROTOCOL = 'repo-to-stax.analyze.v1';
-export const REPO_TO_STAX_CONVERTER_VERSION = '0.2.0';
+export const REPO_TO_STAX_CONVERTER_VERSION = '0.2.1';
 
 interface AnalyzeArguments {
   input: string;
@@ -43,6 +43,7 @@ export async function analyzeForPublisher(args: AnalyzeArguments): Promise<unkno
     sourceDirty: prepared.sourceDirty,
     sourceDigest,
     analysis,
+    serviceRequirements: analysis.serviceRequirements,
     route: routeRepoCapability(analysis),
   };
 }

@@ -15,6 +15,7 @@ import {
   REPO_TO_STAX_CONVERSION_CHECK_PROTOCOL,
 } from '../src/agent-cli.js';
 import { computeTreeDigest } from '../src/lib/tree-digest.js';
+import { validateSubAppWorkspace } from '../src/lib/validator.js';
 
 test('prepares a validated candidate from the bundled pinned template', async () => {
   const root = await mkdtemp(join(tmpdir(), 'repo-to-stax-prepare-cli-'));
@@ -48,10 +49,28 @@ test('prepares a validated candidate from the bundled pinned template', async ()
     assert.equal(result.protocol, REPO_TO_STAX_PREPARE_PROTOCOL);
     assert.equal(result.sourceDigest, sourceDigest);
     assert.equal((result.workspaceValidation as Record<string, unknown>).ok, true);
-    assert.equal((result.template as Record<string, unknown>).version, '0.3.2');
+    assert.equal((result.template as Record<string, unknown>).version, '0.3.4');
     const workspaceRoot = String(result.workspaceRoot);
     assert.match(await readFile(join(workspaceRoot, 'STAX_CONVERSION_PLAN.md'), 'utf8'), /One-Shot Agent Checklist/);
     assert.match(await readFile(join(workspaceRoot, '.taku', 'migration.json'), 'utf8'), /taku\.subapp-migration\.v2/);
+
+    const attestationRoutePath = join(
+      workspaceRoot,
+      'src/app/api/taku/host-attestation/verify/route.ts',
+    );
+    const attestationRoute = await readFile(attestationRoutePath, 'utf8');
+    await writeFile(attestationRoutePath, `${attestationRoute}\n// untrusted mutation\n`);
+    const tamperedWorkspace = await validateSubAppWorkspace(workspaceRoot, { level: 'workspace' });
+    assert.equal(tamperedWorkspace.ok, false);
+    assert.equal(
+      tamperedWorkspace.findings.some(
+        finding =>
+          finding.code === 'workspace.runtime-contract' &&
+          finding.path === 'src/app/api/taku/host-attestation/verify/route.ts',
+      ),
+      true,
+    );
+    await writeFile(attestationRoutePath, attestationRoute);
 
     const handoff = await createAgentHandoff(workspaceRoot) as Record<string, unknown>;
     assert.equal(handoff.protocol, REPO_TO_STAX_AGENT_HANDOFF_PROTOCOL);

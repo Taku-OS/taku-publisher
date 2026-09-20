@@ -4,7 +4,9 @@
 
 模板只保留 server-only 的 AI completion、Service API helper 与领域开发骨架，不默认向 browser 开放这些能力，也不提供通用 Agent Loop、文件工具、命令工具或可从 HTTP 调用的工具注册中心。
 
-这是刻意的安全边界：SubApp Route Handler 是客户端可伪造的网络入口，不能把提示词、工具白名单或命令黑名单当作权限控制。
+需要托管多步 Agent、报告、生图或生视频时，使用 [Taku App Host Agent Runtime](subapp-agent-runtime.md) 的 `@/lib/taku-runtime`。它走已认证 Host 协议和真实 grant，不是 HTTP 工具循环；模板不复制 Codex/Claude 引擎或为它们增加公开网关。以下 server-only 领域规则不取代这个已实现的 Host SDK。
+
+这是刻意的安全边界：Taku App Route Handler 是客户端可伪造的网络入口，不能把提示词、工具白名单或命令黑名单当作权限控制。
 
 AI、托管服务、外部写入或 browser mutation 的前提，是一个 real, versioned Taku-controlled server authority contract 已经验证 user、app、resource、operation、entitlement 与 usage attribution。If the authority contract is absent, every managed/external capability and browser mutation remains visibly blocked；`server-only`、Server Action 或 Route Handler 都不能单独充当认证边界。
 
@@ -24,7 +26,7 @@ AI、托管服务、外部写入或 browser mutation 的前提，是一个 real,
 如果产品明确需要文件系统、进程、命令或网络代理能力，必须先由 Taku 宿主提供：
 
 - 宿主认证与逐次授权；
-- 服务端重新绑定用户、SubApp、资源和 entitlement，不能信任客户端自报 ID；
+- 服务端重新绑定用户、Taku App、资源和 entitlement，不能信任客户端自报 ID；
 - 独立进程级 sandbox，限制文件系统、环境变量、子进程与网络；
 - 有界输入、超时、输出上限、审计与撤销机制；
 - 针对越权、重放、路径穿越、符号链接、命令注入和数据外传的契约测试。

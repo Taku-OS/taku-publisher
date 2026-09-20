@@ -35,7 +35,8 @@ class BrowserAuthTests(unittest.TestCase):
                 params = urllib.parse.parse_qs(urllib.parse.urlparse(login_url).query)
                 callback_url = params["return_to"][0]
                 state = params["auth_state"][0]
-                with urllib.request.urlopen(callback_url, timeout=2) as response:
+                loopback_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                with loopback_opener.open(callback_url, timeout=2) as response:
                     self.assertEqual(200, response.status)
                 request = urllib.request.Request(
                     callback_url,
@@ -43,7 +44,7 @@ class BrowserAuthTests(unittest.TestCase):
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
-                with urllib.request.urlopen(request, timeout=2) as response:
+                with loopback_opener.open(request, timeout=2) as response:
                     self.assertEqual(200, response.status)
                 return True
 

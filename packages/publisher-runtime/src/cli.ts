@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,7 +8,12 @@ import {
   draftCreatePayload,
   extractDraftListing,
   extractRemoteId,
+  hasUsablePublisherFlowchart,
   normalizeListingMetadata,
+  publisherFlowchartGenerationPayload,
+  publisherFlowchartIdempotencyKey,
+  publisherFlowchartListingFromResponse,
+  publisherFlowchartRequestHash,
   responseCandidates,
   TakuPublisherClient,
   validateWorkerUrl,
@@ -41,8 +45,9 @@ import {
   UNAVAILABLE_PUBLISH_TYPES,
 } from './constants.js';
 import { assertPublishTypeAvailable, discoverUnits } from './discovery.js';
+import { normalizeSkillHost, skillInstallRoot } from './hosts.js';
 import {
-  installCodexSkill,
+  installSkill,
   installPreflight,
   marketplaceItem,
   marketplaceItems,
@@ -323,23 +328,25 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
   }
   if (args.command === 'marketplace-install') {
     const itemId = requiredFlag(args, 'item-id');
+    const host = normalizeSkillHost(stringFlag(args, 'host', 'codex'));
     const client = await marketplaceInstallClient(args);
     const response = await client.getMarketplaceInstallPackage(itemId);
-    const root = codexSkillsRoot();
-    const preflight = installPreflight(response, itemId, root);
+    const root = skillInstallRoot(host);
+    const preflight = installPreflight(response, itemId, root, host);
     const confirmItemId = optionalFlag(args, 'confirm-item-id');
     if (!confirmItemId) {
       const item = record(preflight.item);
       return jsonOutput('confirmation_required', {
         item,
+        host,
         version: preflight.version,
         target_dir: preflight.target_dir,
         configuration_requirements: item.configuration_requirements,
         confirmation_rule: 'Rerun with --confirm-item-id exactly matching the selected item ID.',
       }, { requiresAction: true, actionType: 'confirm_marketplace_install' });
     }
-    const installed = await installCodexSkill(client, response, { itemId, confirmItemId, installRoot: root });
-    return jsonOutput(String(installed.status ?? 'installed'), installed, { requiresAction: true, actionType: 'start_new_codex_task' });
+    const installed = await installSkill(client, response, { itemId, confirmItemId, installRoot: root, host });
+    return jsonOutput(String(installed.status ?? 'installed'), installed, { requiresAction: true, actionType: 'start_new_host_session' });
   }
   if (args.command === 'discover') {
     const candidates = await discoverUnits(requiredFlag(args, 'workspace'), optionalFlag(args, 'source'));
@@ -368,6 +375,12 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
         : {}),
       ...(optionalFlag(args, 'cursor-user-dir')
         ? { cursorUserDir: optionalFlag(args, 'cursor-user-dir') }
+        : {}),
+      ...(optionalFlag(args, 'opencode-data-dir')
+        ? { openCodeDataDir: optionalFlag(args, 'opencode-data-dir') }
+        : {}),
+      ...(optionalFlag(args, 'opencode-state-db')
+        ? { openCodeStateDbPath: optionalFlag(args, 'opencode-state-db') }
         : {}),
       explicitProjects: explicitProject ? [explicitProject] : [],
     });
@@ -1215,10 +1228,21 @@ async function remoteCreate(
 ): Promise<JsonObject> {
   const payload = await draftCreatePayload(state);
   const metadataPath = optionalFlag(args, 'metadata');
+  let metadataProvidesFlowchart = false;
   if (metadataPath) {
     const metadata = normalizeListingMetadata(await readObject(metadataPath, 'Metadata must be a JSON object.', 'invalid_metadata'));
     assertPublicPayload(metadata);
+    metadataProvidesFlowchart = hasUsablePublisherFlowchart(metadata);
     payload.listing = { ...record(payload.listing), ...metadata };
+  }
+  if (state.mode !== 'update') {
+    await ensurePublisherFlowchartForCreate(
+      client,
+      directory,
+      state,
+      payload,
+      metadataProvidesFlowchart,
+    );
   }
   let iconError: JsonObject | null = null;
   const listing = record(payload.listing);
@@ -1359,9 +1383,15 @@ async function runCreatorCommand(command: string, creatorArgs: string[]): Promis
       payload.publisherAccountHint = accountHint;
       payload.savedToAccount = accountHint;
     }
-    payload.message = accountHint
-      ? `The private Studio draft was saved to Taku account ${accountHint}. Open editorUrl to review it.`
-      : 'The private Studio draft was saved to the current Taku account. Open editorUrl to review it.';
+    if (payload.challengeHandoff === true) {
+      payload.message = accountHint
+        ? `The private Card was saved to Taku account ${accountHint}. Open the Stax Challenge Review editorUrl, then choose one Skill in the current Agent or skip.`
+        : 'The private Card was saved to the current Taku account. Open the Stax Challenge Review editorUrl, then choose one Skill in the current Agent or skip.';
+    } else {
+      payload.message = accountHint
+        ? `The private Studio draft was saved to Taku account ${accountHint}. Open editorUrl to review it.`
+        : 'The private Studio draft was saved to the current Taku account. Open editorUrl to review it.';
+    }
   }
   payload._process_exit_code = result.code;
   return payload;
@@ -1897,6 +1927,57 @@ function iconGenerationPayload(payload: JsonObject, state: PublisherState): Json
   };
 }
 
+async function ensurePublisherFlowchartForCreate(
+  client: TakuPublisherClient,
+  directory: string,
+  state: PublisherState,
+  payload: JsonObject,
+  metadataProvidesFlowchart: boolean,
+): Promise<void> {
+  if (state.mode === 'update' || !publisherFlowchartGenerationEnabled()) return;
+  const listing = record(payload.listing);
+  const request = publisherFlowchartGenerationPayload(payload);
+  const requestHash = publisherFlowchartRequestHash(request);
+  const generation = record(state.flowchart_generation);
+  const previousRequestHash = String(generation.request_sha256 ?? '').trim();
+  const hasFlowchart = hasUsablePublisherFlowchart(listing);
+
+  if (hasFlowchart && metadataProvidesFlowchart) {
+    state.listing = listing;
+    state.flowchart_generation = null;
+    state.updated_at = nowIso();
+    await saveState(directory, state);
+    return;
+  }
+  if (hasFlowchart && (!previousRequestHash || previousRequestHash === requestHash)) {
+    return;
+  }
+
+  const idempotencyKey = publisherFlowchartIdempotencyKey(state, requestHash);
+  const generated = publisherFlowchartListingFromResponse(
+    await client.generateFlowchart(request, idempotencyKey),
+  );
+  Object.assign(listing, generated);
+  payload.listing = listing;
+  state.listing = listing;
+  state.flowchart_generation = {
+    schema_version: 'taku.publisher.flowchart-generation.v1',
+    request_sha256: requestHash,
+    idempotency_key: idempotencyKey,
+    status: 'generated',
+    generated_at: nowIso(),
+  };
+  state.updated_at = nowIso();
+  await saveState(directory, state);
+}
+
+export function publisherFlowchartGenerationEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const value = String(env.TAKU_PUBLISHER_GENERATE_FLOWCHART ?? '').trim().toLowerCase();
+  return ['1', 'true', 'yes', 'on', 'enabled'].includes(value);
+}
+
 function publicHttpsUrl(value: string): boolean {
   try {
     const parsed = new URL(value);
@@ -1904,12 +1985,6 @@ function publicHttpsUrl(value: string): boolean {
   } catch {
     return false;
   }
-}
-
-function codexSkillsRoot(): string {
-  const home = path.resolve(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'));
-  if (home === path.parse(home).root || home === path.resolve(os.homedir())) throw new PublisherError('Codex home is too broad for a safe Skill install.', 'unsafe_install_target');
-  return path.join(home, 'skills');
 }
 
 function locateCreatorScript(): string {
@@ -2025,12 +2100,12 @@ Publishing availability: Skill only. Action, Agent, and Plugin are not available
 
 Commands:
   discover, init, stage, scan, apply-review, package, status
-  creator-init [--host codex|claude-code|cursor|all] [--max-projects <n>] [--no-open-browser]
-  creator-plan --select <project-id=skill|subapp,...> [--host codex|claude-code|cursor|all]
+  creator-init [--host codex|claude-code|cursor|opencode|all] [--max-projects <n>] [--no-open-browser]
+  creator-plan --select <project-id=skill|subapp,...> [--host codex|claude-code|cursor|opencode|all]
   creator-plan-show --plan-id <creator-plan-id>
   creator-plan-next --plan-id <creator-plan-id>
   creator-plan-update --plan-id <creator-plan-id> [--card-status <ready_for_review|published|skipped>] [--project-id <id> --project-status <queued|in_progress|completed|blocked>] [--remote-item-id <id>]
-  project-discover [--host codex|claude-code|cursor|other|all] [--project <absolute-path>] [--max-projects <n>]
+  project-discover [--host codex|claude-code|cursor|opencode|other|all] [--project <absolute-path>] [--max-projects <n>]
   github-status
   github-connect [--no-open-browser]
   github-disconnect
@@ -2041,7 +2116,8 @@ Commands:
   skill-conversion-check --candidate <same-candidate-path>
   remote-create, remote-get, remote-patch, remote-scan, remote-upload, remote-status
   auth-status, auth-refresh, auth-login, auth-logout
-  marketplace-search, marketplace-show, marketplace-open, marketplace-install
+  marketplace-search, marketplace-show, marketplace-open
+  marketplace-install --host codex|claude-code|cursor|opencode|gemini-cli|agent-skills --item-id <id> [--confirm-item-id <same-id>]
   subapp-assess --source <absolute-path|github-url> [--source-ref <ref>] [--service-catalog-url <trusted-url>] [--service-mappings <reviewed-json>] [--assessment-review <bound-review-json>] [developer: --converter-bin <path>]
   subapp-prepare --source <same-source> --output-root <absolute-dir> --confirm-assessment <token> [--source-ref <same-ref>] [--name <candidate-name>] [--service-catalog-url <same-url>] [--service-mappings <same-reviewed-json>] [--assessment-review <same-bound-review-json>] [developer: --converter-bin <path>]
   subapp-convert --candidate <absolute-candidate-path> [developer: --converter-bin <path>]

@@ -1,10 +1,11 @@
-# Taku SubApp Development Guide
+# Taku App Development Guide
 
-本文件用于指导在用户创建的独立 SubApp 中进行开发。
+本文件用于指导在用户创建的独立 Taku App 中进行开发。
 
 ## 项目定位
 
 - 本项目运行在 Taku 宿主中，同时保持为可独立开发和构建的 Next.js 应用。
+- 对用户统一称为“Taku App”。现有 `subapp` 文件路径、Skill ID 和宿主标识保留兼容，不为了修改显示名称重命名。
 - 修改前先阅读 `taku.manifest.json`、`package.json` 和相关源码，保留已有产品行为与宿主契约。
 - 只围绕当前用户目标修改，不把模板仓库、发布流程或团队协作配置带入应用。
 
@@ -72,6 +73,7 @@ src/
 - Host Action 可以通过认证的本地 RPC 修改 app-private 本地数据；browser 发起的 durable write 在真实服务端 authority 出现前保持 blocked。
 - 外部服务失败时返回真实、可理解的错误，不伪造成功数据。
 - 本地数据库变更需要同步更新 schema、调用代码与必要的迁移或初始化逻辑。
+- `src/lib/taku-runtime` 是发布前实验阶段的 Host Agent Runtime SDK，不是供应商 SDK 或公开 AI 接口；详见 `docs/subapp-agent-runtime.md`。默认 manifest 不申请 AI 权限；通用 Agent、报告、文生图和文生视频都必须以当前 Host 的已认证 grant 与能力目录为准，不写死 provider/model。大文本通过协商后的 `contentRef` 分页读取，媒体只保留不透明 `assetRef`，预览时用 `asset.open` 获取不可持久化的短期播放授权；未被 Host 宣告的未来多模态能力不得假装可用。
 
 ## TypeScript 与代码质量
 

@@ -52,6 +52,17 @@ export function buildStaxStudioUrl(siteUrl, options = {}) {
   return url.toString();
 }
 
+export function buildStaxChallengeReviewUrl(siteUrl, options = {}) {
+  const url = new URL('/stax', `${normalizeStaxPublicSiteOrigin(siteUrl)}/`);
+  url.searchParams.set('review', '1');
+  const launchContextId = cleanText(
+    options.launchContextId || options.launch_context_id,
+    240,
+  );
+  if (launchContextId) url.searchParams.set('launch', launchContextId);
+  return url.toString();
+}
+
 export function buildStaxPublishedLinks(siteUrl, resultData) {
   const slug = cleanText(resultData?.username || resultData?.card?.username, 160);
   const profilePageUrl = slug

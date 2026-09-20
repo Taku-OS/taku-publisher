@@ -5,9 +5,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { installCursor, inventory, payloadPath } from './cursor-installer.mjs';
+import {
+  installAgentSkills,
+  installCursor,
+  installSkill,
+  inventory,
+  payloadPath,
+} from './cursor-installer.mjs';
 
-async function fixture(t, version = '0.3.18') {
+async function fixture(t, version = '0.3.18', host = 'cursor') {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-cursor-installer-test-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const bundle = path.join(root, 'bundle');
@@ -19,7 +25,7 @@ async function fixture(t, version = '0.3.18') {
     'SKILL.md': '---\nname: taku-publisher\ndescription: Installer fixture\n---\n',
     'package.json': '{"type":"module"}',
     'publisher-version.json': JSON.stringify({ version, channel: 'standard' }),
-    'host-adapter.json': '{"host":"cursor"}',
+    'host-adapter.json': JSON.stringify({ host }),
     'scripts/taku-publisher.mjs': '// fixture\n',
     'creator/scripts/cursor-sqlite.mjs': '// fixture\n',
     'node_modules/@taku/publisher-runtime/dist/cli.js': '// fixture\n',
@@ -36,11 +42,17 @@ async function fixture(t, version = '0.3.18') {
   await fs.rm(payload, { recursive: true });
   await fs.mkdir(payload);
   for (const file of files) await fs.rename(path.join(bundle, payloadPath(file.path)), path.join(payload, payloadPath(file.path)));
-  const index = { schemaVersion: 'taku.cursor.install.v1', name: 'taku-publisher', host: 'cursor', version, files };
-  const saveIndex = () => fs.writeFile(path.join(bundle, 'integrity.json'), JSON.stringify(index));
+  const schemaVersion = host === 'cursor' ? 'taku.cursor.install.v1' : 'taku.agent-skills.install.v1';
+  const indexFile = host === 'cursor' ? 'integrity.json' : 'integrity-agent-skills.json';
+  const payloadDirectory = host === 'cursor' ? 'payload' : 'payload-agent-skills';
+  if (payloadDirectory !== 'payload') await fs.rename(payload, path.join(bundle, payloadDirectory));
+  const selectedPayload = path.join(bundle, payloadDirectory);
+  const index = { schemaVersion, name: 'taku-publisher', host, version, files };
+  const saveIndex = () => fs.writeFile(path.join(bundle, indexFile), JSON.stringify(index));
   await saveIndex();
-  const target = path.join(homeDir, '.cursor/skills/taku-publisher');
-  return { root, bundle, homeDir, payload, target, index, saveIndex };
+  const hostHome = host === 'cursor' ? '.cursor' : '.agents';
+  const target = path.join(homeDir, hostHome, 'skills/taku-publisher');
+  return { root, bundle, homeDir, payload: selectedPayload, target, index, saveIndex };
 }
 
 test('installs complete runtime with Cursor marker and is idempotent', async (t) => {
@@ -57,6 +69,21 @@ test('project scope stays inside the chosen project', async (t) => {
   const result = await installCursor({ ...f, scope: 'project', project: f.root });
   assert.equal(result.target, path.join(await fs.realpath(f.root), '.cursor/skills/taku-publisher'));
   await assert.rejects(installCursor({ ...f, scope: 'project' }), /requires/);
+});
+
+test('installs the portable Skill into the standard Agent Skills directory', async (t) => {
+  const f = await fixture(t, '0.3.20', 'agent-skills');
+  const result = await installAgentSkills(f);
+  assert.equal(result.status, 'installed');
+  assert.equal(result.host, 'agent-skills');
+  assert.equal(result.target, path.join(await fs.realpath(f.homeDir), '.agents/skills/taku-publisher'));
+  assert.equal((await installAgentSkills(f)).status, 'already_installed');
+});
+
+test('rejects unsupported public installer hosts', async (t) => {
+  const f = await fixture(t);
+  await assert.rejects(installSkill({ ...f, host: 'opencode' }), /cursor or --host agent-skills/);
+  await assert.rejects(installSkill({ ...f, host: '__proto__' }), /cursor or --host agent-skills/);
 });
 
 test('refuses unmanaged existing Skill and preserves its files', async (t) => {
