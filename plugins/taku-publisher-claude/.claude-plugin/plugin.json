@@ -1,6 +1,6 @@
 {
   "name": "taku-publisher",
-  "version": "0.3.22",
+  "version": "0.3.23",
   "description": "Generate Stax Cards, convert Apps, and publish Skills from Codex, Claude Code, Cursor, OpenCode, and compatible Agent Skills hosts.",
   "author": {
     "name": "Taku",

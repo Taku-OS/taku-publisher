@@ -243,6 +243,9 @@ publishing. The JSON travels with the normal publish request; it is not a
 separate file upload. Generation failure must fail the current item's publish
 step instead of silently publishing without a Flowchart. Authentication uses
 the existing scoped Publisher session; never distribute user or AI tokens.
+Automatic generation is enabled by default for new Publisher drafts. Set
+`TAKU_PUBLISHER_GENERATE_FLOWCHART=off` only when an operator explicitly needs
+to disable it; creator-provided valid Flowcharts are always preserved.
 
 ## Confirmed private SubApp registration
 
