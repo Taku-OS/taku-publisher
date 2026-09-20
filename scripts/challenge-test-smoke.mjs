@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const buildRoot = path.join(root, 'dist/challenge-test');
 const build = JSON.parse(await fs.readFile(path.join(buildRoot, 'build.json'), 'utf8'));
-assert.match(build.version, /^0\.3\.23-stax-challenge\.b[a-f0-9]{12}$/);
+assert.match(build.version, /^0\.3\.24-stax-challenge\.b[a-f0-9]{12}$/);
 for (const item of build.builds) {
   const skill = path.join(buildRoot, item.directory, 'plugins', build.name, 'skills', build.name);
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-challenge-plugin-'));
@@ -38,8 +38,8 @@ for (const item of build.builds) {
     assert.match(creatorConfig, /DEFAULT_WORKER_URL = 'https:\/\/worker\.taku\.ai'/);
     assert.match(runtimeConstants, /DEFAULT_WORKER_URL = 'https:\/\/worker\.taku\.ai'/);
     const provenance = JSON.parse(await fs.readFile(path.join(buildRoot, item.directory, 'provenance.json'), 'utf8'));
-    assert.equal(provenance.baseProductionVersion, '0.3.22');
-    assert.equal(provenance.testBaseVersion, '0.3.23');
+    assert.equal(provenance.baseProductionVersion, '0.3.23');
+    assert.equal(provenance.testBaseVersion, '0.3.24');
     assert.deepEqual(provenance.endpoints, {
       siteUrl: 'http://localhost:3001', workerUrl: 'https://worker.taku.ai',
     });
