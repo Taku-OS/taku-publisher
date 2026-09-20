@@ -19,15 +19,18 @@ npx --yes --package ./taku-publisher-0.3.21.tgz taku-publisher install --host ag
 ```
 
 The `agent-skills` target installs to `~/.agents/skills/taku-publisher`.
-OpenCode discovers this shared directory by default. Quit and restart the host
-after installation so it loads the new Skill.
+OpenCode discovers this shared directory by default. Its local adapter reads
+bounded project metadata and explicit per-session Token counters without
+querying prompts or messages. Quit and restart the host after installation so
+it loads the new Skill.
 
 ## Build and install locally
 
 Requires Node.js 20+ (npm is only needed to build or use a tarball).
-Exact local Cursor token reading additionally uses the optional `sqlite3`
-command. If it is missing or Cursor has no explicit counters, token usage is
-reported as unavailable; Card editing, project discovery and publishing remain usable.
+Exact local Cursor and OpenCode token reading additionally uses the optional
+`sqlite3` command. If it is missing or a host has no explicit counters, token
+usage is reported as unavailable; Card editing, project discovery and publishing
+remain usable.
 
 ```sh
 npm ci

@@ -18,12 +18,12 @@ import {
 import { selectUsageForDraft } from './draft.mjs';
 import { STAX_CHALLENGE_SCHEDULES } from './activity-periods.mjs';
 
-test('uses the configured production-test window for AI Burn', () => {
+test('uses the official challenge window for AI Burn', () => {
   assert.deepEqual(AI_BURN_PERIOD, {
     id: 'aiBurn',
-    label: 'Sep 17 - Sep 20, 2026',
-    startsAt: '2026-09-16T16:00:00.000Z',
-    endsAt: '2026-09-20T15:59:59.999Z',
+    label: 'Sep 22 - Oct 30, 2026',
+    startsAt: '2026-09-21T16:00:00.000Z',
+    endsAt: '2026-10-30T15:59:59.999Z',
     usageSchema: AI_BURN_USAGE_SCHEMA,
   });
   assert.deepEqual(STAX_CHALLENGE_SCHEDULES.official, {
@@ -138,12 +138,12 @@ test('counts only request-level token increments inside the AI Burn window', asy
   await fs.mkdir(sessionsDir, { recursive: true });
   const rows = [
     {
-      timestamp: '2026-09-16T15:00:00.000Z',
+      timestamp: '2026-09-21T15:00:00.000Z',
       type: 'turn_context',
       payload: { model: 'gpt-5.6-sol' },
     },
     {
-      timestamp: '2026-09-16T15:30:00.000Z',
+      timestamp: '2026-09-21T15:30:00.000Z',
       type: 'event_msg',
       payload: {
         type: 'token_count',
@@ -154,7 +154,7 @@ test('counts only request-level token increments inside the AI Burn window', asy
       },
     },
     {
-      timestamp: '2026-09-17T08:00:00.000Z',
+      timestamp: '2026-09-22T08:00:00.000Z',
       type: 'event_msg',
       payload: {
         type: 'token_count',
@@ -165,7 +165,7 @@ test('counts only request-level token increments inside the AI Burn window', asy
       },
     },
     {
-      timestamp: '2026-09-21T08:00:00.000Z',
+      timestamp: '2026-10-31T08:00:00.000Z',
       type: 'event_msg',
       payload: {
         type: 'token_count',
@@ -176,10 +176,16 @@ test('counts only request-level token increments inside the AI Burn window', asy
       },
     },
   ];
+  const filePath = path.join(sessionsDir, 'cross-boundary.jsonl');
   await fs.writeFile(
-    path.join(sessionsDir, 'cross-boundary.jsonl'),
+    filePath,
     `${rows.map((row) => JSON.stringify(row)).join('\n')}\n`,
     'utf8',
+  );
+  await fs.utimes(
+    filePath,
+    new Date('2026-09-22T08:00:00.000Z'),
+    new Date('2026-09-22T08:00:00.000Z'),
   );
 
   const result = await scanUsage({
@@ -189,7 +195,7 @@ test('counts only request-level token increments inside the AI Burn window', asy
     maxBytes: 1024 * 1024,
     maxFileBytes: 1024 * 1024,
     timeoutMs: 5_000,
-    now: new Date('2026-09-19T00:00:00.000Z'),
+    now: new Date('2026-09-23T00:00:00.000Z'),
   });
 
   assert.equal(result.totalInputTokens, 16);
@@ -205,7 +211,7 @@ test('streams an oversized cross-boundary log for exact AI Burn increments', asy
   const sessionsDir = path.join(homeDir, '.codex', 'sessions');
   await fs.mkdir(sessionsDir, { recursive: true });
   const before = JSON.stringify({
-    timestamp: '2026-09-16T15:30:00.000Z',
+    timestamp: '2026-09-21T15:30:00.000Z',
     type: 'event_msg',
     payload: {
       type: 'token_count',
@@ -216,7 +222,7 @@ test('streams an oversized cross-boundary log for exact AI Burn increments', asy
     },
   });
   const inside = JSON.stringify({
-    timestamp: '2026-09-18T08:00:00.000Z',
+    timestamp: '2026-09-22T08:00:00.000Z',
     type: 'event_msg',
     payload: {
       type: 'token_count',
@@ -227,11 +233,16 @@ test('streams an oversized cross-boundary log for exact AI Burn increments', asy
     },
   });
   const filler = JSON.stringify({
-    timestamp: '2026-09-17T08:00:00.000Z',
+    timestamp: '2026-09-22T07:00:00.000Z',
     message: { role: 'assistant', content: 'x'.repeat(180) },
   });
   const filePath = path.join(sessionsDir, 'large-cross-boundary.jsonl');
   await fs.writeFile(filePath, `${before}\n${`${filler}\n`.repeat(30)}${inside}\n`, 'utf8');
+  await fs.utimes(
+    filePath,
+    new Date('2026-09-22T08:00:00.000Z'),
+    new Date('2026-09-22T08:00:00.000Z'),
+  );
   const fileSize = (await fs.stat(filePath)).size;
 
   const result = await scanUsage({
@@ -241,7 +252,7 @@ test('streams an oversized cross-boundary log for exact AI Burn increments', asy
     maxBytes: 1024 * 1024,
     maxFileBytes: 1024,
     timeoutMs: 5_000,
-    now: new Date('2026-09-19T00:00:00.000Z'),
+    now: new Date('2026-09-23T00:00:00.000Z'),
   });
 
   assert.equal(result.totalTokens, 20);
@@ -321,6 +332,44 @@ test('reads exact Cursor token counts from the local state database', async (con
   assert.equal(result.scannedFileCount, 1);
   assert.equal(result.scanCoverage.cursorDatabasePartial, false);
   assert.equal(result.sources.find((source) => source.source === 'cursor')?.available, true);
+});
+
+test('reads exact OpenCode token counts without reading message content', async (context) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-opencode-usage-'));
+  context.after(() => fs.rm(homeDir, { recursive: true, force: true }));
+  const openCodeStateDbPath = path.join(homeDir, 'opencode.db');
+  await fs.writeFile(openCodeStateDbPath, 'fixture');
+
+  const result = await scanUsage({
+    homeDir,
+    openCodeStateDbPath,
+    usagePeriodId: 'allTimeLocal',
+    openCodeQueryDatabase: async (_databasePath, options) => {
+      assert.equal(options.kind, 'sessions');
+      return {
+        rows: [{
+          session_id: 'run-1',
+          directory: path.join(homeDir, 'project'),
+          model: JSON.stringify({ id: 'gpt-5.6-sol', providerID: 'test' }),
+          time_updated: '2026-09-20T10:00:00.000Z',
+          tokens_input: 200,
+          tokens_output: 40,
+          tokens_reasoning: 5,
+          tokens_cache_read: 20,
+          tokens_cache_write: 10,
+        }],
+        scannedByteCount: 256,
+      };
+    },
+  });
+
+  assert.equal(result.totalInputTokens, 200);
+  assert.equal(result.totalOutputTokens, 40);
+  assert.equal(result.totalReasoningTokens, 5);
+  assert.equal(result.totalTokens, 275);
+  assert.equal(result.sessionCount, 1);
+  assert.equal(result.scanCoverage.openCodeDatabasePartial, false);
+  assert.equal(result.sources.find((source) => source.source === 'opencode')?.available, true);
 });
 
 test('reads Claude Code usage from CLAUDE_CONFIG_DIR', async (context) => {

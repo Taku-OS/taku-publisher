@@ -16,10 +16,10 @@ production Worker `https://worker.taku.ai`. Skill choice stays in the current
 Codex, Claude Code or Cursor Agent. No browser-to-local bridge, background
 Agent, global latest-draft fallback or public auto-submit is included.
 
-AI Burn uses the production-test interval `2026-09-17 00:00` through
-`2026-09-20 23:59:59` in Asia/Shanghai. The official `2026-09-22` through
-`2026-10-30` schedule is stored next to it, and switching periods is isolated
-to the active schedule constant in `creator/scripts/activity-periods.mjs`.
+AI Burn uses the official interval `2026-09-22 00:00` through
+`2026-10-30 23:59:59` in Asia/Shanghai. The earlier production-test schedule is
+retained next to it for historical test coverage; the active period is selected
+in `creator/scripts/activity-periods.mjs`.
 
 ## Run
 

@@ -25,8 +25,8 @@ for (const item of build.builds) {
     const { AI_BURN_PERIOD } = await import(pathToFileURL(path.join(skill, 'creator/scripts/activity-periods.mjs')));
     const { buildStaxChallengeReviewUrl } = await import(pathToFileURL(path.join(skill, 'creator/scripts/stax-url.mjs')));
     assert.deepEqual(AI_BURN_PERIOD, {
-      id: 'aiBurn', label: 'Sep 17 - Sep 20, 2026',
-      startsAt: '2026-09-16T16:00:00.000Z', endsAt: '2026-09-20T15:59:59.999Z',
+      id: 'aiBurn', label: 'Sep 22 - Oct 30, 2026',
+      startsAt: '2026-09-21T16:00:00.000Z', endsAt: '2026-10-30T15:59:59.999Z',
       usageSchema: 'taku.creator.ai-burn-usage.v3',
     });
     assert.equal(buildStaxChallengeReviewUrl('http://localhost:3001', { launchContextId: 'opaque' }),

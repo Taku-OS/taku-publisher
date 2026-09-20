@@ -376,6 +376,12 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
       ...(optionalFlag(args, 'cursor-user-dir')
         ? { cursorUserDir: optionalFlag(args, 'cursor-user-dir') }
         : {}),
+      ...(optionalFlag(args, 'opencode-data-dir')
+        ? { openCodeDataDir: optionalFlag(args, 'opencode-data-dir') }
+        : {}),
+      ...(optionalFlag(args, 'opencode-state-db')
+        ? { openCodeStateDbPath: optionalFlag(args, 'opencode-state-db') }
+        : {}),
       explicitProjects: explicitProject ? [explicitProject] : [],
     });
     return jsonOutput(projects.length ? 'project_selection_required' : 'no_recent_projects_found', {
@@ -2094,12 +2100,12 @@ Publishing availability: Skill only. Action, Agent, and Plugin are not available
 
 Commands:
   discover, init, stage, scan, apply-review, package, status
-  creator-init [--host codex|claude-code|cursor|all] [--max-projects <n>] [--no-open-browser]
-  creator-plan --select <project-id=skill|subapp,...> [--host codex|claude-code|cursor|all]
+  creator-init [--host codex|claude-code|cursor|opencode|all] [--max-projects <n>] [--no-open-browser]
+  creator-plan --select <project-id=skill|subapp,...> [--host codex|claude-code|cursor|opencode|all]
   creator-plan-show --plan-id <creator-plan-id>
   creator-plan-next --plan-id <creator-plan-id>
   creator-plan-update --plan-id <creator-plan-id> [--card-status <ready_for_review|published|skipped>] [--project-id <id> --project-status <queued|in_progress|completed|blocked>] [--remote-item-id <id>]
-  project-discover [--host codex|claude-code|cursor|other|all] [--project <absolute-path>] [--max-projects <n>]
+  project-discover [--host codex|claude-code|cursor|opencode|other|all] [--project <absolute-path>] [--max-projects <n>]
   github-status
   github-connect [--no-open-browser]
   github-disconnect

@@ -10,7 +10,7 @@ The repository deliberately separates reusable implementation from host-specific
 - `packages/passport-core`: host-independent TypeScript/ESM core for deterministic Snapshot, inventory and privacy rules.
 - `packages/creator-core`: deprecated compatibility alias for `@taku/passport-core`.
 - `packages/publisher-runtime`: canonical TypeScript/ESM runtime for discovery,
-  Codex/Claude Code/Cursor project import, bounded Skill generation, staging,
+  Codex/Claude Code/Cursor/OpenCode project import, bounded Skill generation, staging,
   scanning, packaging, authorization, Marketplace installation, and Worker
   orchestration.
 - `packages/publisher-cli`: stable Node.js workspace entrypoints for the creator
@@ -27,12 +27,13 @@ The canonical entrypoint is:
 node scripts/taku-publisher.mjs --help
 ```
 
-Recent local projects can be discovered from Codex, Claude Code, or Cursor
+Recent local projects can be discovered from Codex, Claude Code, Cursor, or OpenCode
 metadata and assessed without executing them:
 
 ```bash
 node scripts/taku-publisher.mjs project-discover --host all
 node scripts/taku-publisher.mjs project-discover --host cursor
+node scripts/taku-publisher.mjs project-discover --host opencode
 node scripts/taku-publisher.mjs project-assess --source /absolute/path/to/project
 ```
 
@@ -41,6 +42,12 @@ reader uses only explicit token counters in `state.vscdb`; missing counters are
 reported as unavailable and are never estimated from conversation text. A
 Cursor-compatible host uses the portable Skill with its current Agent; it does
 not ship an independent AI runner.
+
+OpenCode discovery reads only project paths and activity timestamps from its
+local database, with a bounded legacy project-metadata fallback. Its usage
+reader selects only explicit session model and token columns; it never queries
+message, prompt, account, or credential tables and never estimates missing
+usage.
 
 The assessment routes one selected project to existing Skill publishing,
 SubApp migration, bounded Skill generation, or reference-only handling.
@@ -123,8 +130,8 @@ installer uses the shared `~/.agents/skills/taku-publisher` directory, which
 OpenCode also discovers automatically. Gemini CLI and other Agent Skills
 compatible hosts can use that same standard directory when supported. Core Stax
 Card, SubApp conversion, and Skill publishing workflows remain available;
-recent-project discovery and usage statistics are enabled only for hosts with a
-verified local metadata format.
+OpenCode recent-project discovery and explicit local usage statistics are also
+available when its local database schema is present.
 
 Creator-facing scans default to a bounded local usage-file budget so large
 session histories remain responsive. Pass `--max-usage-files <n>` only when a

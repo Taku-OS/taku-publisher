@@ -11,7 +11,7 @@ In every host shell call, always change into the directory that contains this `S
 
 This skill has seven product surfaces:
 
-- Project import flow: discover recent Codex, Claude Code, and Cursor workspaces from bounded local metadata, let the creator select one exact project, assess it locally, and route it to existing Skill publishing, SubApp migration, bounded Skill generation, or reference-only handling.
+- Project import flow: discover recent Codex, Claude Code, Cursor, and OpenCode workspaces from bounded local metadata, let the creator select one exact project, assess it locally, and route it to existing Skill publishing, SubApp migration, bounded Skill generation, or reference-only handling.
 - Stax Card Challenge flow: this is the default for requests to create, make, or generate a Stax Card. Authorize the creator, generate the private Card draft, and open the Stax Challenge Review page through the Challenge handoff.
 - Creator profile flow: use this when the creator explicitly asks for an AI Builder Profile, public creator page, Studio, or profile editing. Authorize and confirm the Taku account first, then scan local AI tooling and behavior, save an owner-scoped private profile draft, and open the stable Worker-hosted Studio URL.
 - Creator Center flow: list and search the signed-in creator's Taku items, read trusted server-side stats, inspect one owned item, and edit the listing metadata of a private draft.
@@ -30,6 +30,12 @@ project path is available.
   `workspaceStorage` metadata, not conversation text. Creator Profile usage
   scans may read explicit token counts from Cursor's local state database;
   missing counts are reported as unavailable and are never estimated.
+- For OpenCode, use `project-discover --host opencode`. It reads only project
+  paths and activity timestamps from OpenCode's local database (or its bounded
+  legacy project metadata). Creator Profile usage scans read only explicit
+  per-session model and token counters; message, prompt, account, and credential
+  tables are never queried. Missing counters are reported as unavailable and
+  are never estimated.
 - For Codex or Claude Code, preserve the existing local history behavior.
 - For another compatible host, use `project-discover --host other --project
   <absolute-path>`. Do not promise recent-project discovery or token statistics.

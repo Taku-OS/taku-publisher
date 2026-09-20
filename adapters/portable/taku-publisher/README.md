@@ -7,8 +7,10 @@ the host. Keep its bundled `node_modules` directory intact.
 The portable package supports Cursor, OpenCode, Gemini CLI, and other compatible
 Agent Skills hosts through their current Agent and the bundled CLI. Cursor can
 discover recent workspaces and exact local token counts when Cursor has recorded
-them. Missing token counts are reported as unavailable and are never estimated
-from conversation text.
+them. OpenCode can discover recent projects and read explicit session Token
+counters from its local database. Missing token counts are reported as
+unavailable and are never estimated from conversation text; OpenCode prompt,
+message, account, and credential tables are not queried.
 
 Other compatible hosts can use an explicit local project and the same CLI. The
 host must support Skills and provide the Agent that performs semantic migration;

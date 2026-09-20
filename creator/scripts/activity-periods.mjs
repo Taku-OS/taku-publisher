@@ -13,9 +13,8 @@ export const STAX_CHALLENGE_SCHEDULES = Object.freeze({
   }),
 });
 
-// Switch this one key after the production test window closes. Keep both
-// schedules in Asia/Shanghai boundaries expressed as fixed UTC instants.
-export const ACTIVE_STAX_CHALLENGE_SCHEDULE = 'productionTest';
+// Keep schedules in Asia/Shanghai boundaries expressed as fixed UTC instants.
+export const ACTIVE_STAX_CHALLENGE_SCHEDULE = 'official';
 
 export const AI_BURN_PERIOD = Object.freeze({
   id: 'aiBurn',

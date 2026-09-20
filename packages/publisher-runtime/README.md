@@ -10,7 +10,8 @@ included in generated user plugins.
 
 ## Host project import and portable Skills
 
-`project-discover` reads bounded local session metadata to recover recent
+`project-discover` reads bounded local session metadata, including OpenCode's
+project path and activity columns, to recover recent
 workspace paths, deduplicates them, and returns lightweight root signals without
 analyzing prompt bodies or recursively scanning source code. The creator must
 select one project before `project-assess` routes it to `existing-skill`,

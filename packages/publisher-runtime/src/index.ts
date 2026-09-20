@@ -12,6 +12,7 @@ export * from './discovery.js';
 export * from './file-upload.js';
 export * from './hosts.js';
 export * from './marketplace.js';
+export * from './opencode-local.js';
 export * from './project-discovery.js';
 export * from './project-import.js';
 export * from './scanner.js';

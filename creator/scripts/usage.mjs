@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { createInterface } from 'node:readline';
 import { composeUsageSummary } from '#taku-passport-core';
+import { readOpenCodeStateUsage } from '#taku-publisher-runtime';
 import {
   exists,
   getHomeDir,
@@ -152,6 +153,7 @@ export function createEmptyUsageSummary(usagePeriodId = DEFAULT_USAGE_PERIOD_ID)
       sampledFileCount: 0,
       oversizedJsonFileCount: 0,
       cursorDatabasePartial: false,
+      openCodeDatabasePartial: false,
       scannedByteCount: 0,
       periodFiltered: false,
     },
@@ -189,6 +191,7 @@ export async function scanUsage(options = {}) {
   let candidateFileCount = 0;
   let stoppedReason;
   let cursorDatabasePartial = false;
+  let openCodeDatabasePartial = false;
   const candidatesBySource = new Map();
   const seenCandidatePaths = new Set();
 
@@ -223,6 +226,40 @@ export async function scanUsage(options = {}) {
       }
     }
     if (cursorStateUsage.warning) warnings.push(cursorStateUsage.warning);
+  }
+
+  const openCodeStateUsage = await readOpenCodeStateUsage({
+    homeDir: options.homeDir,
+    dataDir: options.openCodeDataDir,
+    stateDbPath: options.openCodeStateDbPath,
+    maxRows: Math.min(50_000, Math.max(1_000, maxFiles * 10)),
+    timeoutMs: Math.min(5_000, timeoutMs),
+    queryDatabase: options.openCodeQueryDatabase,
+  });
+  if (openCodeStateUsage.found) {
+    const openCodeAvailability = ensureUsageAvailability(availability, 'opencode', 'OpenCode');
+    openCodeAvailability.available = openCodeStateUsage.exact;
+    if (openCodeStateUsage.scanned) {
+      candidateFileCount += 1;
+      scannedFileCount += 1;
+      scannedByteCount += Math.max(0, Number(openCodeStateUsage.scannedByteCount) || 0);
+      openCodeDatabasePartial = Boolean(openCodeStateUsage.partial);
+      for (const session of openCodeStateUsage.sessions) {
+        const fileUsage = summarizeUsageRecords(
+          session.records,
+          `${openCodeStateUsage.stateDbPath}#${session.sessionId}`,
+          { usagePeriod: AI_BURN_PERIOD },
+        );
+        if (fileUsage.eventCount <= 0 && fileUsage.totals.totalTokens <= 0) continue;
+        records.push({
+          source: 'opencode',
+          label: 'OpenCode',
+          sourceFileId: `${openCodeStateUsage.stateDbPath}#${session.sessionId}`,
+          file: fileUsage,
+        });
+      }
+    }
+    if (openCodeStateUsage.warning) warnings.push(openCodeStateUsage.warning);
   }
 
   for (const spec of buildUsageSpecs({
@@ -327,6 +364,7 @@ export async function scanUsage(options = {}) {
       || sampledFileCount
       || oversizedJsonFileCount
       || cursorDatabasePartial
+      || openCodeDatabasePartial
       || inexactAiBurnFileCount,
   );
   if (stoppedReason === 'time') {
@@ -372,6 +410,7 @@ export async function scanUsage(options = {}) {
     sampledFileCount,
     oversizedJsonFileCount,
     cursorDatabasePartial,
+    openCodeDatabasePartial,
     inexactAiBurnFileCount,
     scannedByteCount,
     aiBurnExactScannedByteCount,
