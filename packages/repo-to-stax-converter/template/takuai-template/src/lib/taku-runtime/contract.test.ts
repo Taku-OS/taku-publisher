@@ -702,7 +702,7 @@ test('v2 canonical transcripts reproduce the frozen cross-runtime golden vectors
     c2hKey: string;
     h2cKey: string;
   };
-  mutableMaterial.sessionId = 'AAAAAAAAAAAAAAAAAAAAAA';
+  mutableMaterial.sessionId = 'example-session-id';
   mutableMaterial.c2hKey = CLIENT_MAC;
   assert.equal(
     await authenticator.signClientMessage(confirm.lane, confirm.sequence, confirm.body),

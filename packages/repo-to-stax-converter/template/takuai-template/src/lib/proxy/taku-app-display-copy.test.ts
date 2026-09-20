@@ -29,7 +29,7 @@ test('unauthorized proxy error tells users to refresh the Taku App', async () =>
   const previousAppId = process.env.TAKU_APPLICATION_ID;
   const previousFetch = globalThis.fetch;
   process.env.TAKU_APPLICATION_ID = 'copy-contract-app';
-  setProxyAccessTokenOverride({ accessToken: 'copy-contract-access' });
+  setProxyAccessTokenOverride({ accessToken: 'example-copy-contract-access' });
   globalThis.fetch = async () => new Response('', { status: 401, statusText: 'Unauthorized' });
 
   try {

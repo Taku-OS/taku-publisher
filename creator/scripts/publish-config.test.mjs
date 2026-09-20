@@ -169,7 +169,7 @@ test('Publisher auth takes priority over a stale legacy Supabase token', () => {
       iconExpiresAt: Date.now() + 60_000,
     }));
     process.env.TAKU_PUBLISHER_SESSION_PATH = sessionPath;
-    process.env.SUPABASE_ACCESS_TOKEN = 'stale-legacy-supabase-token';
+    process.env.SUPABASE_ACCESS_TOKEN = 'example-stale-legacy-token';
     process.env.TAKU_PUBLISH_TOKEN = 'taku_pub_test-studio-session-token';
     delete process.env.TAKU_BEARER_TOKEN;
 
@@ -199,11 +199,11 @@ test('legacy Supabase auth remains available only as a final fallback', () => {
   try {
     delete process.env.TAKU_BEARER_TOKEN;
     delete process.env.TAKU_PUBLISH_TOKEN;
-    process.env.SUPABASE_ACCESS_TOKEN = 'legacy-supabase-token';
+    process.env.SUPABASE_ACCESS_TOKEN = 'example-legacy-token';
     process.env.TAKU_PUBLISHER_SESSION_PATH = path.join(directory, 'missing-session.json');
 
-    assert.equal(readStudioDraftToken(parseArgs([])), 'legacy-supabase-token');
-    assert.equal(readIconAuthToken(parseArgs([])), 'legacy-supabase-token');
+    assert.equal(readStudioDraftToken(parseArgs([])), 'example-legacy-token');
+    assert.equal(readIconAuthToken(parseArgs([])), 'example-legacy-token');
   } finally {
     for (const [name, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[name];
