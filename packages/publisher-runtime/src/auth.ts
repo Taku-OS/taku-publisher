@@ -16,6 +16,7 @@ export interface ResolvedAuth {
   token: string;
   source: string;
   iconToken: string;
+  flowchartToken: string;
   scopes: string[];
   sessionPath?: string;
   refreshed: boolean;
@@ -51,6 +52,7 @@ export async function resolveAuth(
       token: String(publisherSession.accessToken ?? '').trim(),
       source: 'publisher_session',
       iconToken: validIconToken(publisherSession),
+      flowchartToken: validFlowchartToken(publisherSession),
       scopes: Array.isArray(publisherSession.scopes)
         ? publisherSession.scopes.filter((scope): scope is string => typeof scope === 'string' && Boolean(scope.trim()))
         : [],
@@ -63,6 +65,7 @@ export async function resolveAuth(
       token: '',
       source: publisherSession ? 'publisher_session_expired' : 'publisher_session_missing',
       iconToken: '',
+      flowchartToken: '',
       scopes: [],
       sessionPath: publisherPath,
       refreshed: false,
@@ -70,10 +73,10 @@ export async function resolveAuth(
   }
   const desktopPath = sessionPath(env);
   const session = readSession(desktopPath);
-  if (!session) return { token: '', source: 'missing', iconToken: '', scopes: [], sessionPath: desktopPath, refreshed: false };
+  if (!session) return { token: '', source: 'missing', iconToken: '', flowchartToken: '', scopes: [], sessionPath: desktopPath, refreshed: false };
   const accessToken = String(session.accessToken ?? '').trim();
   if (accessToken && !isExpiring(session)) {
-    return { token: accessToken, source: 'session', iconToken: accessToken, scopes: [], sessionPath: desktopPath, refreshed: false };
+    return { token: accessToken, source: 'session', iconToken: accessToken, flowchartToken: accessToken, scopes: [], sessionPath: desktopPath, refreshed: false };
   }
   const refreshed = await refreshSession(session, {
     path: desktopPath,
@@ -81,12 +84,12 @@ export async function resolveAuth(
   });
   if (refreshed) {
     const token = String(refreshed.accessToken ?? '').trim();
-    if (token) return { token, source: 'session', iconToken: token, scopes: [], sessionPath: desktopPath, refreshed: true };
+    if (token) return { token, source: 'session', iconToken: token, flowchartToken: token, scopes: [], sessionPath: desktopPath, refreshed: true };
   }
   if (accessToken && expiresAtMs(session) === undefined) {
-    return { token: accessToken, source: 'session', iconToken: accessToken, scopes: [], sessionPath: desktopPath, refreshed: false };
+    return { token: accessToken, source: 'session', iconToken: accessToken, flowchartToken: accessToken, scopes: [], sessionPath: desktopPath, refreshed: false };
   }
-  return { token: '', source: 'expired', iconToken: '', scopes: [], sessionPath: desktopPath, refreshed: false };
+  return { token: '', source: 'expired', iconToken: '', flowchartToken: '', scopes: [], sessionPath: desktopPath, refreshed: false };
 }
 
 export async function authStatus(
@@ -229,6 +232,7 @@ function resolvedEnv(token: string, source: string): ResolvedAuth {
     token,
     source,
     iconToken: token.startsWith('taku_pub_') ? '' : token,
+    flowchartToken: token.startsWith('taku_pub_') ? '' : token,
     scopes: [],
     refreshed: false,
   };
@@ -258,6 +262,12 @@ function isExpired(session: JsonObject): boolean {
 function validIconToken(session: JsonObject): string {
   const token = String(session.iconToken ?? '').trim();
   const expires = Number(session.iconExpiresAt ?? 0);
+  return Number.isFinite(expires) && expires > Date.now() + 5_000 ? token : '';
+}
+
+function validFlowchartToken(session: JsonObject): string {
+  const token = String(session.flowchartToken ?? '').trim();
+  const expires = Number(session.flowchartExpiresAt ?? 0);
   return Number.isFinite(expires) && expires > Date.now() + 5_000 ? token : '';
 }
 

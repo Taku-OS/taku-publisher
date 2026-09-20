@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const buildRoot = path.join(root, 'dist/challenge-test');
 const build = JSON.parse(await fs.readFile(path.join(buildRoot, 'build.json'), 'utf8'));
+assert.match(build.version, /^0\.3\.25-stax-challenge\.b[a-f0-9]{12}$/);
 for (const item of build.builds) {
   const skill = path.join(buildRoot, item.directory, 'plugins', build.name, 'skills', build.name);
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-challenge-plugin-'));
@@ -21,6 +22,27 @@ for (const item of build.builds) {
     await fs.writeFile(draft, '{}');
     const { writePrivateState } = await import(pathToFileURL(path.join(skill, 'creator/scripts/draft-state.mjs')));
     const { createChallengeHandoff } = await import(pathToFileURL(path.join(skill, 'creator/scripts/challenge-handoff.mjs')));
+    const { AI_BURN_PERIOD } = await import(pathToFileURL(path.join(skill, 'creator/scripts/activity-periods.mjs')));
+    const { buildStaxChallengeReviewUrl } = await import(pathToFileURL(path.join(skill, 'creator/scripts/stax-url.mjs')));
+    assert.deepEqual(AI_BURN_PERIOD, {
+      id: 'aiBurn', label: 'Sep 22 - Oct 30, 2026',
+      startsAt: '2026-09-21T16:00:00.000Z', endsAt: '2026-10-30T15:59:59.999Z',
+      usageSchema: 'taku.creator.ai-burn-usage.v3',
+    });
+    assert.equal(buildStaxChallengeReviewUrl('http://localhost:3001', { launchContextId: 'opaque' }),
+      'http://localhost:3001/stax?review=1&launch=opaque');
+    const creatorConfig = await fs.readFile(path.join(skill, 'creator/scripts/publish-config.mjs'), 'utf8');
+    const runtimeConstants = await fs.readFile(path.join(skill,
+      'node_modules/@taku/publisher-runtime/dist/constants.js'), 'utf8');
+    assert.match(creatorConfig, /DEFAULT_SITE_URL = 'http:\/\/localhost:3001'/);
+    assert.match(creatorConfig, /DEFAULT_WORKER_URL = 'https:\/\/worker\.taku\.ai'/);
+    assert.match(runtimeConstants, /DEFAULT_WORKER_URL = 'https:\/\/worker\.taku\.ai'/);
+    const provenance = JSON.parse(await fs.readFile(path.join(buildRoot, item.directory, 'provenance.json'), 'utf8'));
+    assert.equal(provenance.baseProductionVersion, '0.3.24');
+    assert.equal(provenance.testBaseVersion, '0.3.25');
+    assert.deepEqual(provenance.endpoints, {
+      siteUrl: 'http://localhost:3001', workerUrl: 'https://worker.taku.ai',
+    });
     await writePrivateState(draft, { items: [{ id: 'fixture', name: 'Fixture', type: 'skill', localPath: source }] });
     await createChallengeHandoff(draft, { candidates: [{ candidateId: 'fixture', name: 'Fixture', type: 'skill' }],
       workerUrl: 'https://worker.taku.ai', siteUrl: 'https://taku.ai' });

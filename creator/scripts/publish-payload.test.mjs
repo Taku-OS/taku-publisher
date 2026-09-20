@@ -225,7 +225,7 @@ test('publishes the last 90 day source and model token breakdown for AI Burn', a
             label: 'Last 90 Days',
             startsAt: '2026-06-25T00:00:00.000Z',
             endsAt: '2026-09-22T00:00:00.000Z',
-            usageSchema: 'taku.creator.ai-burn-usage.v2',
+            usageSchema: 'taku.creator.ai-burn-usage.v3',
             totalTokens: 300,
             privatePath,
             sources: [
@@ -261,7 +261,7 @@ test('publishes the last 90 day source and model token breakdown for AI Burn', a
       label: 'Last 90 Days',
       startsAt: '2026-06-25T00:00:00.000Z',
       endsAt: '2026-09-22T00:00:00.000Z',
-      usageSchema: 'taku.creator.ai-burn-usage.v2',
+      usageSchema: 'taku.creator.ai-burn-usage.v3',
       totalTokens: 300,
       sources: [
         {
@@ -302,6 +302,36 @@ test('publishes the last 90 day source and model token breakdown for AI Burn', a
       ],
     });
   assert.equal(JSON.stringify(payload).includes('private.jsonl'), false);
+});
+
+test('publishes the configured Challenge period as the AI Burn payload', async () => {
+  const payload = await createStaxCreatorPublishPayload({
+    sections: [],
+    builderProfileSnapshot: {
+      schemaVersion: 'taku.creator.builder-profile-snapshot.v1',
+      usage: {
+        periods: [{
+          id: 'aiBurn',
+          label: 'Sep 17 - Sep 20, 2026',
+          startsAt: '2026-09-16T16:00:00.000Z',
+          endsAt: '2026-09-20T15:59:59.999Z',
+          usageSchema: 'taku.creator.ai-burn-usage.v3',
+          totalTokens: 300,
+          sources: [{
+            source: 'codex',
+            totalTokens: 300,
+            modelUsage: { models: [{ modelId: 'gpt-5', totalTokens: 300 }] },
+          }],
+        }],
+      },
+    },
+    stats: {},
+  }, { items: [] }, publishOptions());
+
+  const period = payload.profileSnapshot.usage.periods.find(({ id }) => id === 'aiBurn');
+  assert.equal(period.label, 'Sep 17 - Sep 20, 2026');
+  assert.equal(period.usageSchema, 'taku.creator.ai-burn-usage.v3');
+  assert.equal(period.sources[0].modelUsage.models[0].totalTokens, 300);
 });
 
 test('publishes sanitized Stax block support data in the public profile snapshot', async () => {

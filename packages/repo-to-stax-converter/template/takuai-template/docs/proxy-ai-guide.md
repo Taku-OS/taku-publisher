@@ -1,6 +1,10 @@
-# Proxy AI 开发规范（SubApp）
+# Proxy AI 开发规范（Taku App）
 
 模板保留 `@/lib/proxy` 与 `@/lib/ai/server` 作为 server-only 集成基建，但不默认向 browser 暴露 AI 或 Service capability。`server-only` 只避免凭据进入客户端 bundle，它本身不完成身份、权限、额度或计费授权。
+
+## 新的托管 AI 工作流
+
+通用 Agent、报告、文生图和文生视频优先使用 [Taku App Host Agent Runtime](subapp-agent-runtime.md) 与 `@/lib/taku-runtime`。在 manifest 的 `runtimeCapabilities` 中只声明应用需要的 operation，读取当前 Host 的已认证能力目录及 grant，再从浏览器 SDK 调用；不要为这些 operation 额外创建 Route Handler、复制旧 provider adapter 或硬编码模型。下面的 server-only 规则用于已有的领域服务集成，不要求应用为了使用 Host Runtime 再自行建立一层 AI 后端。
 
 ## 授权前置条件
 
@@ -13,7 +17,7 @@
 - 不要生成公开 AI endpoint、通用 proxy、通用 Service gateway 或任意 tool loop route。
 - 不要因为代码运行在 Route Handler 或 server runtime 就认为请求已获授权。
 - 不要接受客户端提供的 user ID、app ID、resource ID 或 billing metadata 作为权限证明。
-- 不要在 SubApp 中配置模型厂商 key，也不要把宿主注入的 token 输出到响应、日志或 client bundle。
+- 不要在 Taku App 中配置模型厂商 key，也不要把宿主注入的 token 输出到响应、日志或 client bundle。
 - 没有服务端 authority contract 时，UI 要解释功能为什么不可用，并保留原始数据；不得伪造 AI 结果。
 
 ## 领域调用方式

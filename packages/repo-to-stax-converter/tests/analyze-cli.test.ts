@@ -34,6 +34,7 @@ test('emits the stable Publisher assessment protocol and source snapshot', async
     assert.equal(result.sourceDirty, null);
     assert.match(String(result.sourceDigest), /^sha256:[a-f0-9]{64}$/);
     assert.equal((result.analysis as Record<string, unknown>).appType, 'nextjs');
+    assert.deepEqual(result.serviceRequirements, []);
     assert.equal((result.route as Record<string, unknown>).kind, 'subapp-migration');
 
     const sourceAfter = await readFile(join(source, 'package.json'), 'utf8');

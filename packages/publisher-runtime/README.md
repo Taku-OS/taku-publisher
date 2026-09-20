@@ -8,9 +8,10 @@ The runtime preserves the `taku.publisher.v1` JSON command contract. The legacy
 Python entrypoint remains a compatibility shim during migration and is not
 included in generated user plugins.
 
-## Codex and Claude Code project import
+## Host project import and portable Skills
 
-`project-discover` reads bounded local session metadata to recover recent
+`project-discover` reads bounded local session metadata, including OpenCode's
+project path and activity columns, to recover recent
 workspace paths, deduplicates them, and returns lightweight root signals without
 analyzing prompt bodies or recursively scanning source code. The creator must
 select one project before `project-assess` routes it to `existing-skill`,
@@ -20,7 +21,7 @@ Its response also exposes GitHub as an explicit alternate source.
 `github-project-discover` uses a narrow Publisher authorization to check or
 start GitHub OAuth and then returns only public repository metadata from the
 connected account. Authorization and repository selection are represented in
-the same JSON action contract, so Codex or Claude Code can present both steps
+the same JSON action contract, so a compatible host Agent can present both steps
 directly in conversation without adding a separate UI button.
 `github-disconnect` removes the current Taku account's GitHub binding. Follow it
 with `auth-logout` when testing the complete Taku sign-in and GitHub OAuth path
@@ -28,7 +29,7 @@ from a clean Publisher state.
 
 An eligible `skill-generation` route uses `skill-prepare`, `skill-convert`, and
 `skill-conversion-check`. Preparation writes only an isolated candidate;
-conversion is performed by the current Codex or Claude Agent under the returned
+conversion is performed by the current host Agent under the returned
 editable/read-only contract; and static validation executes no source or
 candidate scripts. The generated candidate must still pass the normal Skill
 staging, deterministic scan, semantic review, and package workflow.
@@ -37,6 +38,10 @@ Host applications that only need deterministic packaging should import
 `@taku/publisher-runtime/core`. That subpath excludes CLI, browser authorization,
 and host orchestration APIs while providing canonical archive path checks,
 stable ZIP ordering, file modes, per-file digests, and artifact SHA-256.
+
+Marketplace Skill installation resolves the selected host through the shared
+host registry. Supported targets are Codex, Claude Code, Cursor, OpenCode,
+Gemini CLI, and the standard `.agents/skills` directory.
 
 Browser, preload, and shared clients that only need Publisher Draft route
 builders should import `@taku/publisher-runtime/contract`. This subpath has no
@@ -103,7 +108,7 @@ the same mapping file to `subapp-prepare` so reassessment reproduces the same
 reviewed decision. Mapping documents cannot contain upstream URLs or secrets.
 
 Generated plugins bundle the compatible `repo-to-stax` runtime and
-require protocol `repo-to-stax.analyze.v1` at Converter version `0.2.0`.
+require protocol `repo-to-stax.analyze.v1` at Converter version `0.2.0` or `0.2.1`.
 `--converter-bin` and `TAKU_REPO_TO_STAX_BIN` are developer-only diagnostic
 overrides. Assessment returns a source-bound confirmation token for eligible
 projects. The creator can then prepare one isolated candidate with:
@@ -126,7 +131,7 @@ App, uploads data, registers it, or publishes it.
 
 After the creator explicitly asks to continue, `subapp-convert --candidate
 <absolute-path>` validates the candidate and returns the bounded migration
-contract for the current Codex or Claude Agent. `subapp-conversion-check`
+contract for the current host Agent. `subapp-conversion-check`
 performs the post-edit static conversion gate. Neither command launches a child
 Agent or executes install, test, build, preview, upload, registration, or
 publishing commands; a static pass advances only to later trusted runtime
@@ -238,6 +243,9 @@ publishing. The JSON travels with the normal publish request; it is not a
 separate file upload. Generation failure must fail the current item's publish
 step instead of silently publishing without a Flowchart. Authentication uses
 the existing scoped Publisher session; never distribute user or AI tokens.
+Automatic generation is enabled by default for new Publisher drafts. Set
+`TAKU_PUBLISHER_GENERATE_FLOWCHART=off` only when an operator explicitly needs
+to disable it; creator-provided valid Flowcharts are always preserved.
 
 ## Confirmed private SubApp registration
 

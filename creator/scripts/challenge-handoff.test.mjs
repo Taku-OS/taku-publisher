@@ -88,17 +88,22 @@ test('Missing registered sources are not offered and do not request selection', 
   assert.equal(result.status, 'no_candidates'); assert.equal(result.requires_action, false);
 });
 
-test('Reopening Studio preserves its exact URL and does not restart a skipped or selected Skill', async (t) => {
+test('Challenge review preserves its exact URL and does not restart a skipped or selected Skill', async (t) => {
   const { state } = await fixture(t);
-  const cloud = { editorUrl: 'https://worker.taku.ai/stax/studio/editor?launch=exact', cloudDraft: true };
+  const cloud = {
+    editorUrl: 'http://localhost:3001/stax?review=1&launch=exact',
+    studioUrl: 'https://worker.taku.ai/stax/studio/editor?launch=exact',
+    cloudDraft: true,
+  };
   assert.equal(challengeCloudStudioResult(cloud, state).action_type, 'select_local_skill_or_skip');
   for (const status of ['skipped', 'no_candidates']) {
     const result = challengeCloudStudioResult(cloud, { ...state, status });
     assert.equal(result.editorUrl, cloud.editorUrl); assert.equal(result.requires_action, false);
-    assert.equal(result.primaryAction, 'open_cloud_studio');
+    assert.equal(result.primaryAction, 'open_stax_challenge_review');
   }
   const result = challengeCloudStudioResult(cloud, { ...state, status: 'selected' }, { status: 'awaiting_deep_scan' });
   assert.equal(result.action_type, 'perform_semantic_review'); assert.equal(result.editorUrl, cloud.editorUrl);
+  assert.equal(result.studioUrl, cloud.studioUrl);
 });
 
 test('Only one offered Skill may be selected; repeated selection is idempotent', async (t) => {

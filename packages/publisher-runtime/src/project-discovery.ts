@@ -6,6 +6,10 @@ import * as path from 'node:path';
 import * as readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
+import {
+  readOpenCodeProjects,
+  type OpenCodeDatabaseQuery,
+} from './opencode-local.js';
 import { PublisherError } from './util.js';
 
 const DEFAULT_MAX_PROJECTS = 20;
@@ -32,7 +36,7 @@ const TIMESTAMP_KEYS = new Set([
   'updatedat',
 ]);
 
-export type ProjectHost = 'codex' | 'claude-code' | 'cursor' | 'other';
+export type ProjectHost = 'codex' | 'claude-code' | 'cursor' | 'opencode' | 'other';
 export type ProjectHostFilter = ProjectHost | 'all';
 
 export interface ProjectDiscoveryOptions {
@@ -43,6 +47,9 @@ export interface ProjectDiscoveryOptions {
   codexHome?: string;
   claudeConfigDir?: string;
   cursorUserDir?: string;
+  openCodeDataDir?: string;
+  openCodeStateDbPath?: string;
+  openCodeQueryDatabase?: OpenCodeDatabaseQuery;
   explicitProjects?: string[];
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
@@ -137,6 +144,23 @@ export async function discoverRecentProjects(
   }
   if (host === 'all' || host === 'cursor') {
     observations.push(...await readCursorWorkspaceObservations(cursorUserDir, maxSessionFiles));
+  }
+  if (host === 'all' || host === 'opencode') {
+    const openCode = await readOpenCodeProjects({
+      homeDir,
+      dataDir: options.openCodeDataDir,
+      stateDbPath: options.openCodeStateDbPath,
+      maxProjects: maxSessionFiles,
+      queryDatabase: options.openCodeQueryDatabase,
+      env,
+      platform: options.platform,
+    });
+    observations.push(...openCode.projects.map((project) => ({
+      host: 'opencode' as const,
+      workspace: project.workspace,
+      activityMs: project.activityMs,
+      sourceFile: `${project.source}#${project.projectId}`,
+    })));
   }
 
   const projects = new Map<string, ProjectAccumulator>();
@@ -464,12 +488,12 @@ function record(value: unknown): Record<string, unknown> {
 
 export function normalizeProjectHost(value: string): ProjectHostFilter {
   const normalized = value.trim().toLowerCase();
-  if (['all', 'codex', 'claude-code', 'cursor', 'other'].includes(normalized)) {
+  if (['all', 'codex', 'claude-code', 'cursor', 'opencode', 'other'].includes(normalized)) {
     return normalized as ProjectHostFilter;
   }
   if (normalized === 'claude' || normalized === 'cc') return 'claude-code';
   throw new PublisherError(
-    'Project host must be codex, claude-code, cursor, other, or all.',
+    'Project host must be codex, claude-code, cursor, opencode, other, or all.',
     'invalid_project_host',
   );
 }

@@ -31,15 +31,24 @@ test('resolves inventory roots from the actual CLI configuration', async (t) => 
   const homeDir = path.join(sandbox, 'home');
   const codexHome = path.join(sandbox, 'custom-codex');
   const claudeConfigDir = path.join(sandbox, 'custom-claude');
-  const env = { CODEX_HOME: codexHome, CLAUDE_CONFIG_DIR: claudeConfigDir };
+  const opencodeConfigDir = path.join(sandbox, 'custom-opencode');
+  const env = {
+    CODEX_HOME: codexHome,
+    CLAUDE_CONFIG_DIR: claudeConfigDir,
+    OPENCODE_CONFIG_DIR: opencodeConfigDir,
+  };
 
   const homes = resolveCliHomes({ homeDir, env });
   assert.equal(homes.codex, codexHome);
   assert.equal(homes.claude, claudeConfigDir);
+  assert.equal(homes.opencode, opencodeConfigDir);
 
   const roots = defaultToolRoots({ homeDir, env });
   assert.equal(roots.find((root) => root.source === 'codex')?.path, path.join(codexHome, 'skills'));
   assert.equal(roots.find((root) => root.source === 'claude-code')?.path, path.join(claudeConfigDir, 'skills'));
+  assert.equal(roots.find((root) => root.source === 'opencode')?.path, path.join(opencodeConfigDir, 'skills'));
+  assert.equal(roots.find((root) => root.source === 'gemini-cli')?.path, path.join(homeDir, '.gemini', 'skills'));
+  assert.equal(roots.find((root) => root.source === 'agent-skills')?.path, path.join(homeDir, '.agents', 'skills'));
   assert.deepEqual(
     defaultToolRoots({ homeDir, env, invokingHost: 'codex' }).map((root) => root.source),
     ['codex'],

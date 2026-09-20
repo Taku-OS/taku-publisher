@@ -1,7 +1,7 @@
 {
   "name": "taku-publisher",
-  "version": "0.3.21",
-  "description": "Discover Codex, Claude Code, and Cursor projects, convert them into Taku SubApps or Skills, and safely publish tools.",
+  "version": "0.3.24",
+  "description": "Generate Stax Cards, convert Apps, and publish Skills from Codex, Claude Code, Cursor, OpenCode, and compatible Agent Skills hosts.",
   "author": {
     "name": "Taku",
     "url": "https://taku.ai/"

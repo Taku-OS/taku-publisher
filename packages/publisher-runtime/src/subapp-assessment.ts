@@ -47,7 +47,8 @@ const CONVERTER_PREPARE_PACKAGE_ENTRY = 'repo-to-stax-converter/prepare-cli';
 const CONVERTER_AGENT_PACKAGE_ENTRY = 'repo-to-stax-converter/agent-cli';
 const CONVERTER_PROTOCOL = 'repo-to-stax.analyze.v1';
 const CONVERTER_PREPARE_PROTOCOL = 'repo-to-stax.prepare.v1';
-const SUPPORTED_CONVERTER_VERSIONS = new Set(['0.2.0']);
+const SUPPORTED_CONVERTER_VERSIONS = new Set(['0.2.0', '0.2.1']);
+const LEGACY_INFERRED_SERVICE_REQUIREMENTS_VERSION = '0.2.0';
 const CREDENTIAL_RISK =
   'Credential/API key handling must be server-side or explicit BYOK';
 const EXTERNAL_SERVICE_REQUIREMENT_ID = 'external-service-review';
@@ -825,7 +826,7 @@ export function projectConverterAssessment(
     output,
     'SubApp Converter output must be an object.',
   );
-  converterMetadata(envelope);
+  const converter = converterMetadata(envelope);
   const rawAnalysis = requireRecord(
     envelope.analysis,
     'SubApp Converter output is missing analysis.',
@@ -837,7 +838,11 @@ export function projectConverterAssessment(
   const analysis = converterAnalysis(rawAnalysis);
   const route = converterRoute(rawRoute);
   const source = isRecord(rawAnalysis.source) ? rawAnalysis.source : {};
-  const requirements = converterServiceRequirements(envelope, rawAnalysis);
+  const requirements = converterServiceRequirements(
+    envelope,
+    rawAnalysis,
+    converter.version,
+  );
 
   try {
     return createSubAppAssessment({
@@ -1312,6 +1317,7 @@ function converterRoute(value: JsonObject): SubAppRouteV1 {
 function converterServiceRequirements(
   envelope: JsonObject,
   analysis: JsonObject,
+  converterVersion: string,
 ): SubAppServiceRequirementV1[] {
   const raw = Array.isArray(envelope.serviceRequirements)
     ? envelope.serviceRequirements
@@ -1319,6 +1325,12 @@ function converterServiceRequirements(
       ? analysis.serviceRequirements
       : null;
   if (raw) return raw as unknown as SubAppServiceRequirementV1[];
+  if (converterVersion !== LEGACY_INFERRED_SERVICE_REQUIREMENTS_VERSION) {
+    throw new PublisherError(
+      'SubApp Converter output is missing structured service requirements.',
+      'subapp_converter_contract_mismatch',
+    );
+  }
   const risks = stringArray(analysis.risks);
   if (!risks.includes(CREDENTIAL_RISK)) return [];
   return [

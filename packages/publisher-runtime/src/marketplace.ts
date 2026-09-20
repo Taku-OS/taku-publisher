@@ -5,6 +5,7 @@ import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 
 import { responseCandidates, TakuPublisherClient } from './api.js';
+import type { SkillHostId } from './hosts.js';
 import type { JsonObject, JsonValue } from './types.js';
 import { isRecord, PublisherError } from './util.js';
 import { readZip, type ZipEntry } from './zip.js';
@@ -109,13 +110,18 @@ export async function openMarketplaceItemInTaku(
   };
 }
 
-export function installPreflight(response: JsonObject, itemId: string, installRoot: string): JsonObject {
+export function installPreflight(
+  response: JsonObject,
+  itemId: string,
+  installRoot: string,
+  host: SkillHostId = 'codex',
+): JsonObject {
   const contract = installContract(response);
   const item = record(contract.item);
   const normalized = normalizeMarketplaceItem({ ...item, latestVersion: contract.latestVersion ?? contract.latest_version });
   validateItemId(itemId);
   if (normalized.item_id !== itemId) throw new PublisherError('Install package item ID does not match the requested item.', 'install_item_mismatch');
-  if (normalized.type !== 'skill') throw new PublisherError('This development installer currently supports Codex Skills only.', 'unsupported_install_type', { type: normalized.type });
+  if (normalized.type !== 'skill') throw new PublisherError('This installer supports Agent Skills only.', 'unsupported_install_type', { type: normalized.type });
   if (normalized.status !== 'published') throw new PublisherError('Only published Marketplace Skills can be installed.', 'marketplace_item_not_published');
   const access = record(contract.access);
   if (access.allowed !== true) throw new PublisherError('This account does not have access to the Marketplace Skill.', 'marketplace_access_denied', { reason: firstString(access, 'reason') });
@@ -137,18 +143,20 @@ export function installPreflight(response: JsonObject, itemId: string, installRo
     download_url: downloadUrl,
     install_root: path.resolve(installRoot),
     target_dir: destination,
+    host,
   };
 }
 
-export async function installCodexSkill(
+export async function installSkill(
   client: TakuPublisherClient,
   response: JsonObject,
-  options: { itemId: string; confirmItemId: string; installRoot: string },
+  options: { itemId: string; confirmItemId: string; installRoot: string; host?: SkillHostId },
 ): Promise<JsonObject> {
-  const preflight = installPreflight(response, options.itemId, options.installRoot);
+  const host = options.host ?? 'codex';
+  const preflight = installPreflight(response, options.itemId, options.installRoot, host);
   if (!options.confirmItemId || options.confirmItemId !== options.itemId) throw new PublisherError('Install confirmation must exactly match the selected item ID.', 'install_confirmation_mismatch');
   const destination = String(preflight.target_dir);
-  if (fs.existsSync(destination)) throw new PublisherError('A Codex Skill with this Marketplace slug already exists. This installer will not overwrite it.', 'install_target_exists', { target_dir: destination });
+  if (fs.existsSync(destination)) throw new PublisherError('A Skill with this Marketplace slug already exists for this host. This installer will not overwrite it.', 'install_target_exists', { target_dir: destination, host });
   const packageBytes = await client.downloadPublicPackage(String(preflight.download_url), MAX_PACKAGE_BYTES);
   const actualSha256 = createHash('sha256').update(packageBytes).digest('hex');
   if (actualSha256 !== preflight.expected_sha256) throw new PublisherError('Marketplace Skill package SHA-256 does not match the server contract.', 'package_hash_mismatch');
@@ -170,8 +178,17 @@ export async function installCodexSkill(
     sha256: actualSha256,
     configuration_requirements: item.configuration_requirements,
     install_record_warning: warning,
-    next_action: 'start_new_codex_task',
+    host,
+    next_action: 'start_new_host_session',
   };
+}
+
+export async function installCodexSkill(
+  client: TakuPublisherClient,
+  response: JsonObject,
+  options: { itemId: string; confirmItemId: string; installRoot: string },
+): Promise<JsonObject> {
+  return installSkill(client, response, { ...options, host: 'codex' });
 }
 
 async function extractSkillAtomically(packageBytes: Uint8Array, destination: string): Promise<void> {
@@ -196,7 +213,7 @@ async function extractSkillAtomically(packageBytes: Uint8Array, destination: str
       await fsp.rename(temporary, destination);
       moved = true;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'EEXIST' || fs.existsSync(destination)) throw new PublisherError('A Codex Skill with this Marketplace slug already exists.', 'install_target_exists', { target_dir: destination });
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST' || fs.existsSync(destination)) throw new PublisherError('A Skill with this Marketplace slug already exists.', 'install_target_exists', { target_dir: destination });
       throw error;
     }
   } catch (error) {

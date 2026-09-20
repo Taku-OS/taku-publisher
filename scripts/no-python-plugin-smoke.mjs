@@ -154,7 +154,7 @@ try {
   if (assessment.status !== 'subapp_conversion_review_required') {
     throw new Error(`Unexpected SubApp assessment status: ${assessment.status}`);
   }
-  if (assessment.converter?.version !== '0.2.0') {
+  if (assessment.converter?.version !== '0.2.1') {
     throw new Error(`Unexpected bundled Converter version: ${assessment.converter?.version}`);
   }
   const assessmentReview = assessment.assessment_review_template;

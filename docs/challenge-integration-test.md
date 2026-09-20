@@ -1,19 +1,25 @@
 # Stax Challenge integration acceptance
 
-The **0.3.19** production source integrates the accepted Challenge workflow on
-top of **0.3.18**. The production plugin remains named `taku-publisher` and uses
+The current production candidate is **0.3.24**.
+The production plugin remains named `taku-publisher` and uses
 the `standard` channel. Separate three-host acceptance packages are named `taku-publisher-challenge-integration-test`
-and use a `0.3.19-stax-challenge.b<source-checksum>` version. They are not a new
+and use a `0.3.25-stax-challenge.b<source-checksum>` version. They are not a new
 production installation entry point. No npm or official Cursor store publication is included.
 
 ## What changed
 
-Production's Cursor runtime and normal Card, App, Skill and Creator Center modes
-are retained. Explicit Challenge requests add a Card-to-one-Skill handoff in the
-current Codex, Claude Code or Cursor Agent. Studio and authorization use the
-same production defaults. No forced preview site, browser-to-local server,
-background Agent, global latest-draft fallback or public auto-submit is imported
-from the old mixed test package. Candidates are not proof of publishing rights.
+Production's three-host runtime, Challenge handoff, normal Card, App, Skill and
+Creator Center modes, and AI Burn normalization are retained. An ordinary
+"create/generate Stax Card" request uses Challenge mode and opens the Review
+page. The test LP is `http://localhost:3001`; API and draft operations keep the
+production Worker `https://worker.taku.ai`. Skill choice stays in the current
+Codex, Claude Code or Cursor Agent. No browser-to-local bridge, background
+Agent, global latest-draft fallback or public auto-submit is included.
+
+AI Burn uses the official interval `2026-09-22 00:00` through
+`2026-10-30 23:59:59` in Asia/Shanghai. The earlier production-test schedule is
+retained next to it for historical test coverage; the active period is selected
+in `creator/scripts/activity-periods.mjs`.
 
 ## Run
 
@@ -28,10 +34,10 @@ distinct name avoids the older `taku-publisher-stax-challenge-test` Skill.
 First prompt:
 
 ```text
-使用当前项目的 taku-publisher-challenge-integration-test，扫描最近30天使用记录，生成私有 Stax Card，返回可编辑 Studio 地址，同时列出候选 Skill。先不要上传或公开发布。
+使用当前项目的 taku-publisher-challenge-integration-test，生成私有 Stax Card，打开 Stax Challenge Review 页面，同时列出候选 Skill。先不要上传或公开发布。
 ```
 
-Expect one private Card/actual Studio URL and Skill choices in the same response.
+Expect one private Card/actual Challenge Review URL and Skill choices in the same response.
 If the account lacks a valid grant, the plugin opens authorization and the same
 command resumes after the user approves it. A valid scoped session is reused.
 Opening/signing into the account and reviewing the Card remain user actions;
@@ -59,7 +65,7 @@ review URL. Repeating preparation must not create a second draft. Public Skill
 submission is a separate user confirmation on Taku Web; local `status` is not
 proof that a Skill was publicly published. `remote-status` verifies that claim.
 
-Also test `跳过 Skill，只编辑 Card` before preparation, and make one ordinary
-Card/App/Creator Center request to confirm Challenge does not replace that route.
+Also test `跳过 Skill，只编辑 Card` before preparation, and make one explicit
+Profile/Studio, App, or Creator Center request to confirm Challenge does not replace those routes.
 Use a fresh production install on all three hosts for post-release acceptance;
 checking an isolated test package does not verify the public installation entry point.

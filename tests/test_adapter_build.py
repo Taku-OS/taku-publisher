@@ -48,6 +48,7 @@ class AdapterBuildTests(unittest.TestCase):
     def test_portable_skill_contains_self_contained_runtime(self) -> None:
         self.assertTrue((PORTABLE_SKILL_ROOT / "SKILL.md").is_file())
         self.assertTrue((PORTABLE_SKILL_ROOT / "README.md").is_file())
+        self.assertTrue((PORTABLE_SKILL_ROOT / "OPENCODE.md").is_file())
         self.assertTrue(
             (
                 PORTABLE_SKILL_ROOT
@@ -168,7 +169,7 @@ class AdapterBuildTests(unittest.TestCase):
             skill = plugin / "skills" / "taku-publisher"
             self.assertTrue((skill / "creator/scripts/challenge-handoff.mjs").is_file())
             self.assertTrue((skill / "creator/scripts/challenge-publisher-job.mjs").is_file())
-            self.assertIn("Stax Challenge (explicit requests only)", (skill / "SKILL.md").read_text())
+            self.assertIn("Stax Card Default Routing", (skill / "SKILL.md").read_text())
             self.assertNotIn("--challenge-handoff", (skill / "agents/openai.yaml").read_text())
             output = subprocess.check_output(["node", str(plugin / "skills/taku-publisher/scripts/taku-publisher.mjs"), "--version"], text=True)
             self.assertIn(expected["version"], output)

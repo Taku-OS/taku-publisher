@@ -73,9 +73,11 @@ test('normalizes a GitHub URL and forwards an explicit safe ref', async () => {
   assert.equal(result.assessment.source.kind, 'github');
 });
 
-test('requires review when Converter detects an unresolved external service', () => {
+test('keeps the 0.2.0 credential-risk fallback for an unresolved external service', () => {
   const result = projectConverterAssessment(
     converterOutput({
+      converterVersion: '0.2.0',
+      omitServiceRequirements: true,
       risks: [
         'Credential/API key handling must be server-side or explicit BYOK',
       ],
@@ -100,6 +102,33 @@ test('requires review when Converter detects an unresolved external service', ()
     ),
     true,
   );
+});
+
+test('uses explicit 0.2.1 service requirements instead of inferring them from risk text', () => {
+  const riskOnly = projectConverterAssessment(
+    converterOutput({
+      risks: [
+        'Credential/API key handling must be server-side or explicit BYOK',
+      ],
+    }),
+    {
+      kind: 'github',
+      locator: 'https://github.com/example/sample-app',
+    },
+  );
+  assert.equal(riskOnly.serviceRequirements.length, 0);
+
+  const explicit = projectConverterAssessment(
+    converterOutput({
+      serviceRequirements: [externalServiceRequirement()],
+    }),
+    {
+      kind: 'github',
+      locator: 'https://github.com/example/sample-app',
+    },
+  );
+  assert.equal(explicit.serviceRequirements.length, 1);
+  assert.equal(explicit.serviceRequirements[0].id, 'external-service-review');
 });
 
 test('rejects non-SubApp capabilities and preserves the alternate route', () => {
@@ -499,7 +528,7 @@ test('accepts only the credential-risk projection produced by a confirmed servic
   await fs.writeFile(path.join(source, 'LICENSE'), 'MIT License\n');
   await fs.writeFile(
     path.join(source, 'app', 'page.tsx'),
-    'export default function Page() { return <main>Mapped</main>; }\n',
+    "const providerKey = process.env.PROVIDER_API_KEY;\nexport async function loadProvider() { return fetch('https://api.example.com/data', { headers: { Authorization: `Bearer ${providerKey}` } }); }\nexport default function Page() { return <main>Mapped</main>; }\n",
   );
   const serviceMappings = {
     schema_version: 'taku.subapp-service-mappings.v1',
@@ -605,6 +634,17 @@ test('fails closed on mismatched Converter routes and malformed output', () => {
   assert.throws(
     () =>
       projectConverterAssessment(
+        converterOutput({ omitServiceRequirements: true }),
+        {
+          kind: 'github',
+          locator: 'https://github.com/example/sample-app',
+        },
+      ),
+    (error) => error?.code === 'subapp_converter_contract_mismatch',
+  );
+  assert.throws(
+    () =>
+      projectConverterAssessment(
         converterOutput({ routeCapability: 'vite-react' }),
         {
           kind: 'github',
@@ -636,7 +676,7 @@ function converterOutput(options = {}) {
   const route = options.route ?? 'subapp-migration';
   return {
     protocol: options.protocol ?? 'repo-to-stax.analyze.v1',
-    converterVersion: options.converterVersion ?? '0.2.0',
+    converterVersion: options.converterVersion ?? '0.2.1',
     sourceDigest: options.sourceDigest ?? `sha256:${'a'.repeat(64)}`,
     analysis: {
       repoRoot: '/temporary/converter-cache/repo',
@@ -670,6 +710,24 @@ function converterOutput(options = {}) {
       nextAction: route === 'subapp-migration'
         ? 'Create a versioned Taku SubApp migration workspace.'
         : 'Use native import.',
+    },
+    ...(options.omitServiceRequirements
+      ? {}
+      : { serviceRequirements: options.serviceRequirements ?? [] }),
+  };
+}
+
+function externalServiceRequirement() {
+  return {
+    id: 'external-service-review',
+    capability: 'source-defined external provider API',
+    required: true,
+    operations: ['source-defined-provider-call'],
+    dataClasses: ['undetermined'],
+    mutation: true,
+    mapping: {
+      status: 'review-required',
+      reason: 'Map the exact operation before conversion.',
     },
   };
 }
