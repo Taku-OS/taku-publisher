@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 0.3.4
+
+- **Generated App checks**: 将默认模板不得预申请 AI 能力及不得包含 QA 页面这两项约束收回仓库发布检查；生成后的 Taku App 可以按产品需求声明 Host Runtime 能力，不再因此被模板测试误报失败。
+- **Cancellation guidance**: 为 Builder 开发指南和运行示例补充显式取消、重复点击保护及同任务取消确认重试；取消回执不冒充最终结果，不会自动启动替代任务。
+- **Cancellation status**: 由原任务订阅确认最终状态，已取消结果单独呈现；页面销毁或迟到 RPC 回执不会覆盖终态。
+- **Release channel**: 发布新的不可变 `taku-3.0.4-template`；保留历史 `taku-3.0.3-template` 不变。
+
+## 0.3.3
+
+- **Taku App naming**: 统一模板、生成开发指南和 Skills 的产品称呼为 Taku App；保留既有协议、路径与 Skill ID，避免破坏已生成应用的兼容性
+- **Managed AI runtime**: 新增已认证 Host Agent Runtime v2 SDK，支持通用 Agent、报告、文生图和文生视频；由 Host grant 与能力目录决定可用功能，供应商与模型路由保留在 Taku 服务端
+- **Media and large output**: 支持大文本分页、校验、不透明媒体资产和短期播放授权；播放续签与重试不重新生成任务
+- **Recovery**: 增加按 operation 隔离、带过期时间的同标签页恢复账本，未知请求复用幂等键，旧报告账本可原位迁移；保留详细失败与取消结果
+- **Host trust**: 加入启动证明、逐消息认证和严格的本地同源验证，兼容 Next 内部 loopback hostname 规范化
+- **Generation guidance**: AI 工作流统一走 Host SDK，避免复制旧供应商适配或额外开放公共 AI Route；默认模板不预授予 AI 权限，真实 Planner 和生产 grant 验收仍是发布前置条件
+- **Release channel**: 准备新的不可变 `taku-3.0.3-template`；历史 `taku-3.0.2-template` 不移动、不覆盖
 - **Secure-by-default surface**: 移除未认证的通用 Agent 工具入口、文件/命令工具包、通用 collection HTTP API 与客户端原始记录 Hook；保留 server-only 持久化层，并要求领域专属、认证授权的调用边界
 - **Release channel**: 下线 Taku 2 模板兼容通道，GitHub `Latest` 统一指向最新 Taku 3 模板；旧 tag 仅保留为历史记录
 

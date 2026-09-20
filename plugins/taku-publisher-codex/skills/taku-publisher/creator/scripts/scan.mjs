@@ -193,12 +193,20 @@ export function resolveCliHomes(options = {}) {
   const homeDir = path.resolve(options.homeDir || getHomeDir());
   const configuredPath = (explicit, environmentValue, fallback) =>
     path.resolve(explicit || String(environmentValue || '').trim() || fallback);
+  const xdgConfigHome = path.resolve(String(env.XDG_CONFIG_HOME || '').trim() || path.join(homeDir, '.config'));
   return {
     homeDir,
     codex: configuredPath(options.codexHome, env.CODEX_HOME, path.join(homeDir, '.codex')),
     claude: configuredPath(options.claudeConfigDir, env.CLAUDE_CONFIG_DIR, path.join(homeDir, '.claude')),
     taku: configuredPath(options.takuHome, env.TAKU_HOME, path.join(homeDir, '.taku')),
     cursor: configuredPath(options.cursorHome, env.CURSOR_HOME, path.join(homeDir, '.cursor')),
+    opencode: configuredPath(
+      options.opencodeConfigDir,
+      env.OPENCODE_CONFIG_DIR,
+      path.join(xdgConfigHome, 'opencode'),
+    ),
+    gemini: configuredPath(options.geminiHome, env.GEMINI_HOME, path.join(homeDir, '.gemini')),
+    agents: configuredPath(options.agentSkillsHome, env.AGENT_SKILLS_HOME, path.join(homeDir, '.agents')),
   };
 }
 
@@ -211,6 +219,9 @@ export function defaultToolRoots(options = {}) {
     { source: 'claude-code', path: path.join(cliHomes.claude, 'skills') },
     { source: 'taku', path: path.join(cliHomes.taku, 'skills') },
     { source: 'cursor', path: path.join(cliHomes.cursor, 'skills') },
+    { source: 'opencode', path: path.join(cliHomes.opencode, 'skills') },
+    { source: 'gemini-cli', path: path.join(cliHomes.gemini, 'skills') },
+    { source: 'agent-skills', path: path.join(cliHomes.agents, 'skills') },
   ].filter((root) => !invokingHost || normalizeInventoryHost(root.source) === invokingHost);
   if (env.TAKU_CREATOR_EXTRA_SKILL_ROOTS) {
     for (const raw of env.TAKU_CREATOR_EXTRA_SKILL_ROOTS.split(path.delimiter)) {
@@ -243,6 +254,9 @@ function normalizeInventoryHost(value) {
   if (normalized === 'codex' || normalized === 'openai') return 'codex';
   if (['claude', 'claude-code', 'anthropic'].includes(normalized)) return 'claude-code';
   if (normalized === 'cursor') return 'cursor';
+  if (normalized === 'opencode' || normalized === 'open-code') return 'opencode';
+  if (normalized === 'gemini' || normalized === 'gemini-cli' || normalized === 'google') return 'gemini-cli';
+  if (normalized === 'agent-skills' || normalized === 'agents' || normalized === 'generic') return 'agent-skills';
   if (normalized === 'taku') return 'taku';
   return '';
 }
@@ -258,6 +272,9 @@ function platformInventoryRoots(kind, workspaceRoot, cliHomes = resolveCliHomes(
     { platform: 'claude', root: cliHomes.claude, workspaceDir: '.claude' },
     { platform: 'taku', root: cliHomes.taku, workspaceDir: '.taku' },
     { platform: 'cursor', root: cliHomes.cursor, workspaceDir: '.cursor' },
+    { platform: 'opencode', root: cliHomes.opencode, workspaceDir: '.opencode' },
+    { platform: 'gemini-cli', root: cliHomes.gemini, workspaceDir: '.gemini' },
+    { platform: 'agent-skills', root: cliHomes.agents, workspaceDir: '.agents' },
   ];
   const roots = [];
   for (const spec of specs) {

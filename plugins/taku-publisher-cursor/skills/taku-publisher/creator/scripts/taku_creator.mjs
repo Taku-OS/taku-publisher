@@ -71,6 +71,7 @@ import {
   selectDisplayedTools,
 } from './draft.mjs';
 import { publishDraftToTaku, saveDraftToTakuStudio } from './publish-flow.mjs';
+import { buildStaxChallengeReviewUrl } from './stax-url.mjs';
 import {
   createPrivateInventory,
   publicItem,
@@ -552,7 +553,15 @@ async function saveDraftResultToCloudStudio(parsed, draftResult) {
     candidates: challengeCandidatesFromCreationChoices(draftResult.creationChoices), workerUrl, siteUrl,
     allowCustomWorkerUrl: hasFlag(parsed, 'allow-custom-worker-url'),
   });
-  return challengeCloudStudioResult(cloudResult, handoff, await challengePublisherState(handoff));
+  const reviewUrl = buildStaxChallengeReviewUrl(siteUrl, {
+    launchContextId: saved.launchContextId,
+  });
+  return challengeCloudStudioResult({
+    ...cloudResult,
+    studioUrl: cloudResult.editorUrl,
+    editorUrl: reviewUrl,
+    primaryUrl: reviewUrl,
+  }, handoff, await challengePublisherState(handoff));
 }
 
 async function runPublish(parsed) {
@@ -596,9 +605,9 @@ async function runPublish(parsed) {
 function printUsage() {
   console.log(`Usage:
   node scripts/taku_creator.mjs doctor --json
-  node scripts/taku_creator.mjs scan --json [--compact] [--workspace <dir>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal] [--persona-tone brainrot] [--persona-rules <json>] [--creator-metrics <json>] [--fetch-creator-stats] [--include-github-metrics] [--include-prompt-style]
-  node scripts/taku_creator.mjs ai-setup --json [--workspace <dir>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal]
-  node scripts/taku_creator.mjs draft --json [--editor] [--local-editor] [--foreground-editor] [--workspace <dir>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal] [--persona-tone brainrot] [--persona-rules <json>] [--creator-metrics <json>] [--fetch-creator-stats] [--include-github-metrics] [--include-prompt-style] [--tool-limit <n>] [--display-tools <ids,names,or indexes>] [--hide-tools <ids,names,or indexes>] [--creation-limit <n>] [--display-creations <ids,names,or indexes>] [--hide-creations <ids,names,or indexes>] [--reuse-listing-drafts] [--worker-url <url>] [--site-url <url>] [--output <file>]
+  node scripts/taku_creator.mjs scan --json [--compact] [--workspace <dir>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal|aiBurn] [--persona-tone brainrot] [--persona-rules <json>] [--creator-metrics <json>] [--fetch-creator-stats] [--include-github-metrics] [--include-prompt-style]
+  node scripts/taku_creator.mjs ai-setup --json [--workspace <dir>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal|aiBurn]
+  node scripts/taku_creator.mjs draft --json [--editor] [--local-editor] [--foreground-editor] [--workspace <dir>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal|aiBurn] [--persona-tone brainrot] [--persona-rules <json>] [--creator-metrics <json>] [--fetch-creator-stats] [--include-github-metrics] [--include-prompt-style] [--tool-limit <n>] [--display-tools <ids,names,or indexes>] [--hide-tools <ids,names,or indexes>] [--creation-limit <n>] [--display-creations <ids,names,or indexes>] [--hide-creations <ids,names,or indexes>] [--reuse-listing-drafts] [--worker-url <url>] [--site-url <url>] [--output <file>]
   node scripts/taku_creator.mjs editor --json [--draft <file>] [--workspace <dir>] [--local-editor] [--port <port>] [--site-url <url>] [--worker-url <url>] [--reuse-listing-drafts]
   node scripts/taku_creator.mjs publish --json --draft <file> [--worker-url <url>] [--site-url <url>]
   node scripts/taku_creator.mjs center-list --json [--type <type>] [--status <status>] [--search <text>] [--limit <n>] [--offset <n>]

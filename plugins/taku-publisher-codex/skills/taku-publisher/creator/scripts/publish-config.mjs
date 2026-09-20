@@ -126,30 +126,33 @@ export function readCreatorProfileToken(parsed) {
 }
 
 export function readAuthorizedTakuToken(parsed, requiredScope) {
-  const directToken = (
+  const takuToken = (
     getFlag(parsed, 'bearer-token')
     || process.env.TAKU_BEARER_TOKEN
-    || process.env.SUPABASE_ACCESS_TOKEN
     || process.env.TAKU_PUBLISH_TOKEN
     || ''
   ).trim();
-  if (directToken) return publisherTokenMatchesExpectedUser(directToken) ? directToken : '';
-  return readPublisherSessionToken(requiredScope);
+  if (takuToken) return publisherTokenMatchesExpectedUser(takuToken) ? takuToken : '';
+
+  const sessionToken = readPublisherSessionToken(requiredScope);
+  if (sessionToken) return sessionToken;
+
+  const legacyToken = String(process.env.SUPABASE_ACCESS_TOKEN || '').trim();
+  return legacyToken && publisherTokenMatchesExpectedUser(legacyToken) ? legacyToken : '';
 }
 
 export function readIconAuthToken(parsed) {
-  const directToken = (
+  const takuToken = (
     getFlag(parsed, 'bearer-token')
     || process.env.TAKU_BEARER_TOKEN
-    || process.env.SUPABASE_ACCESS_TOKEN
     || process.env.TAKU_PUBLISH_TOKEN
     || ''
   ).trim();
   if (
-    directToken
-    && !directToken.startsWith('taku_pub_')
-    && publisherTokenMatchesExpectedUser(directToken)
-  ) return directToken;
+    takuToken
+    && !takuToken.startsWith('taku_pub_')
+    && publisherTokenMatchesExpectedUser(takuToken)
+  ) return takuToken;
 
   const session = readPublisherSession();
   const expiresAt = Number(session?.iconExpiresAt || 0);
@@ -159,7 +162,9 @@ export function readIconAuthToken(parsed) {
     && expiresAt > Date.now()
     && publisherSessionMatchesExpectedUser(session)
   ) return String(session.iconToken).trim();
-  return '';
+
+  const legacyToken = String(process.env.SUPABASE_ACCESS_TOKEN || '').trim();
+  return legacyToken && publisherTokenMatchesExpectedUser(legacyToken) ? legacyToken : '';
 }
 
 function readPublisherSessionToken(requiredScope) {
