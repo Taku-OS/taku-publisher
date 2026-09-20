@@ -1,9 +1,9 @@
 # Stax Challenge integration acceptance
 
-The activity build starts from the official **0.3.21** source at `4eb91bf`.
+The current production candidate is **0.3.22**.
 The production plugin remains named `taku-publisher` and uses
 the `standard` channel. Separate three-host acceptance packages are named `taku-publisher-challenge-integration-test`
-and use a `0.3.22-stax-challenge.b<source-checksum>` version. They are not a new
+and use a `0.3.23-stax-challenge.b<source-checksum>` version. They are not a new
 production installation entry point. No npm or official Cursor store publication is included.
 
 ## What changed

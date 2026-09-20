@@ -103,10 +103,10 @@ claude plugin install taku-publisher@taku
 ```
 
 Start a new Codex task or Claude Code session after installation so it picks up
-the Taku Publisher Skill. Version 0.3.21 preserves complete recent-90-day,
-model-level Codex and Claude Code usage through Stax draft generation for AI
-Burn, plus the existing Cursor Agent-plugin marketplace bundle and
-file-preserving multi-host installer:
+the Taku Publisher Skill. Version 0.3.22 adds bounded OpenCode project discovery
+and exact local Token counters, fixes Publisher session authentication for
+Studio drafts, and ships the current Stax Challenge and SubApp conversion flow
+through the file-preserving multi-host installer:
 
 ```sh
 npm run pack:installer
@@ -117,7 +117,7 @@ node dist/installers/cursor/bin/taku-publisher.mjs install --host agent-skills
 Start a new Cursor Agent chat and invoke `/taku-publisher`. The generic target
 installs to `~/.agents/skills/taku-publisher`, which OpenCode loads by default;
 start a new host session after installation. GitHub production distribution
-uses the `marketplace` branch and `v0.3.21` release assets, not
+uses the `marketplace` branch and `v0.3.22` release assets, not
 the npm registry or the official Cursor store. `npm run build:marketplace`
 generates the combined three-host GitHub bundle. Stax Challenge is an explicit,
 optional Card-to-one-Skill workflow; ordinary Card, Skill and SubApp routes remain available. See
