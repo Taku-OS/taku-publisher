@@ -103,10 +103,10 @@ claude plugin install taku-publisher@taku
 ```
 
 Start a new Codex task or Claude Code session after installation so it picks up
-the Taku Publisher Skill. Version 0.3.23 enables automatic Flowchart generation
-for new Publisher drafts by default while preserving creator-provided
-Flowcharts and an explicit operator opt-out. It includes the OpenCode, Stax
-Challenge, and SubApp support from 0.3.22:
+the Taku Publisher Skill. Version 0.3.24 fixes Flowchart authorization for
+standalone Publisher hosts such as OpenCode while preserving automatic
+Flowchart generation and explicit opt-out. It includes the OpenCode, Stax
+Challenge, and SubApp support from earlier releases:
 
 ```sh
 npm run pack:installer
@@ -117,7 +117,7 @@ node dist/installers/cursor/bin/taku-publisher.mjs install --host agent-skills
 Start a new Cursor Agent chat and invoke `/taku-publisher`. The generic target
 installs to `~/.agents/skills/taku-publisher`, which OpenCode loads by default;
 start a new host session after installation. GitHub production distribution
-uses the `marketplace` branch and `v0.3.23` release assets, not
+uses the `marketplace` branch and `v0.3.24` release assets, not
 the npm registry or the official Cursor store. `npm run build:marketplace`
 generates the combined three-host GitHub bundle. Stax Challenge is an explicit,
 optional Card-to-one-Skill workflow; ordinary Card, Skill and SubApp routes remain available. See
