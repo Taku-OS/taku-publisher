@@ -16,6 +16,7 @@ import {
   type SourceCopyManifestEntry,
 } from './fs.js';
 import { scanSecretLikeFiles } from './secret-scan.js';
+import { assertRuntimeCapabilities } from './runtime-capabilities.js';
 import { computeTreeDigest } from './tree-digest.js';
 import {
   computeMigrationImmutableDigest,
@@ -152,6 +153,15 @@ const PRODUCT_TYPESCRIPT_TEST_PATTERN = /(?:^|\/)[^/]+\.(?:test|spec)\.(?:ts|tsx
 const PRODUCT_TEST_DISCOVERY_MAX_ENTRIES = 10_000;
 const TEST_CONTRACT_FILE_MAX_BYTES = 8 * 1024;
 const TEMPLATE_AUTHORITY_FILE_MAX_BYTES = 128 * 1024;
+const TEMPLATE_RUNTIME_TEST_DIGESTS = new Set([
+  'eb09839b371f15146c022a540caf9e8ac6c63c164207269ec259913bee9bcb1d',
+  '431624062ae48c84b1c8f4fe45b98dbe9c7c877debac236d24425ed8378e66e3',
+  '556cd3bd674d9b99d2d875132cedea5bc0cee51cac19de322e5a284be849747a',
+  'fb1084653c952c5ef7bf59eebd1520f621de43255f6b7b14b309339b908b2579',
+  '735c27da8a092d966d1775fc4675601223f581db11c262dca82a0ae6d82d3a25',
+  'a9f05c2269d496a34fecfc0ea4145b9d0b8e0b50a86f02febb11d90b4882c046',
+  '64476310a04ab886e7790cd9aeea30f07e82c01ce2c584bfd379c6f1b333bf5f',
+]);
 const TEMPLATE_RPC_TEST_PATH = 'app/api/taku/rpc/route.test.ts';
 const TEMPLATE_RPC_TEST_DIGEST =
   '5a6cf17f4cbdd5f0a6e586c8474e3c3423e5b6d3fb2dc1b155b588d7cc7736d0';
@@ -290,6 +300,7 @@ interface MigrationRecord {
 }
 
 interface TakuManifest {
+  runtimeCapabilities?: unknown;
   name?: string;
   description?: string;
   version?: string;
@@ -430,7 +441,7 @@ export async function validateSubAppWorkspace(
   await validateSourceOmissionEvidence(workspaceRoot, migration ?? rawMigration, add);
   const rawManifest = await readStrictJson<TakuManifest>(workspaceRoot, 'taku.manifest.json', add);
   const manifest = normalizeManifest(rawManifest, add);
-  const allowedManifestFields = new Set(['name', 'description', 'version', 'actions', 'llm']);
+  const allowedManifestFields = new Set(['name', 'description', 'version', 'actions', 'llm', 'runtimeCapabilities']);
   const unknownManifestFields = rawManifest
     ? Object.keys(rawManifest).filter(key => !allowedManifestFields.has(key))
     : [];
@@ -632,6 +643,15 @@ async function validateProductTestDiscovery(
   const productTests: string[] = [];
   for (const testPath of discovery.tests) {
     if (testPath === TEMPLATE_RPC_TEST_PATH) continue;
+    const templateTest = await readSafeContainedContractFile(
+      workspaceRoot,
+      posix.join('src', testPath),
+      TEMPLATE_AUTHORITY_FILE_MAX_BYTES
+    );
+    if (
+      templateTest &&
+      TEMPLATE_RUNTIME_TEST_DIGESTS.has(createHash('sha256').update(templateTest).digest('hex'))
+    ) continue;
     const templateOwnedCopy = await isUnchangedTemplateRpcTestCopy(
       workspaceRoot,
       testPath,
@@ -1660,6 +1680,14 @@ function normalizeManifest(
   add: (severity: ValidationSeverity, code: string, message: string, path?: string) => void
 ): TakuManifest | null {
   if (!manifest) return null;
+  if (manifest.runtimeCapabilities !== undefined) {
+    try {
+      assertRuntimeCapabilities(manifest.runtimeCapabilities);
+    } catch (error) {
+      add('error', 'workspace.invalid-runtime-capabilities', String(error), 'taku.manifest.json');
+      return null;
+    }
+  }
   const invalid =
     (manifest.name !== undefined && typeof manifest.name !== 'string') ||
     (manifest.description !== undefined && typeof manifest.description !== 'string') ||
