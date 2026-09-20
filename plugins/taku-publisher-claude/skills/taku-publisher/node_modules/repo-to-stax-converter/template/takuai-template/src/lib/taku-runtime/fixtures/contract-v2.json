@@ -1,0 +1,137 @@
+{
+  "contractRevision": 2,
+  "capabilities": {
+    "recoveryScope": "fixture-recovery-scope-0001",
+    "methods": [
+      "runtime.capabilities",
+      "agent.start",
+      "agent.get",
+      "agent.subscribe",
+      "agent.unsubscribe",
+      "agent.cancel",
+      "agent.result"
+    ],
+    "operations": [{ "id": "research.generateReport", "revision": 1 }],
+    "limits": {
+      "maxConcurrentRuns": 1,
+      "maxInputBytes": 32768,
+      "maxBufferedEvents": 256,
+      "maxEventBytes": 32768,
+      "eventRetention": 256,
+      "maxSubscribersPerRun": 8
+    }
+  },
+  "capabilitiesDigest": "jiGNzXdnygiNSd8FUTPx8h0dOTmlX345O-0Gs9mBU7g",
+  "hello": {
+    "__taku": true,
+    "type": "hello",
+    "protocol": "taku.agent.run/v2",
+    "requestId": "hello-fixture-0001",
+    "clientNonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+    "sdkVersion": "2.0.0"
+  },
+  "helloSuccess": {
+    "__taku": true,
+    "type": "hello.result",
+    "protocol": "taku.agent.run/v2",
+    "requestId": "hello-fixture-0001",
+    "frameEpoch": "frame-epoch-fixture-0001",
+    "ok": true,
+    "capabilities": {
+      "recoveryScope": "fixture-recovery-scope-0001",
+      "methods": [
+        "runtime.capabilities",
+        "agent.start",
+        "agent.get",
+        "agent.subscribe",
+        "agent.unsubscribe",
+        "agent.cancel",
+        "agent.result"
+      ],
+      "operations": [{ "id": "research.generateReport", "revision": 1 }],
+      "limits": {
+        "maxConcurrentRuns": 1,
+        "maxInputBytes": 32768,
+        "maxBufferedEvents": 256,
+        "maxEventBytes": 32768,
+        "eventRetention": 256,
+        "maxSubscribersPerRun": 8
+      }
+    },
+    "capabilitiesDigest": "jiGNzXdnygiNSd8FUTPx8h0dOTmlX345O-0Gs9mBU7g",
+    "attestation": {
+      "runtimeInstanceId": "runtime-instance-fixture-0001",
+      "sessionId": "ICEiIyQlJicoKSorLC0uLw",
+      "proofExpiresAt": 1788955215000,
+      "sessionExpiresAt": 1788955800000,
+      "proof": "w-wkJizxmsU1H5K5c9OACOO4BD7ZgaOVo-mF4LdWM4g"
+    }
+  },
+  "helloFailure": {
+    "__taku": true,
+    "type": "hello.result",
+    "protocol": "taku.agent.run/v2",
+    "requestId": "hello-fixture-0001",
+    "ok": false,
+    "error": {
+      "code": "protocol_unsupported",
+      "message": "taku.agent.run/v2 is not supported",
+      "retryable": false
+    }
+  },
+  "sessionConfirm": {
+    "__taku": true,
+    "protocol": "taku.agent.run/v2",
+    "type": "secure",
+    "sessionId": "ICEiIyQlJicoKSorLC0uLw",
+    "direction": "c2h",
+    "lane": "rpc",
+    "sequence": "1",
+    "body": "{\"__taku\":true,\"protocol\":\"taku.agent.run/v2\",\"type\":\"session.confirm\",\"requestId\":\"confirm-fixture-0001\",\"frameEpoch\":\"frame-epoch-fixture-0001\"}",
+    "mac": "R7eV03OqwOivPRowe4SRnrbWe2UMqkhX3Mik6ClqvbI"
+  },
+  "sessionReady": {
+    "__taku": true,
+    "protocol": "taku.agent.run/v2",
+    "type": "secure",
+    "sessionId": "ICEiIyQlJicoKSorLC0uLw",
+    "direction": "h2c",
+    "lane": "rpc",
+    "sequence": "1",
+    "body": "{\"__taku\":true,\"protocol\":\"taku.agent.run/v2\",\"type\":\"session.ready\",\"requestId\":\"confirm-fixture-0001\",\"frameEpoch\":\"frame-epoch-fixture-0001\",\"sessionExpiresAt\":1788955800000}",
+    "mac": "nBhsit0kIO7hJh71N8sBKtmVzV_YQ_Dx2c0n-2gROgY"
+  },
+  "start": {
+    "__taku": true,
+    "protocol": "taku.agent.run/v2",
+    "type": "secure",
+    "sessionId": "ICEiIyQlJicoKSorLC0uLw",
+    "direction": "c2h",
+    "lane": "rpc",
+    "sequence": "2",
+    "body": "{\"__taku\":true,\"protocol\":\"taku.agent.run/v2\",\"type\":\"request\",\"requestId\":\"start-fixture-0001\",\"frameEpoch\":\"frame-epoch-fixture-0001\",\"method\":\"agent.start\",\"params\":{\"operation\":\"research.generateReport\",\"operationRevision\":1,\"expectedRecoveryScope\":\"fixture-recovery-scope-0001\",\"input\":{\"topic\":\"AI cache economics\",\"instructions\":\"Compare actual provider cache billing.\",\"language\":\"en\"},\"idempotencyKey\":\"fixture-start-0001\"}}",
+    "mac": "XTpLDmY0ujaI8QL3a59NmTI8VrIxE6i_A_Ytd-DQmsE"
+  },
+  "response": {
+    "__taku": true,
+    "protocol": "taku.agent.run/v2",
+    "type": "secure",
+    "sessionId": "ICEiIyQlJicoKSorLC0uLw",
+    "direction": "h2c",
+    "lane": "rpc",
+    "sequence": "2",
+    "body": "{\"__taku\":true,\"protocol\":\"taku.agent.run/v2\",\"type\":\"response\",\"requestId\":\"start-fixture-0001\",\"frameEpoch\":\"frame-epoch-fixture-0001\",\"ok\":true,\"result\":{\"snapshot\":{\"runId\":\"run-fixture-0001\",\"operation\":\"research.generateReport\",\"operationRevision\":1,\"state\":\"queued\",\"createdAt\":\"2026-09-09T00:00:00.000Z\",\"updatedAt\":\"2026-09-09T00:00:00.000Z\"},\"lastSequence\":1}}",
+    "mac": "KIFfb1DvVCMIVHOXaL6rQzTOcad81fgFE_Y7_mKNvuw"
+  },
+  "event": {
+    "__taku": true,
+    "protocol": "taku.agent.run/v2",
+    "type": "secure",
+    "sessionId": "ICEiIyQlJicoKSorLC0uLw",
+    "direction": "h2c",
+    "lane": "event",
+    "sequence": "2",
+    "body": "{\"__taku\":true,\"protocol\":\"taku.agent.run/v2\",\"type\":\"event\",\"frameEpoch\":\"frame-epoch-fixture-0001\",\"subscriptionId\":\"subscription-fixture-0001\",\"runId\":\"run-fixture-0001\",\"sequence\":2,\"occurredAt\":\"2026-09-09T00:00:01.000Z\",\"event\":{\"type\":\"output.delta\",\"delta\":\"Fixture output\"}}",
+    "mac": "WCrm91X2k60DU7CqTTIUaCY9LoTlWKAZE1bkhxPoDaY"
+  }
+}

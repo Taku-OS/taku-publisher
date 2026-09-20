@@ -797,7 +797,7 @@ function sanitizeBuilderProfileSnapshot(value, schemaVersion) {
       sources: sanitizeUsageSources(usage.sources),
       periods: asArray(usage.periods)
         .slice(0, 8)
-        .map((period) => stringValue(asRecord(period).id, 80) === 'last90Days'
+        .map((period) => stringValue(asRecord(period).usageSchema ?? asRecord(period).usage_schema, 100) === 'taku.creator.ai-burn-usage.v3'
           ? sanitizeAiBurnPeriod(period)
           : sanitizeUsagePeriod(period))
         .filter(isNonNull),
@@ -1121,9 +1121,10 @@ function sanitizeAiBurnSource(value) {
 
 function sanitizeAiBurnPeriod(value) {
   const raw = asRecord(value);
+  const id = stringValue(raw.id ?? raw.periodId ?? raw.period_id, 80, 'aiBurn');
   return {
-    id: 'last90Days',
-    label: 'Last 90 Days',
+    id,
+    label: stringValue(raw.label ?? raw.periodLabel, 80, id),
     startsAt: optionalString(raw.startsAt ?? raw.starts_at, 80),
     endsAt: optionalString(raw.endsAt ?? raw.ends_at, 80),
     usageSchema: optionalString(raw.usageSchema ?? raw.usage_schema, 100),

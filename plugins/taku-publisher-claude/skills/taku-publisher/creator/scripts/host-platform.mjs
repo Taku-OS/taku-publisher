@@ -8,10 +8,11 @@ const CLIENTS = {
   codex: { id: 'codex', label: 'CODEX', icon: 'codex' },
   'claude-code': { id: 'claude-code', label: 'CLAUDE', icon: 'claude' },
   cursor: { id: 'cursor', label: 'CURSOR', icon: 'cursor' },
+  opencode: { id: 'opencode', label: 'OPENCODE', icon: 'opencode' },
   gemini: { id: 'gemini', label: 'GEMINI', icon: 'gemini' },
 };
 
-const CLIENT_ORDER = ['codex', 'claude-code', 'cursor', 'gemini'];
+const CLIENT_ORDER = ['codex', 'claude-code', 'cursor', 'opencode', 'gemini'];
 
 export function normalizeAiClient(value) {
   const normalized = String(value || '').trim().toLowerCase();
@@ -19,6 +20,7 @@ export function normalizeAiClient(value) {
   if (normalized === 'codex' || normalized === 'openai') return 'codex';
   if (['claude', 'claude-code', 'cc', 'anthropic'].includes(normalized)) return 'claude-code';
   if (normalized === 'cursor' || normalized === 'composer') return 'cursor';
+  if (normalized === 'opencode' || normalized === 'open-code') return 'opencode';
   if (normalized === 'gemini' || normalized === 'google') return 'gemini';
   return '';
 }
@@ -46,13 +48,21 @@ export async function detectInvokingAiClient(options = {}) {
   if (normalizedPath.includes('/.codex/')) return 'codex';
   if (normalizedPath.includes('/.claude/')) return 'claude-code';
   if (normalizedPath.includes('/.cursor/')) return 'cursor';
+  if (normalizedPath.includes('/.config/opencode/') || normalizedPath.includes('/.opencode/')) return 'opencode';
+  if (normalizedPath.includes('/.gemini/')) return 'gemini';
   return '';
 }
 
 export async function discoverAiClients(options = {}) {
   const invokingHost = normalizeAiClient(options.invokingHost);
+  const env = options.env || process.env;
   const homeDir = path.resolve(options.homeDir || process.cwd());
   const claudeConfigDir = path.resolve(options.claudeConfigDir || path.join(homeDir, '.claude'));
+  const opencodeConfigDir = path.resolve(
+    options.opencodeConfigDir
+      || env.OPENCODE_CONFIG_DIR
+      || path.join(env.XDG_CONFIG_HOME || path.join(homeDir, '.config'), 'opencode'),
+  );
   const candidates = new Map();
 
   const add = (value, detectedBy) => {
@@ -69,6 +79,7 @@ export async function discoverAiClients(options = {}) {
     ['codex', path.join(homeDir, '.codex')],
     ['claude-code', claudeConfigDir],
     ['cursor', path.join(homeDir, '.cursor')],
+    ['opencode', opencodeConfigDir],
     ['gemini', path.join(homeDir, '.gemini')],
   ];
   await Promise.all(localRoots.map(async ([id, root]) => {

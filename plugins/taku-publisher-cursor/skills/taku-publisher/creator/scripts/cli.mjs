@@ -45,6 +45,8 @@ const USAGE_PERIOD_ALIASES = new Map([
   ['all', 'allTimeLocal'],
   ['全部本地', 'allTimeLocal'],
   ['全部本地用量', 'allTimeLocal'],
+  ['aiburn', 'aiBurn'],
+  ['staxchallenge', 'aiBurn'],
 ]);
 
 export function parseArgs(argv) {
@@ -104,7 +106,7 @@ export function normalizeUsagePeriodId(value, fallback = DEFAULT_USAGE_PERIOD_ID
   const normalized = normalizeChoiceToken(value);
   const periodId = USAGE_PERIOD_ALIASES.get(normalized);
   if (periodId) return periodId;
-  throw new Error(`Invalid --usage-period "${value}". Use one of: today, last7Days, last30Days, last90Days, thisMonth, allTimeLocal.`);
+  throw new Error(`Invalid --usage-period "${value}". Use one of: today, last7Days, last30Days, last90Days, thisMonth, allTimeLocal, aiBurn.`);
 }
 
 export function getHomeDir() {

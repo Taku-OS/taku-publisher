@@ -31,7 +31,7 @@ export function getProxyAppId(): string {
   if (!appId) {
     throw new ProxyError({
       code: 'MISSING_PROXY_APP_ID',
-      message: `${LOG_PREFIX} 缺少环境变量 TAKU_APPLICATION_ID（用于计费归因 X-App-Id）。该 SubApp 必须运行在 Taku 宿主内。`,
+      message: `${LOG_PREFIX} 缺少环境变量 TAKU_APPLICATION_ID（用于计费归因 X-App-Id）。该 Taku App 必须运行在 Taku 宿主内。`,
     });
   }
   return appId;

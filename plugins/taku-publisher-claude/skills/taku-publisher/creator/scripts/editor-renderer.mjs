@@ -222,6 +222,7 @@ function teamDisplayName(value) {
   if (!normalized) return '';
   if (normalized.includes('claude')) return 'CLAUDE';
   if (normalized.includes('cursor')) return 'CURSOR';
+  if (normalized.includes('opencode') || normalized.includes('open code')) return 'OPENCODE';
   if (normalized.includes('gemini')) return 'GEMINI';
   if (normalized.includes('codex') || normalized.includes('openai')) return 'CODEX';
   return raw.toUpperCase();
@@ -231,6 +232,7 @@ function teamIconName(value) {
   const normalized = cleanDisplayText(value, '', 80).toLowerCase();
   if (normalized.includes('claude')) return 'claude';
   if (normalized.includes('cursor')) return 'cursor';
+  if (normalized.includes('opencode') || normalized.includes('open code')) return 'opencode';
   if (normalized.includes('gemini')) return 'gemini';
   return 'codex';
 }

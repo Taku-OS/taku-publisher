@@ -9,14 +9,15 @@ Run every command from this skill directory with `node scripts/taku-publisher.mj
 
 In every host shell call, always change into the directory that contains this `SKILL.md` in the same command before invoking the CLI, for example `cd <this-skill-directory> && node scripts/taku-publisher.mjs ...`. Never run `node scripts/taku-publisher.mjs ...` from the user's project or workspace directory.
 
-This skill has six product surfaces:
+This skill has seven product surfaces:
 
-- Project import flow: discover recent Codex, Claude Code, and Cursor workspaces from bounded local metadata, let the creator select one exact project, assess it locally, and route it to existing Skill publishing, SubApp migration, bounded Skill generation, or reference-only handling.
-- Creator profile flow: authorize and confirm the Taku account first, then scan local AI tooling and behavior, generate the public-safe persona summary, save an owner-scoped private Stax Card cloud draft, and open the stable Worker-hosted Studio URL.
+- Project import flow: discover recent Codex, Claude Code, Cursor, and OpenCode workspaces from bounded local metadata, let the creator select one exact project, assess it locally, and route it to existing Skill publishing, SubApp migration, bounded Skill generation, or reference-only handling.
+- Stax Card Challenge flow: this is the default for requests to create, make, or generate a Stax Card. Authorize the creator, generate the private Card draft, and open the Stax Challenge Review page through the Challenge handoff.
+- Creator profile flow: use this when the creator explicitly asks for an AI Builder Profile, public creator page, Studio, or profile editing. Authorize and confirm the Taku account first, then scan local AI tooling and behavior, save an owner-scoped private profile draft, and open the stable Worker-hosted Studio URL.
 - Creator Center flow: list and search the signed-in creator's Taku items, read trusted server-side stats, inspect one owned item, and edit the listing metadata of a private draft.
-- Marketplace consumer flow: search and inspect public community Apps, Skills, Tools, and Bundles; show an install preflight and safely install one compatible confirmed Skill into Codex.
+- Marketplace consumer flow: search and inspect public community Apps, Skills, Tools, and Bundles; show an install preflight and safely install one compatible confirmed Skill into the selected Agent Skills host.
 - Marketplace publisher flow: package and publish one installable Skill with staged files, deterministic scan, semantic review, and remote artifact verification. Action, Agent, and Plugin publishing are not currently available.
-- SubApp conversion flow: assess one existing App directory or public GitHub repository, prepare an isolated candidate after exact confirmation, migrate it with the current host Agent (Codex, Claude Code, or Cursor) under a bounded contract, run confirmed trusted validation, create the deterministic Desktop dual-archive release, install/open it locally through the packaged Taku Desktop client after separate confirmation, and optionally upload/register one private App draft version. Public release and packaged-client catalog installation are not yet supported.
+- SubApp conversion flow: assess one existing App directory or public GitHub repository, prepare an isolated candidate after exact confirmation, migrate it with the current compatible host Agent under a bounded contract, run confirmed trusted validation, create the deterministic Desktop dual-archive release, install/open it locally through the packaged Taku Desktop client after separate confirmation, and optionally upload/register one private App draft version. Public release and packaged-client catalog installation are not yet supported.
 
 ## Host and Project Selection
 
@@ -29,21 +30,29 @@ project path is available.
   `workspaceStorage` metadata, not conversation text. Creator Profile usage
   scans may read explicit token counts from Cursor's local state database;
   missing counts are reported as unavailable and are never estimated.
+- For OpenCode, use `project-discover --host opencode`. It reads only project
+  paths and activity timestamps from OpenCode's local database (or its bounded
+  legacy project metadata). Creator Profile usage scans read only explicit
+  per-session model and token counters; message, prompt, account, and credential
+  tables are never queried. Missing counters are reported as unavailable and
+  are never estimated.
 - For Codex or Claude Code, preserve the existing local history behavior.
 - For another compatible host, use `project-discover --host other --project
   <absolute-path>`. Do not promise recent-project discovery or token statistics.
 - SubApp semantic migration is performed by the current host Agent. The
   bundled CLI does not contain or launch an independent AI runner.
 
-## Stax Challenge (explicit requests only)
+## Stax Card Default Routing
 
-Use this mode when the creator explicitly asks for Stax Challenge or for a Card
-followed by choosing and preparing one local Skill. Ordinary Card generation,
-project import, Creator Center and SubApp requests keep their existing routes.
+Use this mode when the creator asks to create, make, or generate a Stax Card,
+even when they do not mention Challenge, handoff, Review, or Skill publishing.
+Project import, Creator Center, SubApp, and explicit Creator Profile or Studio
+requests keep their existing routes.
 
 Run `creator-draft --json --editor --challenge-handoff` with the requested
-workspace and usage window. Keep the exact returned `editorUrl`; the cloud
-Studio and production authorization behavior do not change. Show the Card URL
+workspace and usage window. Open the exact returned `editorUrl`; it is the Stax
+Challenge Review page, not the Studio editor. If the host cannot open it, return
+that exact URL instead. Show the Card URL
 and `challengeSkills` together, and ask the creator to choose one candidate or
 skip. Selection happens here in the current Codex, Claude Code or Cursor Agent,
 not through a browser-to-local bridge. Candidates are suggestions, not proof of
@@ -128,7 +137,7 @@ Field translation:
 | `marketplace-show` | "Here are this Skill's details and configuration requirements." |
 | `marketplace-open` / `taku_opened` | "Taku Desktop is open. Confirm the selected App there." |
 | `marketplace-install` / `confirmation_required` | "This Skill is ready to install after you confirm the exact item." |
-| `marketplace-install` / `installed` | "The Skill is installed. Start a new Codex task to use it." |
+| `marketplace-install` / `installed` | "The Skill is installed. Start a new host session to use it." |
 | `project-discover` / `project_selection_required` | "I found recent local projects. Choose one, or choose GitHub to look for another project." |
 | `github-project-discover` / `github_authorization_required` | "I opened GitHub authorization. Finish it in the browser, then tell me to continue." |
 | `github-project-discover` / `github_project_selection_required` | "I found your public GitHub repositories; choose one before I inspect its source." |
@@ -200,7 +209,7 @@ Examples:
 - Installation requires a second command with `--confirm-item-id` exactly
   matching the selected server item ID. Do not combine selection and
   installation confirmation in one command or infer confirmation from a name.
-- Install only into the Codex user Skill directory returned by the CLI. Never
+- Install only into the selected host's user Skill directory returned by the CLI. Never
   overwrite an existing Skill directory, bypass package/hash checks, or manually
   extract a rejected package.
 - SubApp assessment is read-only. Accept only one explicit absolute local App
@@ -528,17 +537,17 @@ Use these commands when the creator asks to generate a Stax Card, AI Builder Pro
 
 ```bash
 node scripts/taku-publisher.mjs creator-doctor --json
-node scripts/taku-publisher.mjs creator-scan --json --compact [--workspace <workspace>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal] [--max-usage-files <n>] [--include-creation-candidates] [--include-github-metrics] [--include-prompt-style]
-node scripts/taku-publisher.mjs creator-draft --json --editor [--workspace <workspace>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal] [--include-creation-candidates] [--worker-url <url>] [--site-url <url>] [--no-open-browser]
+node scripts/taku-publisher.mjs creator-scan --json --compact [--workspace <workspace>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal|aiBurn] [--max-usage-files <n>] [--include-creation-candidates] [--include-github-metrics] [--include-prompt-style]
+node scripts/taku-publisher.mjs creator-draft --json --editor [--workspace <workspace>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal|aiBurn] [--include-creation-candidates] [--worker-url <url>] [--site-url <url>] [--no-open-browser]
 node scripts/taku-publisher.mjs creator-editor --json --draft <draft.json> [--worker-url <url>] [--site-url <url>]
 node scripts/taku-publisher.mjs creator-publish --json --draft <draft.json> [--worker-url <url>] [--site-url <url>]
 ```
 
-Default to `creator-draft --json --editor` for any creator-facing generation request, including "make my Stax Card", "generate persona labels", "generate Creator Profile", "summarize my builder persona", "generate a Creator Profile summary", or similar. The CLI must finish Taku Web authorization before it starts the local scan. The default usage window is the recent 90-day local scan; pass `--usage-period thisMonth` only when the creator explicitly asks for this-month stats. Do not present raw JSON paths, local HTML paths, command names, or `previewPath` / `previewUrl` as the main call to action unless the creator asks for debugging details.
+Default to `creator-draft --json --editor --challenge-handoff` for Stax Card generation. Use `creator-draft --json --editor` without the handoff for explicit AI Builder Profile, public creator page, Creator Profile, persona-label, or Studio requests. The CLI must finish Taku Web authorization before it starts the local scan. The default usage window is the recent 90-day local scan; the separate configured `aiBurn` period is included for Challenge ranking. Pass `--usage-period thisMonth` only when the creator explicitly asks for this-month stats. Do not present raw JSON paths, local HTML paths, command names, or `previewPath` / `previewUrl` as the main call to action unless the creator asks for debugging details.
 
 Only use `creator-scan --compact` when the creator explicitly asks for a text-only scan/report, says they do not want a preview/editor, or asks for debugging metrics. Keep the compact host result as the default so local paths and scan previews stay out of the model context. If the request could reasonably mean "generate something I can review", use `creator-draft --json --editor`, not `creator-scan`.
 
-After `creator-draft --json --editor`, the CLI must save the owner-scoped private draft and return the stable Worker-hosted `editorUrl`, normally `https://worker.taku.ai/stax/studio/editor` after its one-time launch handoff is redeemed. Treat a result without `editorUrl` as a failed Creator Profile draft unless the user explicitly asked for scan-only output. The launch value is an opaque one-time credential; never display or log it as an account token.
+After `creator-draft --json --editor --challenge-handoff`, the CLI must save the owner-scoped private draft and return the exact Stax Challenge Review `editorUrl`. After an explicit ordinary Creator Profile or Studio request, `creator-draft --json --editor` returns the stable Worker-hosted Studio URL. Treat a result without `editorUrl` as a failed draft unless the user explicitly asked for scan-only output. The launch value is an opaque one-time credential; never display or log it as an account token.
 
 For creator profile scans:
 
@@ -615,30 +624,33 @@ or install a compatible Skill from Taku Marketplace:
 node scripts/taku-publisher.mjs marketplace-search --json [--search <text>] [--kind all|app|tool|skill|plugin|mcp|cli|agents|workflow|bundle|reference] [--limit <n>] [--offset <n>]
 node scripts/taku-publisher.mjs marketplace-show --json --item-id <item-id>
 node scripts/taku-publisher.mjs marketplace-open --json --item-id <item-id>
-node scripts/taku-publisher.mjs marketplace-install --json --host codex --item-id <item-id>
-node scripts/taku-publisher.mjs marketplace-install --json --host codex --item-id <item-id> --confirm-item-id <same-item-id>
+node scripts/taku-publisher.mjs marketplace-install --json --host <current-host> --item-id <item-id>
+node scripts/taku-publisher.mjs marketplace-install --json --host <current-host> --item-id <item-id> --confirm-item-id <same-item-id>
 ```
+
+Use one registered host ID: `codex`, `claude-code`, `cursor`, `opencode`,
+`gemini-cli`, or `agent-skills`. Use `agent-skills` for a compatible host that
+loads the standard global `.agents/skills` directory.
 
 - Search covers the full public community catalog by default. Apps, Tools,
   Skills, Plugins, MCPs, Workflows, Bundles, and references may appear in the
   results. Use `display_kind`, `installability`, and the returned CTA to explain
   what the user can do with each result.
 - Installation remains narrower than search: this consumer version installs
-  only published `skill` items into Codex. Other kinds may be shown or opened
+  only published `skill` items into a supported Agent Skills host. Other kinds may be shown or opened
   in Taku Desktop through `marketplace-open`, which keeps the deep link
-  internal; they must not be written into the Codex Skills directory. Search
-  and show may run from either host, but do not claim Claude Code installation
-  support.
+  internal; they must not be written into a host Skills directory. Search and
+  show may run from any supported host.
 - Start with `marketplace-search --json`. Present a compact list with name,
   kind, creator, short description, version, and install count. If more than one
   item matches, ask the user to select one; never choose by fuzzy title.
 - Terminal responses must not display raw `taku://` deep links or rely on them
   being clickable. Use `recommended_action` to distinguish the next step:
-  `install_in_codex` means the confirmed Skill installation flow;
+  `install_in_host` or the legacy `install_in_codex` value means the confirmed Skill installation flow;
   `open_in_taku_desktop` means the item requires Taku Desktop; and
   `view_details` means no direct terminal installation action is available.
 - For App and other `open_in_taku_desktop` results, say once that they cannot be
-  installed into Codex and ask the user to reply with one item number. Do not
+  installed as a Skill and ask the user to reply with one item number. Do not
   print an opening command for every result and do not open anything during a
   search-only request.
 - After the user selects one exact App and asks to open/install it, or replies
@@ -666,10 +678,10 @@ node scripts/taku-publisher.mjs marketplace-install --json --host codex --item-i
 - Successful installation verifies the server SHA-256 and package size, rejects
   unsafe ZIP paths, symbolic links, unsupported file types, excessive file
   count/size, and packages without a root `SKILL.md`, then atomically creates
-  `~/.codex/skills/<slug>`.
+  the selected host's resolved Skill directory.
 - Never overwrite or merge into an existing target. If the target exists, tell
   the user which Skill slug conflicts and let them decide how to handle it.
-- After success, tell the user to start a new Codex task so the newly installed
+- After success, tell the user to start a new host session so the newly installed
   Skill is discovered. A failed install-record request may be reported as a
   non-blocking analytics warning only when the local atomic install succeeded.
 
