@@ -1576,11 +1576,16 @@ async function authenticatedClient(args: ParsedArguments): Promise<TakuPublisher
     workerUrl,
     token: auth.token,
     iconToken: auth.iconToken,
+    flowchartToken: auth.flowchartToken,
     timeoutMs: numberFlag(args, 'timeout', 30) * 1000,
     uploadTimeoutMs: numberFlag(args, 'upload-timeout', 300) * 1000,
     allowCustomWorkerUrl: booleanFlag(args, 'allow-custom-worker-url'),
   });
-  if (authHasScope(auth, 'publisher.drafts.write') || booleanFlag(args, 'no-browser-login')) return client;
+  const flowchartAuthRequired = args.command === 'remote-create' && publisherFlowchartGenerationEnabled();
+  if (
+    (authHasScope(auth, 'publisher.drafts.write') && (!flowchartAuthRequired || Boolean(auth.flowchartToken)))
+    || booleanFlag(args, 'no-browser-login')
+  ) return client;
   await loginWithBrowser({
     workerUrl: client.workerUrl,
     siteUrl: stringFlag(args, 'site-url', DEFAULT_SITE_URL),
@@ -1588,7 +1593,7 @@ async function authenticatedClient(args: ParsedArguments): Promise<TakuPublisher
     timeoutMs: numberFlag(args, 'auth-timeout', 300) * 1000,
   });
   auth = await resolveAuth({ tokenEnv });
-  client = new TakuPublisherClient({ workerUrl: client.workerUrl, token: auth.token, iconToken: auth.iconToken, timeoutMs: numberFlag(args, 'timeout', 30) * 1000, uploadTimeoutMs: numberFlag(args, 'upload-timeout', 300) * 1000, allowCustomWorkerUrl: true });
+  client = new TakuPublisherClient({ workerUrl: client.workerUrl, token: auth.token, iconToken: auth.iconToken, flowchartToken: auth.flowchartToken, timeoutMs: numberFlag(args, 'timeout', 30) * 1000, uploadTimeoutMs: numberFlag(args, 'upload-timeout', 300) * 1000, allowCustomWorkerUrl: true });
   return client;
 }
 

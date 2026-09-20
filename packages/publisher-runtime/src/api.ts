@@ -77,6 +77,7 @@ export class TakuPublisherClient {
   readonly workerUrl: string;
   readonly token: string;
   readonly iconToken: string;
+  readonly flowchartToken: string;
   readonly timeoutMs: number;
   readonly uploadTimeoutMs: number;
   readonly transport: Transport;
@@ -87,6 +88,7 @@ export class TakuPublisherClient {
     workerUrl?: string;
     token?: string;
     iconToken?: string;
+    flowchartToken?: string;
     timeoutMs?: number;
     uploadTimeoutMs?: number;
     allowCustomWorkerUrl?: boolean;
@@ -96,6 +98,7 @@ export class TakuPublisherClient {
     this.workerUrl = validateWorkerUrl(options.workerUrl ?? DEFAULT_WORKER_URL, options.allowCustomWorkerUrl ?? false);
     this.token = String(options.token ?? '').trim();
     this.iconToken = String(options.iconToken ?? '').trim();
+    this.flowchartToken = String(options.flowchartToken ?? '').trim();
     this.timeoutMs = options.timeoutMs ?? 30_000;
     this.uploadTimeoutMs = options.uploadTimeoutMs ?? 300_000;
     this.transport = options.transport ?? defaultTransport;
@@ -122,6 +125,7 @@ export class TakuPublisherClient {
       workerUrl: options.workerUrl,
       token: auth.token,
       iconToken: auth.iconToken,
+      flowchartToken: auth.flowchartToken,
       timeoutMs: options.timeoutMs,
       uploadTimeoutMs: options.uploadTimeoutMs,
       allowCustomWorkerUrl: options.allowCustomWorkerUrl,
@@ -144,11 +148,14 @@ export class TakuPublisherClient {
         'invalid_idempotency_key',
       );
     }
+    const authToken = this.flowchartToken || (
+      this.token.startsWith('taku_pub_') ? '' : this.token
+    );
     return this.json(
       'POST',
       '/publisher/flowchart/generate',
       payload,
-      undefined,
+      authToken,
       true,
       { idempotencyKey: key, timeoutMs: FLOWCHART_GENERATION_TIMEOUT_MS },
     );

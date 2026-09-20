@@ -145,6 +145,8 @@ export async function loginWithBrowser(options: {
     expiresAt: now + positiveInt(payload.expiresIn, 3600) * 1000,
     iconToken: String(payload.iconToken ?? '').trim(),
     iconExpiresAt: now + positiveInt(payload.iconTokenExpiresIn, 0) * 1000,
+    flowchartToken: String(payload.flowchartToken ?? '').trim(),
+    flowchartExpiresAt: now + positiveInt(payload.flowchartTokenExpiresIn, 0) * 1000,
     scopes: Array.isArray(payload.scopes) ? payload.scopes : [],
     accountHint: String(payload.accountHint ?? '').trim() || null,
     createdAt: now,

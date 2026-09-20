@@ -157,6 +157,7 @@ test('scoped Publisher session is resolved without exposing or widening scopes',
   assert.equal(auth.source, 'publisher_session');
   assert.equal(auth.token, publisherToken);
   assert.equal(auth.iconToken, '');
+  assert.equal(auth.flowchartToken, '');
   assert.equal(authHasScope(auth, 'marketplace.packages.read'), true);
   assert.equal(authHasScope(auth, 'publisher.drafts.write'), false);
 });
@@ -241,7 +242,7 @@ test('API client keeps public reads unauthenticated and fails closed on writes',
   assert.equal(requests[1].headers.Authorization, ['Bearer', publisherToken].join(' '));
 });
 
-test('API client generates Flowchart data with scoped auth and idempotency', async () => {
+test('API client generates Flowchart data with dedicated auth and idempotency', async () => {
   const requests = [];
   const transport = async (method, url, headers, body, timeoutMs) => {
     requests.push({ method, url, headers, body, timeoutMs });
@@ -258,7 +259,8 @@ test('API client generates Flowchart data with scoped auth and idempotency', asy
     };
   };
   const publisherToken = ['taku', 'pub', 'flowchart', 'fixture'].join('_');
-  const client = new TakuPublisherClient({ token: publisherToken, transport });
+  const flowchartToken = ['taku', 'pf', 'flowchart', 'fixture'].join('_');
+  const client = new TakuPublisherClient({ token: publisherToken, flowchartToken, transport });
 
   const result = await client.generateFlowchart(
     { type: 'app', name: 'Demo', description: 'A useful app.' },
@@ -268,9 +270,16 @@ test('API client generates Flowchart data with scoped auth and idempotency', asy
   assert.equal(result.flowchartIntro.nodes.length, 2);
   assert.equal(requests[0].method, 'POST');
   assert.equal(new URL(requests[0].url).pathname, '/publisher/flowchart/generate');
-  assert.equal(requests[0].headers.Authorization, `Bearer ${publisherToken}`);
+  assert.equal(requests[0].headers.Authorization, `Bearer ${flowchartToken}`);
   assert.equal(requests[0].headers['Idempotency-Key'], 'flowchart:app:demo:sha256-fixture');
   assert.equal(requests[0].timeoutMs, 120_000);
+  await assert.rejects(
+    new TakuPublisherClient({ token: publisherToken, transport }).generateFlowchart(
+      { type: 'app', name: 'Demo', description: 'A useful app.' },
+      'flowchart:app:missing-dedicated-token',
+    ),
+    error => error instanceof PublisherError && error.code === 'missing_auth',
+  );
   assert.throws(
     () => client.generateFlowchart({ type: 'app', name: 'Demo', description: 'A useful app.' }, ''),
     error => error instanceof PublisherError && error.code === 'invalid_idempotency_key',
@@ -1057,6 +1066,8 @@ test('browser callback resumes the same authorization call and saves the standal
     response.end(JSON.stringify({
       token: 'fixture-publisher-callback-token',
       expiresIn: 3600,
+      flowchartToken: 'fixture-flowchart-callback-token',
+      flowchartTokenExpiresIn: 3600,
       scopes: ['creator.card.write', 'publisher.drafts.write'],
       accountHint: 'te***@example.com',
     }));
@@ -1105,6 +1116,7 @@ test('browser callback resumes the same authorization call and saves the standal
   const resolved = await resolveAuth({ env, allowDesktopSession: false });
   assert.equal(resolved.source, 'publisher_session');
   assert.equal(resolved.token, 'fixture-publisher-callback-token');
+  assert.equal(resolved.flowchartToken, 'fixture-flowchart-callback-token');
   worker.closeIdleConnections?.();
   worker.closeAllConnections?.();
 });
@@ -1334,6 +1346,7 @@ test('valid Publisher session is reused while missing, expired, or insufficient 
     token: 'fixture-publisher-session-token',
     source: 'publisher_session',
     iconToken: '',
+    flowchartToken: '',
     scopes: [
       'creator.profile.read',
       'creator.studio-draft.write',
