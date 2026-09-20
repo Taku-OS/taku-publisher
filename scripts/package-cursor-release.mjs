@@ -51,13 +51,15 @@ const packedFiles = new Set(packed.files.map((file) => file.path));
 for (const file of await inventory(output)) {
   if (!packedFiles.has(file.path)) throw new Error(`npm omitted required payload: ${file.path}`);
 }
+const latestTarballName = 'taku-publisher.tgz';
+await fs.copyFile(path.join(releases, packed.filename), path.join(releases, latestTarballName));
 const marketplace = path.join(root, 'dist/marketplaces/cursor/taku');
 const zipName = `taku-publisher-cursor-marketplace-${release.version}.zip`;
 const entries = await Promise.all((await inventory(marketplace)).map(async (file) => ({
   name: file.path, mode: file.mode, data: await fs.readFile(path.join(marketplace, file.path)),
 })));
 await fs.writeFile(path.join(releases, zipName), createStoredZip(entries));
-const artifacts = await Promise.all([packed.filename, zipName].map(async (name) => ({
+const artifacts = await Promise.all([packed.filename, latestTarballName, zipName].map(async (name) => ({
   name, sha256: createHash('sha256').update(await fs.readFile(path.join(releases, name))).digest('hex'),
 })));
 const commit = process.env.TAKU_CONTRACT_SOURCE_COMMIT || execFileSync('git', ['rev-parse', 'HEAD'],

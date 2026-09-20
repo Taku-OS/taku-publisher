@@ -8,6 +8,17 @@ and SubApp support from 0.3.22. The production plugin is still named
 GitHub `marketplace` branch and the `v0.3.23` release assets. It is not
 published to npm or listed in the official Cursor Marketplace.
 
+Install or update to the latest release directly from GitHub (Node.js 20+):
+
+```sh
+npx --yes --package https://github.com/Taku-OS/taku-publisher/releases/latest/download/taku-publisher.tgz taku-publisher install --host cursor --update
+npx --yes --package https://github.com/Taku-OS/taku-publisher/releases/latest/download/taku-publisher.tgz taku-publisher install --host agent-skills --update
+```
+
+The stable `taku-publisher.tgz` asset is byte-for-byte identical to the
+versioned installer in that release. Use the versioned asset below when an
+installation must be pinned for reproducibility or rollback.
+
 Download `taku-publisher-0.3.23.tgz` from the trusted
 [GitHub release](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.3.23),
 then run from the download directory (Node.js 20+):

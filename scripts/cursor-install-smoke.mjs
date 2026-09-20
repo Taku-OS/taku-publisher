@@ -10,11 +10,16 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const version = JSON.parse(await fs.readFile(path.join(root, 'dist/skills/taku-publisher/publisher-version.json'), 'utf8')).version;
 const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-cursor-package-smoke-'));
 try {
+  const versionedTarball = path.join(root, `dist/releases/taku-publisher-${version}.tgz`);
+  const latestTarball = path.join(root, 'dist/releases/taku-publisher.tgz');
+  if (!(await fs.readFile(versionedTarball)).equals(await fs.readFile(latestTarball))) {
+    throw new Error('Stable latest installer differs from the versioned release artifact.');
+  }
   const extracted = path.join(temporary, 'extracted');
   const project = path.join(temporary, 'project');
   await fs.mkdir(extracted);
   await fs.mkdir(project);
-  execFileSync('tar', ['-xzf', path.join(root, `dist/releases/taku-publisher-${version}.tgz`), '-C', extracted]);
+  execFileSync('tar', ['-xzf', versionedTarball, '-C', extracted]);
   const bin = path.join(extracted, 'package/bin/taku-publisher.mjs');
   const args = [bin, 'install', '--host', 'cursor', '--scope', 'project', '--project', project];
   const result = JSON.parse(execFileSync(process.execPath, args, { encoding: 'utf8' }));
@@ -37,7 +42,7 @@ try {
   const npmProject = path.join(temporary, 'npm-project');
   await fs.mkdir(npmProject);
   const npmResult = JSON.parse(execFileSync('npm', ['exec', '--yes', '--offline', '--cache', path.join(temporary, 'npm-cache'),
-    '--package', path.join(root, `dist/releases/taku-publisher-${version}.tgz`), '--',
+    '--package', versionedTarball, '--',
     'taku-publisher', 'install', '--host', 'cursor', '--scope', 'project', '--project', npmProject],
   { cwd: temporary, encoding: 'utf8' }));
   if (!npmResult.ok || npmResult.version !== version) throw new Error('npm one-command installation failed.');
@@ -46,7 +51,7 @@ try {
   const agentArgs = [bin, 'install', '--host', 'agent-skills', '--scope', 'project', '--project', agentProject];
   const agentResult = JSON.parse(execFileSync('npm', ['exec', '--yes', '--offline',
     '--cache', path.join(temporary, 'agent-npm-cache'),
-    '--package', path.join(root, `dist/releases/taku-publisher-${version}.tgz`), '--',
+    '--package', latestTarball, '--',
     'taku-publisher', 'install', '--host', 'agent-skills', '--scope', 'project', '--project', agentProject],
   { cwd: temporary, encoding: 'utf8' }));
   if (!agentResult.ok || agentResult.version !== version || agentResult.host !== 'agent-skills') {
