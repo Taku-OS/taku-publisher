@@ -21,6 +21,7 @@ import {
   loginWithBrowser,
   publisherDraftArtifactCompletePath,
   publisherDraftPath,
+  publisherFlowchartGenerationEnabled,
   publisherFlowchartGenerationPayload,
   publisherFlowchartIdempotencyKey,
   publisherFlowchartListingFromResponse,
@@ -31,6 +32,18 @@ import {
   setTreeWritable,
   TakuPublisherClient,
 } from '../dist/index.js';
+
+test('Publisher Flowchart generation is enabled by default and supports explicit opt-out', () => {
+  assert.equal(publisherFlowchartGenerationEnabled({}), true);
+  assert.equal(publisherFlowchartGenerationEnabled({ TAKU_PUBLISHER_GENERATE_FLOWCHART: 'true' }), true);
+  assert.equal(publisherFlowchartGenerationEnabled({ TAKU_PUBLISHER_GENERATE_FLOWCHART: '1' }), true);
+  for (const value of ['0', 'false', 'no', 'off', 'disabled']) {
+    assert.equal(
+      publisherFlowchartGenerationEnabled({ TAKU_PUBLISHER_GENERATE_FLOWCHART: value }),
+      false,
+    );
+  }
+});
 
 async function temporaryDirectory(t) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-publisher-api-'));
@@ -102,7 +115,6 @@ async function initializeFlowchartDraft(t, options = {}) {
   setTestEnvironment(t, {
     TAKU_PUBLISHER_HOME: path.join(root, 'publisher-home'),
     TAKU_TEST_FLOWCHART_TOKEN: 'publisher-flowchart-test-token',
-    TAKU_PUBLISHER_GENERATE_FLOWCHART: 'true',
   });
   const mode = options.mode ?? 'create';
   const flags = [

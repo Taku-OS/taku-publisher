@@ -1975,7 +1975,7 @@ export function publisherFlowchartGenerationEnabled(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
   const value = String(env.TAKU_PUBLISHER_GENERATE_FLOWCHART ?? '').trim().toLowerCase();
-  return ['1', 'true', 'yes', 'on', 'enabled'].includes(value);
+  return !['0', 'false', 'no', 'off', 'disabled'].includes(value);
 }
 
 function publicHttpsUrl(value: string): boolean {
