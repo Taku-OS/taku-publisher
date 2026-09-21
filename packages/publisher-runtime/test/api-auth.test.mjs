@@ -1111,8 +1111,15 @@ test('browser callback resumes the same authorization call and saves the standal
   assert.deepEqual(requests, ['POST /marketplace/local-auth/redeem']);
   assert.equal(status.authenticated, true);
   assert.match(stderr, /Waiting for browser confirmation/);
-  assert.equal(stderr.includes('If the Taku authorization page is not visible'), false);
-  assert.equal(stderr.includes('code_challenge='), false);
+  const progress = stderr.split('\n').filter((line) => line.startsWith('{')).map(JSON.parse);
+  assert.equal(progress[0].status, 'authorization_required');
+  const loginUrl = new URL(progress[0].authorization_url);
+  assert.equal(loginUrl.searchParams.get('intent'), 'publish_stax_card');
+  assert.ok(loginUrl.searchParams.get('code_challenge'));
+  assert.equal(loginUrl.searchParams.has('code_verifier'), false);
+  assert.equal(stderr.includes('fixture-publisher-callback-token'), false);
+  assert.equal(stderr.includes('one-time-code'), false);
+  assert.equal(progress[1].browser_launch.status, 'requested');
   const resolved = await resolveAuth({ env, allowDesktopSession: false });
   assert.equal(resolved.source, 'publisher_session');
   assert.equal(resolved.token, 'fixture-publisher-callback-token');
@@ -1121,7 +1128,7 @@ test('browser callback resumes the same authorization call and saves the standal
   worker.closeAllConnections?.();
 });
 
-test('browser authorization prints a manual URL when the launcher is not visible', async (t) => {
+test('browser authorization exposes a manual URL before waiting for the callback', async (t) => {
   const root = await temporaryDirectory(t);
   const env = { ...process.env, TAKU_PUBLISHER_HOME: root };
   let stderr = '';
@@ -1139,7 +1146,6 @@ test('browser authorization prints a manual URL when the launcher is not visible
         intent: 'publish_stax_card',
         env,
         timeoutMs: 50,
-        manualBrowserFallbackDelayMs: 5,
         // Simulate Cursor's sandbox reporting that `open` started without a
         // visible browser window or callback.
         browserOpen: async () => true,
@@ -1150,8 +1156,10 @@ test('browser authorization prints a manual URL when the launcher is not visible
     process.stderr.write = stderrWrite;
   }
 
-  assert.match(stderr, /If the Taku authorization page is not visible, open this URL manually:/);
-  assert.match(stderr, /https:\/\/taku\.ai\/profile\?[^\s]+/);
+  const progress = stderr.split('\n').filter((line) => line.startsWith('{')).map(JSON.parse);
+  assert.equal(progress[0].status, 'authorization_required');
+  assert.match(progress[0].authorization_url, /^https:\/\/taku\.ai\/profile\?/);
+  assert.equal(progress[1].status, 'awaiting_authorization');
 });
 
 test('Creator cloud authorization completes before the scan process starts', async (t) => {
@@ -1240,10 +1248,12 @@ if (!response.ok) process.exitCode = 1;
   const result = await dispatch({
     command: 'creator-draft',
     flags: new Map(),
-    rest: ['--json', '--editor', '--worker-url', workerUrl, '--allow-custom-worker-url'],
+    rest: ['--json', '--editor', '--wait-for-auth', '--worker-url', workerUrl, '--allow-custom-worker-url'],
   });
 
   assert.equal(result.ok, true);
+  assert.equal(result.editor_open_required, true);
+  assert.equal(result.next_action, 'open_editor_url');
   const invocations = (await fs.readFile(creatorLog, 'utf8')).trim().split('\n').map(JSON.parse);
   assert.equal(invocations.length, 1);
   assert.equal(invocations[0].token, 'replacement-publisher-token');
@@ -1266,7 +1276,7 @@ if (!response.ok) process.exitCode = 1;
   });
   await dispatch({
     command: 'creator-draft', flags: new Map(),
-    rest: ['--json', '--editor', '--challenge-handoff', '--worker-url', workerUrl, '--allow-custom-worker-url'],
+    rest: ['--json', '--editor', '--challenge-handoff', '--wait-for-auth', '--worker-url', workerUrl, '--allow-custom-worker-url'],
   });
   const retryInvocation = (await fs.readFile(creatorLog, 'utf8')).trim().split('\n').map(JSON.parse).at(-1);
   assert.equal(retryInvocation.args[0], 'editor');
