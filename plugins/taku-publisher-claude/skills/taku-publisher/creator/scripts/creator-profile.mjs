@@ -8,8 +8,11 @@ const DEFAULT_TAKU_SUPABASE_URL = 'https://auth.taku.ai';
 const DEFAULT_TAKU_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2cXB1c2RvZXJsYmJzeWN3dW52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3MzU2OTIsImV4cCI6MjA3MjMxMTY5Mn0.aDD2EJSQvo5ybeVgL9SbbXPlZMCGLyBL5zJzN3eObPo';
 const PROFILE_AVATAR_TIMEOUT_MS = 5000;
 
-export async function fetchTakuCreatorProfile({ workerUrl, token }) {
-  const staxProfile = await fetchTakuStaxProfile({ workerUrl, token }).catch(() => null);
+export async function fetchTakuCreatorProfile({ workerUrl, token, siteUrl }) {
+  const staxProfile = await fetchTakuStaxProfile({ workerUrl, token, siteUrl }).catch(error => {
+    if (error?.legalAction) throw error;
+    return null;
+  });
   if (staxProfile?.ok) {
     return {
       ok: true,
@@ -21,12 +24,15 @@ export async function fetchTakuCreatorProfile({ workerUrl, token }) {
   }
 
   const endpoint = `${workerUrl}/stax/creators/me`;
-  const client = createTakuStaxClient({ workerUrl, token });
+  const client = createTakuStaxClient({ workerUrl, token, siteUrl });
   const { response, data, parsedJson } = await client.fetchJson('/stax/creators/me', {
     method: 'GET',
   });
   if (response.ok && parsedJson) {
-    const retriedStaxProfile = await fetchTakuStaxProfile({ workerUrl, token }).catch(() => null);
+    const retriedStaxProfile = await fetchTakuStaxProfile({ workerUrl, token, siteUrl }).catch(error => {
+      if (error?.legalAction) throw error;
+      return null;
+    });
     if (retriedStaxProfile?.ok) {
       return {
         ok: true,
@@ -53,9 +59,9 @@ export async function fetchTakuCreatorProfile({ workerUrl, token }) {
   };
 }
 
-export async function fetchTakuStaxProfile({ workerUrl, token }) {
+export async function fetchTakuStaxProfile({ workerUrl, token, siteUrl }) {
   const endpoint = `${workerUrl}/stax/profile`;
-  const client = createTakuStaxClient({ workerUrl, token });
+  const client = createTakuStaxClient({ workerUrl, token, siteUrl });
   const { response, data, parsedJson } = await client.fetchJson('/stax/profile', {
     method: 'GET',
   });

@@ -1281,13 +1281,17 @@ export async function startEditorServer(parsed, draftResult) {
           error: result.ok ? undefined : result.error || result.data?.error || result.data?.message || `HTTP ${result.status}`,
           loginUrl: publishStatus.loginUrl,
           canPublish: publishStatus.canPublish,
-        }, result.ok ? 200 : result.status || 500);
+        }, result.ok ? 200 : result.http_status || Number(result.status) || 500);
         return;
       }
 
       sendTextResponse(response, 404, 'Not found');
     } catch (error) {
-      sendJsonResponse(response, { ok: false, error: error instanceof Error ? error.message : String(error) }, 500);
+      if (error?.legalAction) {
+        sendJsonResponse(response, { ...error.legalAction, error: error.message }, 428);
+      } else {
+        sendJsonResponse(response, { ok: false, error: error instanceof Error ? error.message : String(error) }, 500);
+      }
     }
   });
 

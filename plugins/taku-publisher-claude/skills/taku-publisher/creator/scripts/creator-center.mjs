@@ -68,7 +68,7 @@ function createContext(parsed, command, options = {}) {
     : readAuthorizedTakuToken(parsed, requiredScope);
   const workerUrl = options.workerUrl || resolveWorkerUrl(parsed);
   const siteUrl = options.siteUrl || resolveSiteUrl(parsed);
-  const client = options.client || (token ? createTakuStaxClient({ workerUrl, token }) : null);
+  const client = options.client || (token ? createTakuStaxClient({ workerUrl, token, siteUrl }) : null);
   return { requiredScope, token, workerUrl, siteUrl, client };
 }
 
@@ -230,7 +230,10 @@ export async function runCreatorCenterStats(parsed, options = {}) {
 
 async function getOptionalMyStaxProfile(client) {
   if (typeof client?.getMyStaxProfile !== 'function') return null;
-  return await client.getMyStaxProfile().catch(() => null);
+  return await client.getMyStaxProfile().catch(error => {
+    if (error?.legalAction) throw error;
+    return null;
+  });
 }
 
 function creatorCenterStatsFromStaxProfile(staxProfile, fallbackStatsPayload) {
