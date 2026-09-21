@@ -72,9 +72,32 @@ test('prepares a validated candidate from the bundled pinned template', async ()
     );
     await writeFile(attestationRoutePath, attestationRoute);
 
+    const manifestPath = join(workspaceRoot, 'taku.manifest.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown>;
+    manifest.runtimeCapabilities = {
+      protocol: 'taku.agent.run/v2',
+      operations: [{ id: 'agent.execute', revision: 1 }],
+    };
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    assert.equal((await validateSubAppWorkspace(workspaceRoot, { level: 'workspace' })).ok, true);
+    (manifest.runtimeCapabilities as { operations: Array<Record<string, unknown>> }).operations[0].provider = 'client-selected-provider';
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    assert.equal(
+      (await validateSubAppWorkspace(workspaceRoot, { level: 'workspace' })).findings.some(
+        finding => finding.code === 'workspace.invalid-runtime-capabilities',
+      ),
+      true,
+    );
+    delete (manifest.runtimeCapabilities as { operations: Array<Record<string, unknown>> }).operations[0].provider;
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
     const handoff = await createAgentHandoff(workspaceRoot) as Record<string, unknown>;
     assert.equal(handoff.protocol, REPO_TO_STAX_AGENT_HANDOFF_PROTOCOL);
     assert.equal(handoff.scriptsExecuted, false);
+    assert.equal(
+      ((handoff.agentContract as Record<string, unknown>).readOnlyPaths as string[]).includes('src/lib/taku-runtime/**'),
+      true,
+    );
     assert.equal((handoff.validation as Record<string, unknown>).ok, true);
     const initialCheck = await checkAgentConversion(workspaceRoot) as Record<string, unknown>;
     assert.equal(initialCheck.protocol, REPO_TO_STAX_CONVERSION_CHECK_PROTOCOL);
