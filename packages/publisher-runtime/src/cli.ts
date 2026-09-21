@@ -27,6 +27,7 @@ import {
   type ResolvedAuth,
 } from './auth.js';
 import { buildBundle, verifyLocalBundle } from './bundle.js';
+import { publisherErrorOutput } from './legal-review.js';
 import { DEFAULT_SITE_URL, loginWithBrowser } from './browser-auth.js';
 import { initializeCreator } from './creator-init.js';
 import {
@@ -169,9 +170,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     return exitCode;
   } catch (error) {
     if (error instanceof PublisherError) {
-      emitJson(jsonOutput('error', {
-        error: { code: error.code, message: error.message, details: error.details },
-      }, { ok: false }));
+      emitJson(publisherErrorOutput(error));
       return 1;
     }
     throw error;
@@ -1254,7 +1253,7 @@ async function remoteCreate(
       listing.iconUrl = iconUrl;
       payload.listing = listing;
     } catch (error) {
-      if (!(error instanceof PublisherError)) throw error;
+      if (!(error instanceof PublisherError) || error.code === 'legal_review_required') throw error;
       iconError = { code: error.code, message: error.message, details: error.details };
     }
   }
@@ -1499,6 +1498,7 @@ async function createCreatorInitEditor(args: ParsedArguments): Promise<JsonObjec
     if (typeof value === 'string') creatorArgs.push(value);
   }
   const payload = await runCreatorCommand('draft', creatorArgs);
+  if (payload.status === 'legal_review_required') return payload;
   if (payload.ok === false) {
     throw new PublisherError(
       String(payload.error ?? 'Unable to start the Stax Card editor.'),
@@ -1514,6 +1514,7 @@ async function marketplaceInstallClient(args: ParsedArguments): Promise<TakuPubl
   const requiredScopes = ['marketplace.packages.read', 'marketplace.installs.write'];
   const workerUrl = stringFlag(args, 'worker-url', DEFAULT_WORKER_URL);
   let client = new TakuPublisherClient({
+    siteUrl: stringFlag(args, 'site-url', process.env.TAKU_SITE_URL || DEFAULT_SITE_URL),
     workerUrl,
     token: auth.token,
     timeoutMs: numberFlag(args, 'timeout', 30) * 1000,
@@ -1529,7 +1530,7 @@ async function marketplaceInstallClient(args: ParsedArguments): Promise<TakuPubl
   });
   auth = await resolveAuth({ tokenEnv });
   if (!requiredScopes.every((scope) => authHasScope(auth, scope))) throw new PublisherError('Taku authorization did not grant Marketplace install access.', 'marketplace_auth_scope_missing');
-  client = new TakuPublisherClient({ workerUrl: client.workerUrl, token: auth.token, timeoutMs: numberFlag(args, 'timeout', 30) * 1000, uploadTimeoutMs: numberFlag(args, 'upload-timeout', 300) * 1000, allowCustomWorkerUrl: true });
+  client = new TakuPublisherClient({ siteUrl: client.siteUrl, workerUrl: client.workerUrl, token: auth.token, timeoutMs: numberFlag(args, 'timeout', 30) * 1000, uploadTimeoutMs: numberFlag(args, 'upload-timeout', 300) * 1000, allowCustomWorkerUrl: true });
   return client;
 }
 
@@ -1543,6 +1544,7 @@ async function githubClient(args: ParsedArguments): Promise<TakuPublisherClient>
   ];
   let auth = await resolveAuth({ tokenEnv, allowDesktopSession: false });
   let client = new TakuPublisherClient({
+    siteUrl: stringFlag(args, 'site-url', process.env.TAKU_SITE_URL || DEFAULT_SITE_URL),
     workerUrl,
     token: auth.token,
     timeoutMs: numberFlag(args, 'timeout', 30) * 1000,
@@ -1560,6 +1562,7 @@ async function githubClient(args: ParsedArguments): Promise<TakuPublisherClient>
     throw new PublisherError('Taku authorization did not grant GitHub project access.', 'github_auth_scope_missing');
   }
   client = new TakuPublisherClient({
+    siteUrl: stringFlag(args, 'site-url', process.env.TAKU_SITE_URL || DEFAULT_SITE_URL),
     workerUrl: client.workerUrl,
     token: auth.token,
     timeoutMs: numberFlag(args, 'timeout', 30) * 1000,
@@ -1573,6 +1576,7 @@ async function authenticatedClient(args: ParsedArguments): Promise<TakuPublisher
   let auth = await resolveAuth({ tokenEnv });
   const workerUrl = stringFlag(args, 'worker-url', DEFAULT_WORKER_URL);
   let client = new TakuPublisherClient({
+    siteUrl: stringFlag(args, 'site-url', process.env.TAKU_SITE_URL || DEFAULT_SITE_URL),
     workerUrl,
     token: auth.token,
     iconToken: auth.iconToken,
@@ -1593,12 +1597,13 @@ async function authenticatedClient(args: ParsedArguments): Promise<TakuPublisher
     timeoutMs: numberFlag(args, 'auth-timeout', 300) * 1000,
   });
   auth = await resolveAuth({ tokenEnv });
-  client = new TakuPublisherClient({ workerUrl: client.workerUrl, token: auth.token, iconToken: auth.iconToken, flowchartToken: auth.flowchartToken, timeoutMs: numberFlag(args, 'timeout', 30) * 1000, uploadTimeoutMs: numberFlag(args, 'upload-timeout', 300) * 1000, allowCustomWorkerUrl: true });
+  client = new TakuPublisherClient({ siteUrl: client.siteUrl, workerUrl: client.workerUrl, token: auth.token, iconToken: auth.iconToken, flowchartToken: auth.flowchartToken, timeoutMs: numberFlag(args, 'timeout', 30) * 1000, uploadTimeoutMs: numberFlag(args, 'upload-timeout', 300) * 1000, allowCustomWorkerUrl: true });
   return client;
 }
 
 function publicMarketplaceClient(args: ParsedArguments): TakuPublisherClient {
   return new TakuPublisherClient({
+    siteUrl: stringFlag(args, 'site-url', process.env.TAKU_SITE_URL || DEFAULT_SITE_URL),
     workerUrl: stringFlag(args, 'worker-url', DEFAULT_WORKER_URL),
     timeoutMs: numberFlag(args, 'timeout', 30) * 1000,
     allowCustomWorkerUrl: booleanFlag(args, 'allow-custom-worker-url'),

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 
+import { legalReviewAction } from './legal-review.js';
 import { resolveAuth } from './auth.js';
 import {
   DEFAULT_WORKER_URL,
@@ -76,6 +77,7 @@ export interface AppSignedUploadRequest extends JsonObject {
 export class TakuPublisherClient {
   readonly workerUrl: string;
   readonly token: string;
+  readonly siteUrl: string | undefined;
   readonly iconToken: string;
   readonly flowchartToken: string;
   readonly timeoutMs: number;
@@ -86,6 +88,7 @@ export class TakuPublisherClient {
 
   constructor(options: {
     workerUrl?: string;
+    siteUrl?: string;
     token?: string;
     iconToken?: string;
     flowchartToken?: string;
@@ -96,6 +99,7 @@ export class TakuPublisherClient {
     fileUploadTransport?: FileUploadTransport;
   } = {}) {
     this.workerUrl = validateWorkerUrl(options.workerUrl ?? DEFAULT_WORKER_URL, options.allowCustomWorkerUrl ?? false);
+    this.siteUrl = options.siteUrl;
     this.token = String(options.token ?? '').trim();
     this.iconToken = String(options.iconToken ?? '').trim();
     this.flowchartToken = String(options.flowchartToken ?? '').trim();
@@ -112,6 +116,7 @@ export class TakuPublisherClient {
 
   static async fromEnvironment(options: {
     workerUrl?: string;
+    siteUrl?: string;
     tokenEnv?: string;
     timeoutMs?: number;
     uploadTimeoutMs?: number;
@@ -123,6 +128,7 @@ export class TakuPublisherClient {
     const auth = await resolveAuth({ tokenEnv: options.tokenEnv, env: options.env });
     return new TakuPublisherClient({
       workerUrl: options.workerUrl,
+      siteUrl: options.siteUrl ?? (options.env ?? process.env).TAKU_SITE_URL,
       token: auth.token,
       iconToken: auth.iconToken,
       flowchartToken: auth.flowchartToken,
@@ -330,6 +336,8 @@ export class TakuPublisherClient {
     );
     const parsed = parseJsonResponse(response.body);
     if (response.status < 200 || response.status >= 300) {
+      const action = legalReviewAction(response.status, parsed, apiPath, this.siteUrl);
+      if (action) throw new PublisherError(String(action.message), 'legal_review_required', action);
       let message = String(parsed.error ?? parsed.message ?? `HTTP ${response.status}`);
       let preview = bodyPreview(response.body);
       if (requestToken) {
