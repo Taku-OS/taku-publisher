@@ -72,8 +72,12 @@ export async function saveDraftToTakuStudio({
   // read, but token prefixes are not an authorization contract; the Worker
   // still binds the saved draft to the canonical account identity.
   const profile = canReadCreatorProfile
-    ? await fetchTakuCreatorProfile({ workerUrl, token }).catch(() => null)
+    ? await fetchTakuCreatorProfile({ workerUrl, token, siteUrl }).catch(error => {
+        if (error?.legalAction) return error.legalAction;
+        return null;
+      })
     : null;
+  if (profile?.requires_action) return profile;
   const cloudDraft = profile?.ok ? mergeDraftWithTakuProfile(draft, profile) : draft;
   const publishContext = profile?.ok
     ? withTakuCreatorProfileIdentity(context, profile.profile)
@@ -83,7 +87,7 @@ export async function saveDraftToTakuStudio({
     privateInventory,
     publishContext,
   );
-  const client = createTakuStaxClient({ workerUrl, token });
+  const client = createTakuStaxClient({ workerUrl, token, siteUrl });
   const studioPayload = createStudioDraftPayload(payload);
   studioPayload.studioRenderer = createStaxStudioRendererPayload(cloudDraft, {
     editor: {
@@ -133,6 +137,7 @@ export async function saveDraftToTakuStudio({
       endpoint: `${workerUrl}/stax/studio/cards/me`,
       error: `The private Studio draft could not be saved: ${error instanceof Error ? error.message : String(error)}`,
       data: {},
+      ...(error?.legalAction || {}),
     };
   }
 }
@@ -166,7 +171,7 @@ export async function publishDraftToTaku({
   siteUrl,
   context = {},
 }) {
-  const profile = await fetchTakuCreatorProfile({ workerUrl, token });
+  const profile = await fetchTakuCreatorProfile({ workerUrl, token, siteUrl });
   if (!profile.ok) {
     return {
       ok: false,
@@ -188,8 +193,11 @@ export async function publishDraftToTaku({
     privateInventory,
     publishContext
   );
-  const client = createTakuStaxClient({ workerUrl, token });
-  const existingCardPayload = await client.getMyCard().catch(() => null);
+  const client = createTakuStaxClient({ workerUrl, token, siteUrl });
+  const existingCardPayload = await client.getMyCard().catch(error => {
+    if (error?.legalAction) throw error;
+    return null;
+  });
   const replaceInventory = draft?.stats?.creatorToolSelectionMode === 'custom';
   const publishPayload = replaceInventory
     ? payload
@@ -219,6 +227,7 @@ export async function publishDraftToTaku({
       endpoint: `${workerUrl}/stax/studio/cards/me`,
       error: `The private Studio draft could not be saved: ${error instanceof Error ? error.message : String(error)}`,
       data: {},
+      ...(error?.legalAction || {}),
       links: {},
     };
   }
@@ -234,7 +243,8 @@ export async function publishDraftToTaku({
   } catch (error) {
     return {
       ok: false,
-      status: 0,
+      status: Number(error?.status) || 0,
+      ...(error?.legalAction || {}),
       workerUrl,
       endpoint,
       error: `Publish request failed before Worker returned a response: ${error instanceof Error ? error.message : String(error)}`,

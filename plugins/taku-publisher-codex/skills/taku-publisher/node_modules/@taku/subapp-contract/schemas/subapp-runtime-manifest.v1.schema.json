@@ -23,6 +23,36 @@
         "preferLocal": { "type": "boolean" },
         "fallback": { "enum": ["cloud", "none"] }
       }
+    },
+    "runtimeCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol", "operations"],
+      "properties": {
+        "protocol": { "const": "taku.agent.run/v2" },
+        "operations": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "revision"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^[a-z][a-zA-Z0-9]*(?:\\.[a-z][a-zA-Z0-9]*)+$"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            }
+          }
+        }
+      }
     }
   },
   "$defs": {
