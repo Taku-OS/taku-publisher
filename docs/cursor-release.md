@@ -1,11 +1,11 @@
-# Cursor and Agent Skills installer 0.3.24
+# Cursor and Agent Skills installer 0.3.25
 
-This fixes Flowchart authorization for standalone Publisher hosts such as
-OpenCode by using a dedicated short-lived generation token. It preserves
-automatic Flowchart generation, creator-provided Flowcharts, and explicit
-opt-out. The production plugin is still named
+This adds resumable browser authorization, guided Web handoffs for registration
+and terms review, and validated SubApp runtime capabilities. It preserves the
+dedicated short-lived Flowchart authorization used by standalone Publisher
+hosts such as OpenCode. The production plugin is still named
 `taku-publisher`, without a test-version suffix. Distribution is through the
-GitHub `marketplace` branch and the `v0.3.24` release assets. It is not
+GitHub `marketplace` branch and the `v0.3.25` release assets. It is not
 published to npm or listed in the official Cursor Marketplace.
 
 Install or update to the latest release directly from GitHub (Node.js 20+):
@@ -19,13 +19,13 @@ The stable `taku-publisher.tgz` asset is byte-for-byte identical to the
 versioned installer in that release. Use the versioned asset below when an
 installation must be pinned for reproducibility or rollback.
 
-Download `taku-publisher-0.3.24.tgz` from the trusted
-[GitHub release](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.3.24),
+Download `taku-publisher-0.3.25.tgz` from the trusted
+[GitHub release](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.3.25),
 then run from the download directory (Node.js 20+):
 
 ```sh
-npx --yes --package ./taku-publisher-0.3.24.tgz taku-publisher install --host cursor
-npx --yes --package ./taku-publisher-0.3.24.tgz taku-publisher install --host agent-skills
+npx --yes --package ./taku-publisher-0.3.25.tgz taku-publisher install --host cursor
+npx --yes --package ./taku-publisher-0.3.25.tgz taku-publisher install --host agent-skills
 ```
 
 The `agent-skills` target installs to `~/.agents/skills/taku-publisher`.
@@ -65,15 +65,15 @@ For a previously manually copied, unmanaged Skill, explicit `--backup-existing`
 moves the entire old directory to a recoverable backup before installing.
 It does not bypass protections for edited managed installs.
 
-The local npm tarball is `dist/releases/taku-publisher-0.3.24.tgz`:
+The local npm tarball is `dist/releases/taku-publisher-0.3.25.tgz`:
 
 ```sh
-npx --yes --package ./dist/releases/taku-publisher-0.3.24.tgz taku-publisher install --host cursor
-npx --yes --package ./dist/releases/taku-publisher-0.3.24.tgz taku-publisher install --host agent-skills
+npx --yes --package ./dist/releases/taku-publisher-0.3.25.tgz taku-publisher install --host cursor
+npx --yes --package ./dist/releases/taku-publisher-0.3.25.tgz taku-publisher install --host agent-skills
 ```
 
 This tarball command uses a local file, not a released npm package. A public
-`npx --yes --package @taku/publisher@0.3.24 taku-publisher install --host cursor`
+`npx --yes --package @taku/publisher@0.3.25 taku-publisher install --host cursor`
 command must not be advertised until package ownership and npm publication
 are confirmed. Installation checks bundled file hashes; hashes detect
 corruption, not publisher authenticity. Obtain the package from a trusted source.
