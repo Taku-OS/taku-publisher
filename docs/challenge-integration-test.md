@@ -1,9 +1,9 @@
 # Stax Challenge integration acceptance
 
-The current production candidate is **0.3.26**.
+The current production candidate is **0.3.27**.
 The production plugin remains named `taku-publisher` and uses
 the `standard` channel. Separate three-host acceptance packages are named `taku-publisher-challenge-integration-test`
-and use a `0.3.27-stax-challenge.b<source-checksum>` version. They are not a new
+and use a `0.3.28-stax-challenge.b<source-checksum>` version. They are not a new
 production installation entry point. No npm or official Cursor store publication is included.
 
 ## What changed
