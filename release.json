@@ -1,25 +1,25 @@
 {
-  "version": "0.3.26",
+  "version": "0.3.27",
   "channel": "standard",
-  "sourceCommit": "e3bf7a601a9ff7185c86e72759448480856a4d5c",
+  "sourceCommit": "6a04d0a5c7128595e38c3049272b86d0db69053a",
   "sourceDirty": false,
   "plugins": [
     {
       "host": "codex",
       "path": "plugins/taku-publisher-codex",
-      "version": "0.3.26",
+      "version": "0.3.27",
       "fileCount": 426
     },
     {
       "host": "claude-code",
       "path": "plugins/taku-publisher-claude",
-      "version": "0.3.26",
+      "version": "0.3.27",
       "fileCount": 426
     },
     {
       "host": "cursor",
       "path": "plugins/taku-publisher-cursor",
-      "version": "0.3.26",
+      "version": "0.3.27",
       "fileCount": 426
     }
   ]
