@@ -11,13 +11,45 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from taku_publisher.auth import ResolvedAuth
-from taku_publisher.cli import _marketplace_install_client, _run_creator_command
+from taku_publisher.cli import (
+    _dispatch,
+    _marketplace_install_client,
+    _run_creator_command,
+    build_parser,
+)
 from taku_publisher.constants import DEFAULT_WORKER_URL
 
 
 class CreatorAuthTests(unittest.TestCase):
     def _completed(self) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess([], 0, stdout='{"ok": true}', stderr="")
+
+    def test_auth_login_uses_explicit_auth_site_url(self) -> None:
+        args = build_parser().parse_args(
+            [
+                "auth-login",
+                "--site-url",
+                "https://preview.example.test",
+                "--auth-site-url",
+                "http://localhost:3010",
+            ]
+        )
+        with (
+            patch("taku_publisher.cli.TakuPublisherClient"),
+            patch(
+                "taku_publisher.cli.login_with_browser",
+                return_value={"authenticated": True},
+            ) as login,
+        ):
+            result = _dispatch(args)
+
+        login.assert_called_once_with(
+            worker_url=DEFAULT_WORKER_URL,
+            site_url="http://localhost:3010",
+            timeout=300.0,
+            open_browser=True,
+        )
+        self.assertTrue(result["ok"])
 
     def test_scan_logs_in_before_persona_generation(self) -> None:
         missing = ResolvedAuth("", "missing")
@@ -55,6 +87,35 @@ class CreatorAuthTests(unittest.TestCase):
             _run_creator_command("draft", ["--json"])
 
         login.assert_not_called()
+
+    def test_creator_auth_uses_explicit_auth_site_url(self) -> None:
+        missing = ResolvedAuth("", "missing")
+        scoped = ResolvedAuth(
+            "publisher-token",
+            "publisher_session",
+            scopes=("creator.card.write",),
+        )
+        with (
+            patch("taku_publisher.cli.resolve_auth", side_effect=[missing, scoped]),
+            patch("taku_publisher.cli.login_with_browser") as login,
+            patch("taku_publisher.cli.subprocess.run", return_value=self._completed()),
+        ):
+            _run_creator_command(
+                "draft",
+                [
+                    "--json",
+                    "--site-url",
+                    "https://preview.example.test",
+                    "--auth-site-url",
+                    "http://localhost:3010",
+                ],
+            )
+
+        login.assert_called_once_with(
+            worker_url=DEFAULT_WORKER_URL,
+            site_url="http://localhost:3010",
+            intent="publish_stax_card",
+        )
 
     def test_existing_draft_editor_does_not_force_login(self) -> None:
         completed = subprocess.CompletedProcess([], 0)
