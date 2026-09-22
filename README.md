@@ -103,10 +103,11 @@ claude plugin install taku-publisher@taku
 ```
 
 Start a new Codex task or Claude Code session after installation so it picks up
-the Taku Publisher Skill. Version 0.3.25 adds resumable browser authorization,
-guided Web handoffs for registration and terms review, and validated SubApp
-runtime capabilities. It preserves the dedicated Flowchart authorization,
-OpenCode, Stax Challenge, and SubApp support from earlier releases:
+the Taku Publisher Skill. Version 0.3.26 clarifies that selecting a Challenge
+Skill prepares it for review and publishing, explains how eligible Skills and
+Taku Apps relate to campaign rewards, and preserves the separate final-release
+confirmation. It retains the authorization, Flowchart, OpenCode, Stax Challenge,
+and SubApp support from earlier releases:
 
 ```sh
 npm run pack:installer
@@ -117,7 +118,7 @@ node dist/installers/cursor/bin/taku-publisher.mjs install --host agent-skills
 Start a new Cursor Agent chat and invoke `/taku-publisher`. The generic target
 installs to `~/.agents/skills/taku-publisher`, which OpenCode loads by default;
 start a new host session after installation. GitHub production distribution
-uses the `marketplace` branch and `v0.3.25` release assets, not
+uses the `marketplace` branch and `v0.3.26` release assets, not
 the npm registry or the official Cursor store. `npm run build:marketplace`
 generates the combined three-host GitHub bundle. Stax Challenge is an explicit,
 optional Card-to-one-Skill workflow; ordinary Card, Skill and SubApp routes remain available. See
