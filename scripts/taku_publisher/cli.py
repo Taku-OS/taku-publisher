@@ -129,6 +129,7 @@ def build_parser() -> argparse.ArgumentParser:
     auth_login = subparsers.add_parser("auth-login", help="Authorize Taku Publisher through Taku Web.")
     auth_login.add_argument("--worker-url", default=DEFAULT_WORKER_URL)
     auth_login.add_argument("--site-url", default=DEFAULT_SITE_URL)
+    auth_login.add_argument("--auth-site-url")
     auth_login.add_argument("--timeout", type=float, default=300.0)
     auth_login.add_argument("--no-open-browser", action="store_true")
     auth_login.add_argument("--allow-custom-worker-url", action="store_true")
@@ -254,7 +255,7 @@ def _dispatch(args: argparse.Namespace) -> dict[str, Any]:
         )
         status = login_with_browser(
             worker_url=args.worker_url,
-            site_url=args.site_url,
+            site_url=args.auth_site_url or args.site_url,
             timeout=args.timeout,
             open_browser=not args.no_open_browser,
         )
@@ -620,6 +621,7 @@ def _run_creator_command(command: str, creator_args: list[str]) -> dict[str, Any
         if not auth_has_scope(auth, required_scope):
             worker_url = _creator_argument(creator_args, "worker-url") or "https://worker.taku.ai"
             site_url = _creator_argument(creator_args, "site-url") or DEFAULT_SITE_URL
+            auth_site_url = _creator_argument(creator_args, "auth-site-url") or site_url
             allow_custom_worker = (
                 "--allow-custom-worker-url" in creator_args
                 or worker_url in {
@@ -635,7 +637,7 @@ def _run_creator_command(command: str, creator_args: list[str]) -> dict[str, Any
             )
             login_with_browser(
                 worker_url=worker_url,
-                site_url=site_url,
+                site_url=auth_site_url,
                 intent=(
                     "creator_center_unpublish"
                     if command == "center-unpublish"
