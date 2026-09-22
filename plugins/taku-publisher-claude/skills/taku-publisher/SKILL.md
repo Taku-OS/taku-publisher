@@ -62,12 +62,18 @@ requests keep their existing routes.
 Run `creator-draft --json --editor --challenge-handoff` with the requested
 workspace and usage window. Open the exact returned `editorUrl`; it is the Stax
 Challenge Review page, not the Studio editor. If the host cannot open it, return
-that exact URL instead. Show the Card URL
-and `challengeSkills` together, and ask the creator to choose one candidate or
-skip. Selection happens here in the current Codex, Claude Code or Cursor Agent,
-not through a browser-to-local bridge. Candidates are suggestions, not proof of
-ownership, publication rights or safety. Confirm the creator owns or has the
-right to publish the selected Skill before preparation or upload.
+that exact URL instead. Show the Card URL and `challengeSkills` together. Before
+asking the creator to choose one candidate or skip, explain that the choice
+prepares one Skill for review and publishing, and that publishing an eligible
+Skill or creating a Taku App can help complete the Stax Challenge and qualify
+for campaign rewards. Point to the Challenge page for eligibility and reward
+terms; never invent an amount, deadline, or guaranteed reward. Make clear that
+choosing a candidate does not publish it and that final public release still
+requires the creator's confirmation. Selection happens here in the current
+Codex, Claude Code or Cursor Agent, not through a browser-to-local bridge.
+Candidates are suggestions, not proof of ownership, publication rights or
+safety. Confirm the creator owns or has the right to publish the selected Skill
+before preparation or upload.
 
 Use the exact `challengeDraftPath` from that result in subsequent calls; never
 choose the latest draft globally or substitute another source path:
