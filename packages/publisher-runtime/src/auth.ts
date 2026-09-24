@@ -15,6 +15,7 @@ const DEFAULT_EXPIRES_IN_SECONDS = 3600;
 export interface ResolvedAuth {
   token: string;
   source: string;
+  intent?: string;
   iconToken: string;
   flowchartToken: string;
   scopes: string[];
@@ -51,6 +52,7 @@ export async function resolveAuth(
     return {
       token: String(publisherSession.accessToken ?? '').trim(),
       source: 'publisher_session',
+      intent: typeof publisherSession.intent === 'string' ? publisherSession.intent : undefined,
       iconToken: validIconToken(publisherSession),
       flowchartToken: validFlowchartToken(publisherSession),
       scopes: Array.isArray(publisherSession.scopes)

@@ -1162,6 +1162,26 @@ test('browser authorization exposes a manual URL before waiting for the callback
   assert.equal(progress[1].status, 'awaiting_authorization');
 });
 
+test('Sites consent cancellation terminates the browser login without redeeming a code', async (t) => {
+  const root = await temporaryDirectory(t);
+  let callback;
+  await assert.rejects(loginWithBrowser({
+    workerUrl: 'http://127.0.0.1:1', siteUrl: 'https://taku.ai',
+    intent: 'publish_site', env: { ...process.env, TAKU_PUBLISHER_HOME: root },
+    browserOpen: async (loginUrl) => {
+      const url = new URL(loginUrl);
+      callback = setTimeout(() => {
+        void fetch(url.searchParams.get('return_to'), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'access_denied', state: url.searchParams.get('auth_state') }),
+        }).catch(() => undefined);
+      }, 10);
+      return true;
+    },
+  }), (error) => error instanceof PublisherError && error.code === 'auth_access_denied');
+  clearTimeout(callback);
+});
+
 test('Creator cloud authorization completes before the scan process starts', async (t) => {
   if (process.platform === 'win32') return t.skip('The browser launcher fixture is POSIX-only.');
   const root = await temporaryDirectory(t);

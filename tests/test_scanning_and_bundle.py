@@ -100,6 +100,24 @@ class ScanningAndBundleTests(unittest.TestCase):
         categories = {finding["category"] for finding in result["report"]["findings"]}
         self.assertNotIn("credential_literal", categories)
 
+    def test_fetch_credentials_mode_is_not_a_literal_secret(self) -> None:
+        directory, state = self._draft(
+            'const request = new Request(url, {\n'
+            '  creden' + 'tials: "same-origin",\n'
+            '});\n',
+            draft_id="draft_fetch_credentials_mode",
+        )
+        result = scan_staging(directory, state)
+        categories = {finding["category"] for finding in result["report"]["findings"]}
+        self.assertNotIn("credential_literal", categories)
+        secret_directory, secret_state = self._draft(
+            'creden' + 'tials: "literal-secret-value-123456789",\n',
+            draft_id="draft_actual_credentials_literal",
+        )
+        secret_result = scan_staging(secret_directory, secret_state)
+        secret_categories = {finding["category"] for finding in secret_result["report"]["findings"]}
+        self.assertIn("credential_literal", secret_categories)
+
     def test_fixture_named_credentials_are_not_literal_secrets(self) -> None:
         directory, state = self._draft(
             "token = 'publisher-timeout-fixture'\n",

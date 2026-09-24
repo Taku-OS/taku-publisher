@@ -326,6 +326,20 @@ test('scanner reviews loopback URLs while retaining private-network blockers', a
   assert.equal('credential_literal' in severities, false);
 });
 
+test('scanner accepts the Fetch credentials mode without weakening literal secret checks', async (t) => {
+  const scanned = await scanFixture(t, [
+    'const request = new Request(url, {',
+    '  creden' + 'tials: "same-origin",',
+    '});',
+    'const api' + 'Key = "literal-secret-value-123456789";',
+    '',
+  ].join('\n'), 'fetch-credentials-scan');
+  const credentialsFinding = scanned.report.findings.find(item => item.line === 2 && item.category === 'credential_literal');
+  const keyFinding = scanned.report.findings.find(item => item.line === 4 && item.category === 'credential_literal');
+  assert.equal(credentialsFinding, undefined);
+  assert.ok(keyFinding);
+});
+
 test('scanner finding limit retains deterministic blockers without blocking on review volume', async (t) => {
   const fakeToken = ['sk-', 'proj-', '1234567890abcdefghijklmnop'].join('');
   const scanned = await scanFixture(

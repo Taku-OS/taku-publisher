@@ -108,6 +108,7 @@ import {
   saveState,
 } from './util.js';
 import { initializeDraft, stageSelected } from './workspace.js';
+import { runSiteCommand } from './sites/commands.js';
 
 interface ParsedArguments {
   command: string;
@@ -201,6 +202,14 @@ async function authorizeForCommand(options: AuthFlowOptions, wait = false): Prom
 async function dispatchCommand(args: ParsedArguments): Promise<JsonObject> {
   const creatorCommand = CREATOR_COMMANDS.get(args.command);
   if (creatorCommand) return runCreatorCommand(creatorCommand, args.rest);
+  if (args.command.startsWith('sites-') && args.command !== 'sites-login') {
+    try { return await runSiteCommand(args); }
+    catch (error) {
+      if (error instanceof PublisherError) throw error;
+      const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : 'SITES_COMMAND_FAILED';
+      throw new PublisherError(`Sites command failed: ${code}`, 'sites_command_failed', { reason: code });
+    }
+  }
 
   if (args.command === 'creator-init') {
     const result = await initializeCreator({
@@ -291,13 +300,14 @@ async function dispatchCommand(args: ParsedArguments): Promise<JsonObject> {
   }
   if (args.command === 'auth-check') return checkAuthFlow(optionalFlag(args, 'request-id'));
   if (args.command === 'auth-cancel') return cancelAuthFlow();
-  if (args.command === 'auth-login' || args.command === 'auth-start') {
+  if (args.command === 'auth-login' || args.command === 'auth-start' || args.command === 'sites-login') {
     const workerUrl = stringFlag(args, 'worker-url', DEFAULT_WORKER_URL);
     validateWorkerUrl(workerUrl, booleanFlag(args, 'allow-custom-worker-url'));
-    const intent = stringFlag(args, 'intent', 'publish_tool');
+    const intent = args.command === 'sites-login' ? 'publish_site' : stringFlag(args, 'intent', 'publish_tool');
     const scopes: Record<string, string[]> = {
       publish_tool: ['publisher.drafts.write'],
       publish_stax_card: ['creator.profile.read', 'creator.studio-draft.write'],
+      publish_site: ['sites.read', 'sites.preview', 'sites.publish'],
       marketplace_install: ['marketplace.packages.read', 'marketplace.installs.write'],
       github_connect: ['github.connection.read', 'github.connection.write', 'github.repositories.read'],
     };
@@ -2167,8 +2177,14 @@ Commands:
   skill-conversion-check --candidate <same-candidate-path>
   remote-create, remote-get, remote-patch, remote-scan, remote-upload, remote-status
   auth-status, auth-refresh, auth-logout
-  auth-start, auth-login [--intent publish_tool|publish_stax_card] [--no-open-browser] [--timeout 300] [--wait]
+  auth-start, auth-login [--intent publish_tool|publish_stax_card|publish_site] [--no-open-browser] [--timeout 300] [--wait]
   auth-check [--request-id <id>], auth-cancel
+  sites-login [--wait], sites-whoami, sites-contract, sites-init --project <dir>
+  sites-sdk-export --output <project>/dist/assets/taku-sites-sdk.mjs
+  sites-validate --project <dir>, sites-build --project <dir> [--project-id <owned-id>]
+  sites-preview --project <dir> (30-minute local static preview)
+  sites-list, sites-status --project-id <id>
+  sites-publish --project <dir> [--slug <user-chosen-subdomain>|--project-id <owned-id>] [--confirm-target <exact-hostname-or-id>] [--wait-seconds 60]
   marketplace-search, marketplace-show, marketplace-open
   marketplace-install --host codex|claude-code|cursor|opencode|gemini-cli|agent-skills --item-id <id> [--confirm-item-id <same-id>]
   subapp-assess --source <absolute-path|github-url> [--source-ref <ref>] [--service-catalog-url <trusted-url>] [--service-mappings <reviewed-json>] [--assessment-review <bound-review-json>] [developer: --converter-bin <path>]

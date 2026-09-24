@@ -312,7 +312,7 @@ function scanText(relative: string, text: string, findings: JsonObject[]): void 
       if (test(LOOPBACK_URL_PATTERN, line)) findings.push(finding('loopback_url', 'review', relative, lineNumber, 'A loopback URL requires portability review and must not appear in public metadata.', line));
       if (ABSOLUTE_PATH_PATTERNS.some((pattern) => test(pattern, line))) findings.push(finding('local_absolute_path', 'block', relative, lineNumber, 'A machine-specific absolute path is not publishable.', line));
       const assignment = CREDENTIAL_ASSIGNMENT_PATTERN.exec(line);
-      if (assignment?.[1] && assignment[2] && isSensitiveCredentialName(assignment[1]) && looksLikeLiteralSecret(assignment[2])) {
+      if (assignment?.[1] && assignment[2] && isSensitiveCredentialName(assignment[1]) && !isFetchCredentialsMode(assignment[1], assignment[2]) && looksLikeLiteralSecret(assignment[2])) {
         findings.push(finding('credential_literal', 'block', relative, lineNumber, 'A credential-like field contains a literal value.', line));
       }
     }
@@ -400,7 +400,7 @@ function redactExcerpt(value: string): string {
   text = replace(PRIVATE_URL_PATTERN, text, '[REDACTED PRIVATE URL]');
   for (const pattern of ABSOLUTE_PATH_PATTERNS) text = replace(pattern, text, ' [REDACTED LOCAL PATH]');
   const assignment = CREDENTIAL_ASSIGNMENT_PATTERN.exec(text);
-  if (assignment?.[1] && assignment[2] && isSensitiveCredentialName(assignment[1]) && looksLikeLiteralSecret(assignment[2])) {
+  if (assignment?.[1] && assignment[2] && isSensitiveCredentialName(assignment[1]) && !isFetchCredentialsMode(assignment[1], assignment[2]) && looksLikeLiteralSecret(assignment[2])) {
     const start = text.lastIndexOf(assignment[2]);
     if (start >= 0) text = `${text.slice(0, start)}[REDACTED]`;
   }
@@ -409,6 +409,10 @@ function redactExcerpt(value: string): string {
 
 function isSensitiveCredentialName(rawName: string): boolean {
   return SECRET_NAME_PATTERN.test(rawName.split('.').at(-1) ?? rawName);
+}
+
+function isFetchCredentialsMode(name: string, raw: string): boolean {
+  return name === 'credentials' && /^(["'])(?:omit|same-origin|include)\1\s*[,;]?$/.test(raw.trim());
 }
 
 function looksLikeLiteralSecret(raw: string): boolean {

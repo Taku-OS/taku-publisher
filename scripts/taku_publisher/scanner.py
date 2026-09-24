@@ -435,7 +435,7 @@ def _scan_text(relative: str, text: str, findings: list[dict[str, Any]]) -> None
             if any(pattern.search(line) for pattern in ABSOLUTE_PATH_PATTERNS):
                 findings.append(_finding("local_absolute_path", "block", relative, line_number, "A machine-specific absolute path is not publishable.", line))
             assignment = CREDENTIAL_ASSIGNMENT_PATTERN.search(line)
-            if assignment and _is_sensitive_credential_name(assignment.group(1)) and _looks_like_literal_secret(assignment.group(2)):
+            if assignment and _is_sensitive_credential_name(assignment.group(1)) and not _is_fetch_credentials_mode(assignment.group(1), assignment.group(2)) and _looks_like_literal_secret(assignment.group(2)):
                 findings.append(_finding("credential_literal", "block", relative, line_number, "A credential-like field contains a literal value.", line))
         for category, message, pattern in RISK_PATTERNS:
             if pattern.search(line):
@@ -526,7 +526,7 @@ def _redact_excerpt(value: str) -> str:
     for pattern in ABSOLUTE_PATH_PATTERNS:
         text = pattern.sub(" [REDACTED LOCAL PATH]", text)
     assignment = CREDENTIAL_ASSIGNMENT_PATTERN.search(text)
-    if assignment and _is_sensitive_credential_name(assignment.group(1)) and _looks_like_literal_secret(assignment.group(2)):
+    if assignment and _is_sensitive_credential_name(assignment.group(1)) and not _is_fetch_credentials_mode(assignment.group(1), assignment.group(2)) and _looks_like_literal_secret(assignment.group(2)):
         text = text[: assignment.start(2)] + "[REDACTED]"
     return text
 
@@ -534,6 +534,10 @@ def _redact_excerpt(value: str) -> str:
 def _is_sensitive_credential_name(raw_name: str) -> bool:
     field_name = raw_name.rsplit(".", 1)[-1]
     return bool(SECRET_NAME_PATTERN.search(field_name))
+
+
+def _is_fetch_credentials_mode(name: str, raw: str) -> bool:
+    return name == "credentials" and bool(re.fullmatch(r"[\"'](?:omit|same-origin|include)[\"']\s*[,;]?", raw.strip()))
 
 
 def _looks_like_literal_secret(raw: str) -> bool:

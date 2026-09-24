@@ -34,6 +34,8 @@ export async function loginWithBrowser(options: BrowserAuthOptions): Promise<Jso
   const codeChallenge = base64url(createHash('sha256').update(codeVerifier, 'ascii').digest());
   let resolveCallback: ((value: { code: string; state: string }) => void) | undefined;
   const callback = new Promise<{ code: string; state: string }>((resolve) => { resolveCallback = resolve; });
+  let rejectCallback: ((reason: PublisherError) => void) | undefined;
+  const authorizationDenied = new Promise<never>((_, reject) => { rejectCallback = reject; });
   const server = createServer((request, response) => {
     const url = new URL(request.url ?? '/', `http://${LOOPBACK_HOST}`);
     if (url.pathname !== '/callback') {
@@ -63,6 +65,12 @@ export async function loginWithBrowser(options: BrowserAuthOptions): Promise<Jso
         if (!isRecord(payload)) throw new Error();
         const code = String(payload.code ?? '').trim();
         const returnedState = String(payload.state ?? '').trim();
+        const returnedError = String(payload.error ?? '').trim();
+        if (returnedError && safeEqual(returnedState, state)) {
+          rejectCallback?.(new PublisherError('Taku Sites authorization was cancelled.', 'auth_access_denied'));
+          jsonResponse(response, 200, { ok: true });
+          return;
+        }
         if (!code || !safeEqual(returnedState, state)) {
           jsonResponse(response, 401, { ok: false, error: 'Authorization state mismatch' });
           return;
@@ -119,6 +127,7 @@ export async function loginWithBrowser(options: BrowserAuthOptions): Promise<Jso
     await report({ status: 'awaiting_authorization', browser_launch: { ...browserLaunch } });
     received = await Promise.race([
       callback,
+      authorizationDenied,
       new Promise<never>((_, reject) => {
         onAbort = () => reject(new PublisherError('Authorization cancelled.', 'auth_cancelled'));
         options.signal?.addEventListener('abort', onAbort, { once: true });
@@ -165,6 +174,7 @@ export async function loginWithBrowser(options: BrowserAuthOptions): Promise<Jso
     flowchartToken: String(payload.flowchartToken ?? '').trim(),
     flowchartExpiresAt: now + positiveInt(payload.flowchartTokenExpiresIn, 0) * 1000,
     scopes: Array.isArray(payload.scopes) ? payload.scopes : [],
+    intent,
     accountHint: String(payload.accountHint ?? '').trim() || null,
     createdAt: now,
   }, options.env).catch(() => {
@@ -231,9 +241,9 @@ async function redeemLocalCode(options: {
 function callbackHtml(): string {
   return `<!doctype html><html><head><meta charset="utf-8"><title>Taku Publisher</title></head>
 <body><p id="status">Completing Taku Publisher authorization...</p><script>
-(async()=>{const p=new URLSearchParams(location.hash.slice(1));const code=p.get('taku_auth_code')||'';
+(async()=>{const p=new URLSearchParams(location.hash.slice(1));const code=p.get('taku_auth_code')||'';const error=p.get('taku_auth_error')||'';
 const state=p.get('taku_auth_state')||'';const el=document.getElementById('status');
-try{const r=await fetch('/callback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,state})});
+try{const r=await fetch('/callback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,state,error})});
 if(!r.ok)throw new Error('Authorization failed');history.replaceState(null,'',location.pathname);el.textContent='Authorization received. Return to Codex or your terminal to confirm completion.';}
 catch(e){el.textContent='Authorization could not be completed. Return to the terminal and try again.';}})();
 </script></body></html>`;
