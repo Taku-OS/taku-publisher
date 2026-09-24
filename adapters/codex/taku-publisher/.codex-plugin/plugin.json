@@ -1,7 +1,7 @@
 {
   "name": "taku-publisher",
   "version": "0.3.27",
-  "description": "Generate Stax Cards, convert Apps, and publish Skills from Codex, Claude Code, Cursor, OpenCode, and compatible Agent Skills hosts.",
+  "description": "Build and publish Taku Sites, generate Stax Cards, convert Apps, and publish Skills from compatible Agent Skills hosts.",
   "author": {
     "name": "Taku",
     "url": "https://taku.ai/"
@@ -14,13 +14,14 @@
     "creator",
     "publisher",
     "subapp",
-    "skills"
+    "skills",
+    "sites"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Taku Publisher",
-    "shortDescription": "Import AI coding projects into Taku.",
-    "longDescription": "Discover recent Codex, Claude Code, and Cursor workspaces or repositories owned by the creator's Taku-connected GitHub account, route one selected project to verified SubApp conversion or bounded Skill generation, install SubApps locally, publish Skills, search community tools, and manage creator works.",
+    "shortDescription": "Build Sites and publish creator work to Taku.",
+    "longDescription": "Build and preview a Taku Site with the current Agent, then publish it through the bundled CLI after exact target confirmation. Also discover projects, convert SubApps, publish Skills, search community tools, and manage creator works.",
     "developerName": "Taku",
     "category": "Productivity",
     "websiteURL": "https://taku.ai/",
@@ -37,12 +38,13 @@
       "Marketplace Skill installation",
       "Security review",
       "Publishing",
+      "Taku Sites building and publishing",
       "Creator Center management"
     ],
     "defaultPrompt": [
       "List repositories owned by my Taku-connected GitHub account and let me choose one to import.",
       "Find my recent AI coding projects and import one into Taku.",
-      "Publish the tool in this workspace to Taku."
+      "Build a Taku Site for my project and help me publish it."
     ]
   }
 }
