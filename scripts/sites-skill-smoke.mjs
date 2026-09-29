@@ -27,9 +27,14 @@ try {
     }
     await fs.access(path.join(skill, 'node_modules', '@taku', 'publisher-runtime', 'sites-core', 'index.mjs'));
     const cli = path.join(skill, 'scripts', 'taku-publisher.mjs');
-    const contract = run(cli, ['sites-contract', '--json'], skill, temporary);
-    assert.equal(contract.status, 'sites_contract');
-    assert.equal(contract.contract_version, 'taku.sites.cli.v1');
+    for (const reference of ['contract.md', 'capabilities.md', 'storage.md', 'testing.md']) {
+      await fs.access(path.join(skill, 'references', reference));
+    }
+    // The capability catalog is live-only: without a Sites session it must fail clearly, not fall back.
+    const contract = run(cli, ['sites-contract', '--json'], skill, temporary, { fail: true });
+    assert.equal(contract.error.code, 'sites_login_required');
+    const removed = run(cli, ['sites-preview', '--json'], skill, temporary, { fail: true });
+    assert.equal(removed.error.code, 'unknown_command');
     const project = path.join(temporary, `project-${target.replaceAll(path.sep, '-')}`);
     const initialized = run(cli, ['sites-init', '--project', project, '--json'], skill, temporary);
     assert.equal(initialized.status, 'sites_project_created');
@@ -48,12 +53,12 @@ try {
   await fs.rm(temporary, { recursive: true, force: true });
 }
 
-function run(cli, args, cwd, home) {
+function run(cli, args, cwd, home, { fail = false } = {}) {
   const completed = spawnSync(process.execPath, [cli, ...args], {
     cwd, encoding: 'utf8',
     env: { ...process.env, TAKU_PUBLISHER_HOME: path.join(home, 'publisher-home') },
   });
-  if (completed.status !== 0) {
+  if ((completed.status !== 0) !== fail) {
     throw new Error(`${args[0]} failed in ${cwd}: ${completed.stdout}\n${completed.stderr}`);
   }
   return JSON.parse(completed.stdout);

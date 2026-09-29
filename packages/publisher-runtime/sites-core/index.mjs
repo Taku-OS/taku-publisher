@@ -5693,6 +5693,12 @@ function siteSdkContractError(source, kind, manifest) {
     const favoriteScope = route === "storage.favorites.list" ? "storage.favorites.read" : ["storage.favorites.save", "storage.favorites.delete"].includes(route) ? "storage.favorites.write" : null;
     if (favoriteScope && !scopes.has(favoriteScope))
       return "SITE_SDK_CAPABILITY_UNDECLARED";
+    const personalScope = route === "storage.personal.list" ? "storage.personal.read" : ["storage.personal.put", "storage.personal.delete"].includes(route) ? "storage.personal.write" : null;
+    if (personalScope && !scopes.has(personalScope))
+      return "SITE_SDK_CAPABILITY_UNDECLARED";
+    if (route === "storage.submissions.create" && !scopes.has("storage.submissions.write")) {
+      return "SITE_SDK_CAPABILITY_UNDECLARED";
+    }
     if (["storage.query", "storage.batch"].includes(route) && !scopes.has("storage.database.read") && !scopes.has("storage.database.write"))
       return "SITE_SDK_CAPABILITY_UNDECLARED";
   }

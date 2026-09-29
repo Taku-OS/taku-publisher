@@ -1,5 +1,4 @@
 import { mkdir, open, stat, writeFile } from 'node:fs/promises';
-import { fork } from 'node:child_process';
 import path from 'node:path';
 import { DEFAULT_WORKER_URL } from '../constants.js';
 import type { JsonObject } from '../types.js';
@@ -16,6 +15,8 @@ export type SiteCommandArguments = {
 export async function runSiteCommand(args: SiteCommandArguments): Promise<JsonObject> {
   const { core, provenance } = await loadSitesCore();
   if (args.command === 'sites-contract') {
+    // Capability availability is server-owned; pass the live catalog through unchanged.
+    const capabilities = await (await sitesClient(args)).get('/v1/sites/capabilities') as JsonObject;
     return jsonOutput('sites_contract', {
       contract_version: core.SITE_CLI_CONTRACT_VERSION,
       source_commit: provenance.sourceCommit,
@@ -27,17 +28,17 @@ export async function runSiteCommand(args: SiteCommandArguments): Promise<JsonOb
         migrationsDirectory: 'migrations (optional)',
         siteManifest: {
           manifestVersion: 1, auth: { mode: 'none', scopes: [] }, integrations: [],
-          storage: { type: 'turso', migrations: true }, egress: { mode: 'platform-proxy' },
+          storage: { type: 'turso', migrations: false }, egress: { mode: 'platform-proxy' },
         },
       },
       sdk: {
         command: 'sites-sdk-export --output <project>/dist/assets/taku-sites-sdk.mjs',
         browser_import: '/taku-sites-sdk.mjs',
-        capabilities: ['auth', 'storage', 'integrations'],
-        rule: 'Declare every SDK scope and integration operation in siteManifest before building.',
+        rule: 'Browser-only. Declare every SDK scope and integration operation in siteManifest before building.',
       },
-      workflow: ['sites-init', 'implement_site', 'sites-validate', 'sites-preview', 'sites-publish'],
-      publish_rule: 'The user enters one desired slug or chooses an owned projectId and confirms the exact target.',
+      capabilities,
+      workflow: ['sites-login', 'sites-whoami', 'sites-contract', 'build_and_test_in_harness', 'sites-validate', 'sites-publish'],
+      publish_rule: 'The user enters one exact subdomain or chooses an owned projectId and confirms the exact target.',
     });
   }
   if (args.command === 'sites-init') {
@@ -47,13 +48,13 @@ export async function runSiteCommand(args: SiteCommandArguments): Promise<JsonOb
       workerEntrypoint: 'dist/worker.mjs', assetsDirectory: 'dist/assets',
       siteManifest: {
         manifestVersion: 1, auth: { mode: 'none', scopes: [] }, integrations: [],
-        storage: { type: 'turso', migrations: true }, egress: { mode: 'platform-proxy' },
+        storage: { type: 'turso', migrations: false }, egress: { mode: 'platform-proxy' },
       },
     };
     const files = [
       ['taku.site.json', `${JSON.stringify(config, null, 2)}\n`],
       ['dist/worker.mjs', `export default {\n  async fetch(request, env) {\n    if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Method Not Allowed', { status: 405 });\n    return env.ASSETS.fetch(request);\n  },\n};\n`],
-      ['dist/assets/index.html', '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>New Taku Site</title><main><h1>New Taku Site</h1><p>Edit this page, then validate and preview it.</p></main></html>\n'],
+      ['dist/assets/index.html', '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>New Taku Site</title><main><h1>New Taku Site</h1><p>Replace this page with your Site, then validate and publish it.</p></main></html>\n'],
     ] as const;
     for (const [relative] of files) {
       if (await stat(path.join(projectRoot, relative)).then(() => true, () => false)) {
@@ -101,46 +102,8 @@ export async function runSiteCommand(args: SiteCommandArguments): Promise<JsonOb
       notice: 'Artifact bytes remain local until sites-publish confirms the target.',
     });
   }
-  if (args.command === 'sites-preview') {
-    const projectRoot = path.resolve(required(args, 'project'));
-    const ttl = Number(optional(args, 'ttl-seconds') ?? 1800);
-    if (!Number.isSafeInteger(ttl) || ttl < 1 || ttl > 1800) {
-      throw new PublisherError('--ttl-seconds must be between 1 and 1800.', 'invalid_arguments');
-    }
-    const project = await core.inspectProject(projectRoot);
-    const artifact = await core.buildArtifact(projectRoot, {
-      projectId: 'prj_pending_cli', builtAt: new Date().toISOString(),
-    });
-    await core.validateArtifact(projectRoot, artifact);
-    const child = fork(new URL('./preview-server.js', import.meta.url), [
-      path.resolve(project.projectRoot, project.assetsDirectory),
-      String(ttl),
-    ], { detached: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'], execArgv: [] });
-    const port = await new Promise<number>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new PublisherError('Local preview did not start.', 'sites_preview_unavailable')), 8_000);
-      child.once('message', (message: unknown) => {
-        clearTimeout(timer);
-        const value = message as { port?: unknown };
-        if (typeof value?.port === 'number') resolve(value.port);
-        else reject(new PublisherError('Local preview did not start.', 'sites_preview_unavailable'));
-      });
-      child.once('error', () => { clearTimeout(timer); reject(new PublisherError('Local preview did not start.', 'sites_preview_unavailable')); });
-      child.once('exit', () => { clearTimeout(timer); reject(new PublisherError('Local preview stopped before it was ready.', 'sites_preview_unavailable')); });
-    }).catch((error) => { child.kill(); throw error; });
-    child.unref();
-    return jsonOutput('sites_preview_ready', {
-      url: `http://127.0.0.1:${port}/`, expires_in_seconds: ttl,
-      build_id: artifact.buildId,
-      scope: 'local_static_assets',
-      note: 'This local preview serves built assets. It does not emulate hosted Worker logic or Taku capabilities.',
-    });
-  }
   if (args.command === 'sites-whoami' || args.command === 'sites-list' || args.command === 'sites-status') {
-    const auth = await resolveSitesAuth();
-    const client = new SitesHttpClient(
-      optional(args, 'worker-url') ?? DEFAULT_WORKER_URL,
-      auth.token, fetch, flag(args, 'allow-custom-worker-url'),
-    );
+    const client = await sitesClient(args);
     const session = await client.get('/v1/sites/cli-session');
     if (args.command === 'sites-whoami') return jsonOutput('sites_identity', { identity: session as JsonObject });
     if (args.command === 'sites-list') return jsonOutput('sites_list', { identity: session as JsonObject, ...await client.get('/v1/sites/') as JsonObject });
@@ -149,6 +112,14 @@ export async function runSiteCommand(args: SiteCommandArguments): Promise<JsonOb
   }
   if (args.command === 'sites-publish') return publishSite(args, core);
   throw new PublisherError(`Unknown Sites command: ${args.command}`, 'unknown_command');
+}
+
+async function sitesClient(args: SiteCommandArguments): Promise<SitesHttpClient> {
+  const auth = await resolveSitesAuth();
+  return new SitesHttpClient(
+    optional(args, 'worker-url') ?? DEFAULT_WORKER_URL,
+    auth.token, fetch, flag(args, 'allow-custom-worker-url'),
+  );
 }
 
 export function optional(args: SiteCommandArguments, name: string): string | undefined {

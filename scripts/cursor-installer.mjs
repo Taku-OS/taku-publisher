@@ -7,9 +7,21 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const RECORD = '.taku-publisher-install.json';
-const REQUIRED = ['SKILL.md', 'package.json', 'publisher-version.json',
-  'host-adapter.json', 'scripts/taku-publisher.mjs', 'creator/scripts/cursor-sqlite.mjs',
-  'node_modules/@taku/publisher-runtime/dist/cli.js'];
+const SKILLS = {
+  'taku-publisher': {
+    suffix: '',
+    required: ['SKILL.md', 'package.json', 'publisher-version.json',
+      'host-adapter.json', 'scripts/taku-publisher.mjs', 'creator/scripts/cursor-sqlite.mjs',
+      'node_modules/@taku/publisher-runtime/dist/cli.js'],
+  },
+  'taku-sites': {
+    suffix: '-sites',
+    required: ['SKILL.md', 'package.json', 'publisher-version.json',
+      'host-adapter.json', 'scripts/taku-publisher.mjs',
+      'node_modules/@taku/publisher-runtime/dist/cli.js',
+      'node_modules/@taku/publisher-runtime/sites-core/index.mjs'],
+  },
+};
 const HOSTS = {
   cursor: {
     schemaVersion: 'taku.cursor.install.v1',
@@ -35,6 +47,23 @@ function hostDefinition(value) {
   }
   const definition = HOSTS[host];
   return { host, ...definition };
+}
+
+function skillDefinition(value) {
+  const name = String(value || 'taku-publisher').trim().toLowerCase();
+  if (!Object.prototype.hasOwnProperty.call(SKILLS, name)) {
+    throw new Error('Specify --skill taku-publisher, taku-sites, or all.');
+  }
+  return { name, ...SKILLS[name] };
+}
+
+export function releaseFiles(host, skill) {
+  const definition = hostDefinition(host);
+  const selected = skillDefinition(skill);
+  return {
+    indexFile: definition.indexFile.replace(/\.json$/, `${selected.suffix}.json`),
+    payloadDirectory: `${definition.payloadDirectory}${selected.suffix}`,
+  };
 }
 
 function safePath(value) {
@@ -92,10 +121,11 @@ async function directory(parent, name) {
   return target;
 }
 
-function validateIndex(index, expectedHost) {
+function validateIndex(index, expectedHost, expectedSkill) {
   const definition = hostDefinition(expectedHost || index.host);
+  const skill = skillDefinition(expectedSkill);
   if (index.schemaVersion !== definition.schemaVersion || index.host !== definition.host
-      || index.name !== 'taku-publisher' || !/^\d+\.\d+\.\d+$/.test(index.version)
+      || index.name !== skill.name || !/^\d+\.\d+\.\d+$/.test(index.version)
       || !Array.isArray(index.files) || !index.files.length || index.files.length > 8000) {
     throw new Error('Invalid installer metadata.');
   }
@@ -111,7 +141,7 @@ function validateIndex(index, expectedHost) {
     seen.add(file.path.toLowerCase());
     total += file.size;
   }
-  if (total > 128 * 1024 * 1024 || REQUIRED.some((file) => !seen.has(file.toLowerCase()))) {
+  if (total > 128 * 1024 * 1024 || skill.required.some((file) => !seen.has(file.toLowerCase()))) {
     throw new Error('Incomplete or oversized installer payload.');
   }
 }
@@ -138,10 +168,12 @@ async function assertFiles(root, index, transported = false, installed = false) 
 export async function installSkill(options = {}) {
   if (Number(process.versions.node.split('.')[0]) < 20) throw new Error('Node.js 20 or later is required.');
   const definition = hostDefinition(options.host);
+  const skill = skillDefinition(options.skill);
+  const files = releaseFiles(definition.host, skill.name);
   const bundle = await fs.realpath(options.bundle || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
-  const index = await readJson(path.join(bundle, definition.indexFile));
-  validateIndex(index, definition.host);
-  const payload = path.join(bundle, definition.payloadDirectory);
+  const index = await readJson(path.join(bundle, files.indexFile));
+  validateIndex(index, definition.host, skill.name);
+  const payload = path.join(bundle, files.payloadDirectory);
   await assertFiles(payload, index, true);
   const version = await readJson(path.join(payload, payloadPath('publisher-version.json')));
   const adapter = await readJson(path.join(payload, payloadPath('host-adapter.json')));
@@ -155,7 +187,7 @@ export async function installSkill(options = {}) {
   const base = await fs.realpath(scope === 'project' ? options.project : options.homeDir || os.homedir());
   const hostHome = await directory(base, definition.homeDirectory);
   const skills = await directory(hostHome, 'skills');
-  const target = path.join(skills, 'taku-publisher');
+  const target = path.join(skills, skill.name);
   const lock = path.join(hostHome, '.taku-publisher-install.lock');
   const handle = await fs.open(lock, 'wx', 0o600).catch((error) => {
     if (error.code === 'EEXIST') throw new Error('Another installer holds the lock.');
@@ -173,10 +205,10 @@ export async function installSkill(options = {}) {
         await inventory(target);
       } else {
         const previous = await readJson(record);
-        validateIndex(previous, definition.host);
+        validateIndex(previous, definition.host, skill.name);
         await assertFiles(target, previous, false, true);
         if (previous.version === index.version && JSON.stringify(previous.files) === JSON.stringify(index.files)) {
-          return { ok: true, status: 'already_installed', version: index.version, target };
+          return { ok: true, status: 'already_installed', version: index.version, skill: skill.name, target };
         }
         if (!options.update) throw new Error('Existing managed install; use --update to preserve a backup and replace it.');
       }
@@ -192,20 +224,30 @@ export async function installSkill(options = {}) {
     await fs.writeFile(path.join(staging, RECORD), `${JSON.stringify(index, null, 2)}\n`, { mode: 0o600 });
     if (await exists(target)) {
       const backups = await directory(hostHome, 'publisher-backups');
-      const backupRoot = await fs.mkdtemp(path.join(backups, 'taku-publisher-'));
+      const backupRoot = await fs.mkdtemp(path.join(backups, `${skill.name}-`));
       backup = path.join(backupRoot, 'skill');
       await fs.rename(target, backup);
     }
     try { await fs.rename(staging, target); staging = undefined; }
     catch (error) { if (backup) await fs.rename(backup, target); throw error; }
     return { ok: true, status: backup ? 'updated' : 'installed', version: index.version,
-      host: definition.host, target, ...(backup ? { backup } : {}),
-      next: `Start a new ${definition.restartLabel} and invoke Taku Publisher.` };
+      host: definition.host, skill: skill.name, target, ...(backup ? { backup } : {}),
+      next: `Start a new ${definition.restartLabel} and invoke ${skill.name === 'taku-sites' ? 'Taku Sites' : 'Taku Publisher'}.` };
   } finally {
     if (staging) await fs.rm(staging, { recursive: true, force: true });
     await handle.close();
     await fs.unlink(lock);
   }
+}
+
+// Installs the Publisher Skill, then the Sites Skill, from one release bundle.
+export async function installAll(options = {}) {
+  const publisher = await installSkill({ ...options, skill: 'taku-publisher' });
+  const sites = await installSkill({ ...options, skill: 'taku-sites' });
+  const results = [publisher, sites];
+  const status = results.every((result) => result.status === 'already_installed') ? 'already_installed'
+    : results.some((result) => result.status === 'updated') ? 'updated' : 'installed';
+  return { ...publisher, status, skills: results };
 }
 
 export function installCursor(options = {}) {
@@ -219,12 +261,12 @@ export function installAgentSkills(options = {}) {
 async function main() {
   const args = process.argv.slice(2);
   if (!args.length || args.includes('--help')) {
-    console.log('taku-publisher install --host cursor|agent-skills [--scope user|project --project <dir>] [--update] [--backup-existing]\nRequires Node.js >=20; preserves existing files.');
+    console.log('taku-publisher install --host cursor|agent-skills [--skill all|taku-publisher|taku-sites] [--scope user|project --project <dir>] [--update] [--backup-existing]\nInstalls the taku-publisher and taku-sites Skills by default. Requires Node.js >=20; preserves existing files.');
     return;
   }
   if (args.shift() !== 'install') throw new Error('Expected install command.');
   const options = {};
-  const keys = { '--bundle': 'bundle', '--home-dir': 'homeDir', '--scope': 'scope', '--project': 'project', '--host': 'host' };
+  const keys = { '--bundle': 'bundle', '--home-dir': 'homeDir', '--scope': 'scope', '--project': 'project', '--host': 'host', '--skill': 'skill' };
   while (args.length) {
     const flag = args.shift();
     if (flag === '--update') { options.update = true; continue; }
@@ -232,7 +274,8 @@ async function main() {
     if (!keys[flag] || !args.length || args[0].startsWith('--')) throw new Error('Unknown or incomplete installer option.');
     options[keys[flag]] = args.shift();
   }
-  console.log(JSON.stringify(await installSkill(options), null, 2));
+  const all = !options.skill || options.skill === 'all';
+  console.log(JSON.stringify(await (all ? installAll({ ...options, skill: undefined }) : installSkill(options)), null, 2));
 }
 
 // npm bin symlinks and macOS /var -> /private/var aliases must still run main.

@@ -28,6 +28,13 @@ try {
   const actual = (await inventory(result.target)).filter((file) => file.path !== '.taku-publisher-install.json');
   const normalized = (files) => JSON.stringify(files.map(({ path, size, sha256 }) => ({ path, size, sha256 })));
   if (normalized(actual) !== normalized(expected)) throw new Error('Packaged installation lost runtime files.');
+  const sitesResult = result.skills?.find((entry) => entry.skill === 'taku-sites');
+  if (!sitesResult || sitesResult.target !== path.join(await fs.realpath(project), '.cursor/skills/taku-sites')) {
+    throw new Error('Packaged installer did not install the taku-sites Skill.');
+  }
+  const expectedSites = await inventory(path.join(root, 'dist/plugins/cursor/taku-publisher/skills/taku-sites'));
+  const actualSites = (await inventory(sitesResult.target)).filter((file) => file.path !== '.taku-publisher-install.json');
+  if (normalized(actualSites) !== normalized(expectedSites)) throw new Error('Packaged taku-sites installation lost files.');
   const cli = path.join(result.target, 'scripts/taku-publisher.mjs');
   const reported = execFileSync(process.execPath, [cli, '--version'], { encoding: 'utf8' }).trim();
   if (!reported.includes(version)) throw new Error('Installed version mismatch.');
@@ -68,6 +75,16 @@ try {
   if (normalized(agentActual) !== normalized(portable)) {
     throw new Error('Agent Skills installation lost portable runtime files.');
   }
+  const agentSites = agentResult.skills?.find((entry) => entry.skill === 'taku-sites');
+  if (agentSites?.target !== path.join(await fs.realpath(agentProject), '.agents/skills/taku-sites')) {
+    throw new Error('Agent Skills installer did not install the taku-sites Skill.');
+  }
+  const portableSites = await inventory(path.join(root, 'dist/skills/taku-sites'));
+  const agentSitesActual = (await inventory(agentSites.target)).filter((file) =>
+    !['.taku-publisher-install.json', 'host-adapter.json'].includes(file.path));
+  if (normalized(agentSitesActual) !== normalized(portableSites)) {
+    throw new Error('Agent Skills taku-sites installation lost files.');
+  }
   const repeatedAgent = JSON.parse(execFileSync(process.execPath, agentArgs, { encoding: 'utf8' }));
   if (repeatedAgent.status !== 'already_installed') throw new Error('Agent Skills install is not idempotent.');
   const marketplace = path.join(root, 'dist/marketplaces/cursor/taku');
@@ -79,7 +96,7 @@ try {
     if (!map.get(file.path)?.equals(await fs.readFile(path.join(marketplace, file.path)))) throw new Error('Marketplace archive mismatch.');
   }
   console.log(JSON.stringify({ ok: true, status: 'cursor_package_install_smoke_passed',
-    version, runtimeFiles: actual.length, marketplaceFiles: entries.length,
+    version, runtimeFiles: actual.length, sitesFiles: actualSites.length, marketplaceFiles: entries.length,
     defaultHost: 'cursor', agentSkillsFiles: agentActual.length,
     globalInstallationModified: false }));
 } finally {

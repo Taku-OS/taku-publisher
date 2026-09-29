@@ -11,7 +11,7 @@ export async function resolveSitesAuth(env: NodeJS.ProcessEnv = process.env): Pr
     allowDesktopSession: false,
   });
   if (auth.source !== 'publisher_session' || !auth.token) {
-    throw new PublisherError('Sign in with auth-login --intent publish_site.', 'sites_login_required');
+    throw new PublisherError('Sign in with sites-login.', 'sites_login_required');
   }
   if (auth.intent !== 'publish_site' || !SITES_SCOPES.every(scope => auth.scopes.includes(scope))) {
     throw new PublisherError('Sign in with the dedicated publish_site authorization.', 'sites_scope_required');
@@ -59,7 +59,7 @@ export class SitesHttpClient {
     method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown,
     idempotencyKey?: string, uploadToken?: string,
   ): Promise<Record<string, unknown>> {
-    if (!/^\/v1\/sites(?:\/|$)/.test(path) && !/^\/v1\/sites-preview\//.test(path)) {
+    if (!/^\/v1\/sites(?:\/|$)/.test(path)) {
       throw new PublisherError('Invalid Sites API path.', 'sites_invalid_api_path');
     }
     const url = new URL(path, this.workerUrl);
@@ -92,7 +92,7 @@ export class SitesHttpClient {
     try { value = await response.json(); } catch { value = {}; }
     if (!response.ok) {
       const code = isRecord(value) && typeof value.error === 'string' ? value.error : 'SITES_REQUEST_FAILED';
-      const actionable = response.status === 401 ? ' Sign in again with auth-login --intent publish_site.' : '';
+      const actionable = response.status === 401 ? ' Sign in again with sites-login.' : '';
       throw new PublisherError(`Taku Sites returned ${code}.${actionable}`, 'sites_api_error', {
         http_status: response.status, server_error: code,
       });

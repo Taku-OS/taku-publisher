@@ -6,6 +6,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
+  installAll,
   installAgentSkills,
   installCursor,
   installSkill,
@@ -13,22 +14,25 @@ import {
   payloadPath,
 } from './cursor-installer.mjs';
 
-async function fixture(t, version = '0.3.18', host = 'cursor') {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-cursor-installer-test-'));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+async function fixture(t, version = '0.3.18', host = 'cursor', options = {}) {
+  const skill = options.skill ?? 'taku-publisher';
+  const suffix = skill === 'taku-sites' ? '-sites' : '';
+  const root = options.root ?? await fs.mkdtemp(path.join(os.tmpdir(), 'taku-cursor-installer-test-'));
+  if (!options.root) t.after(() => fs.rm(root, { recursive: true, force: true }));
   const bundle = path.join(root, 'bundle');
   const homeDir = path.join(root, 'home');
   const payload = path.join(bundle, 'payload');
   await fs.mkdir(payload, { recursive: true });
-  await fs.mkdir(homeDir);
+  await fs.mkdir(homeDir, { recursive: true });
   const contents = {
-    'SKILL.md': '---\nname: taku-publisher\ndescription: Installer fixture\n---\n',
+    'SKILL.md': `---\nname: ${skill}\ndescription: Installer fixture\n---\n`,
     'package.json': '{"type":"module"}',
     'publisher-version.json': JSON.stringify({ version, channel: 'standard' }),
     'host-adapter.json': JSON.stringify({ host }),
     'scripts/taku-publisher.mjs': '// fixture\n',
     'creator/scripts/cursor-sqlite.mjs': '// fixture\n',
     'node_modules/@taku/publisher-runtime/dist/cli.js': '// fixture\n',
+    ...(skill === 'taku-sites' ? { 'node_modules/@taku/publisher-runtime/sites-core/index.mjs': '// fixture\n' } : {}),
   };
   for (const [relative, text] of Object.entries(contents)) {
     await fs.mkdir(path.dirname(path.join(payload, relative)), { recursive: true });
@@ -43,15 +47,15 @@ async function fixture(t, version = '0.3.18', host = 'cursor') {
   await fs.mkdir(payload);
   for (const file of files) await fs.rename(path.join(bundle, payloadPath(file.path)), path.join(payload, payloadPath(file.path)));
   const schemaVersion = host === 'cursor' ? 'taku.cursor.install.v1' : 'taku.agent-skills.install.v1';
-  const indexFile = host === 'cursor' ? 'integrity.json' : 'integrity-agent-skills.json';
-  const payloadDirectory = host === 'cursor' ? 'payload' : 'payload-agent-skills';
+  const indexFile = (host === 'cursor' ? 'integrity' : 'integrity-agent-skills') + `${suffix}.json`;
+  const payloadDirectory = (host === 'cursor' ? 'payload' : 'payload-agent-skills') + suffix;
   if (payloadDirectory !== 'payload') await fs.rename(payload, path.join(bundle, payloadDirectory));
   const selectedPayload = path.join(bundle, payloadDirectory);
-  const index = { schemaVersion, name: 'taku-publisher', host, version, files };
+  const index = { schemaVersion, name: skill, host, version, files };
   const saveIndex = () => fs.writeFile(path.join(bundle, indexFile), JSON.stringify(index));
   await saveIndex();
   const hostHome = host === 'cursor' ? '.cursor' : '.agents';
-  const target = path.join(homeDir, hostHome, 'skills/taku-publisher');
+  const target = path.join(homeDir, hostHome, 'skills', skill);
   return { root, bundle, homeDir, payload: selectedPayload, target, index, saveIndex };
 }
 
@@ -197,4 +201,27 @@ test('npm-style bin symlink invokes the installer CLI', { skip: process.platform
   const alias = path.join(f.root, 'taku-publisher');
   await fs.symlink(fileURLToPath(new URL('./cursor-installer.mjs', import.meta.url)), alias);
   assert.match(execFileSync(process.execPath, [alias, '--help'], { encoding: 'utf8' }), /install --host cursor/);
+});
+
+test('installs taku-publisher and taku-sites from one bundle', async (t) => {
+  const f = await fixture(t, '0.3.28', 'agent-skills');
+  const sites = await fixture(t, '0.3.28', 'agent-skills', { skill: 'taku-sites', root: f.root });
+  const result = await installAll({ ...f, host: 'agent-skills' });
+  assert.equal(result.status, 'installed');
+  assert.deepEqual(result.skills.map((entry) => entry.skill), ['taku-publisher', 'taku-sites']);
+  assert.equal(result.skills[1].target, path.join(await fs.realpath(f.homeDir), '.agents/skills/taku-sites'));
+  assert.match(await fs.readFile(path.join(sites.target, 'SKILL.md'), 'utf8'), /name: taku-sites/);
+  assert.equal((await installAll({ ...f, host: 'agent-skills' })).status, 'already_installed');
+});
+
+test('rejects a Sites payload that claims to be another Skill or lacks the Sites runtime', async (t) => {
+  const f = await fixture(t, '0.3.28', 'cursor', { skill: 'taku-sites' });
+  f.index.name = 'taku-publisher';
+  await f.saveIndex();
+  await assert.rejects(installSkill({ ...f, host: 'cursor', skill: 'taku-sites' }), /Invalid installer metadata/);
+  const other = await fixture(t, '0.3.28', 'cursor', { skill: 'taku-sites' });
+  other.index.files = other.index.files.filter((file) => !file.path.endsWith('sites-core/index.mjs'));
+  await other.saveIndex();
+  await assert.rejects(installSkill({ ...other, host: 'cursor', skill: 'taku-sites' }), /Incomplete/);
+  await assert.rejects(installSkill({ ...other, host: 'cursor', skill: 'other' }), /--skill/);
 });

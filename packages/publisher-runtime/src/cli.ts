@@ -2179,10 +2179,9 @@ Commands:
   auth-status, auth-refresh, auth-logout
   auth-start, auth-login [--intent publish_tool|publish_stax_card|publish_site] [--no-open-browser] [--timeout 300] [--wait]
   auth-check [--request-id <id>], auth-cancel
-  sites-login [--wait], sites-whoami, sites-contract, sites-init --project <dir>
+  sites-login [--wait], sites-whoami, sites-contract (live capability catalog), sites-init --project <dir>
   sites-sdk-export --output <project>/dist/assets/taku-sites-sdk.mjs
   sites-validate --project <dir>, sites-build --project <dir> [--project-id <owned-id>]
-  sites-preview --project <dir> (30-minute local static preview)
   sites-list, sites-status --project-id <id>
   sites-publish --project <dir> [--slug <user-chosen-subdomain>|--project-id <owned-id>] [--confirm-target <exact-hostname-or-id>] [--wait-seconds 60]
   marketplace-search, marketplace-show, marketplace-open

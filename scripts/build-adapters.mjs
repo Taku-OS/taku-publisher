@@ -90,6 +90,7 @@ async function buildPortableSkill(skillName) {
   }
   if (skillName === sitesSkillName) {
     await fs.copyFile(path.join(repositoryRoot, 'skills', sitesSkillName, 'SKILL.md'), path.join(skillRoot, 'SKILL.md'));
+    await copyTree(path.join(repositoryRoot, 'skills', sitesSkillName, 'references'), path.join(skillRoot, 'references'));
   } else {
     await copyOptionalFile(
       path.join(repositoryRoot, 'adapters', 'portable', pluginName, 'README.md'),
