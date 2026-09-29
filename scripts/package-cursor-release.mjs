@@ -5,12 +5,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { inventory, payloadPath } from './cursor-installer.mjs';
+import { inventory, payloadPath, releaseFiles } from './cursor-installer.mjs';
 import { createStoredZip } from '../packages/publisher-runtime/dist/zip.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cursorSkill = path.join(root, 'dist/plugins/cursor/taku-publisher/skills/taku-publisher');
 const portableSkill = path.join(root, 'dist/skills/taku-publisher');
+const cursorSitesSkill = path.join(root, 'dist/plugins/cursor/taku-publisher/skills/taku-sites');
+const portableSitesSkill = path.join(root, 'dist/skills/taku-sites');
 const release = JSON.parse(await fs.readFile(path.join(portableSkill, 'publisher-version.json'), 'utf8'));
 const output = path.join(root, 'dist/installers/cursor');
 const releases = path.join(root, 'dist/releases');
@@ -34,15 +36,35 @@ const agentSkillsFiles = await writeHostPayload({
   indexFile: 'integrity-agent-skills.json',
   syntheticAdapter: true,
 });
+const sitesRelease = JSON.parse(await fs.readFile(path.join(portableSitesSkill, 'publisher-version.json'), 'utf8'));
+if (sitesRelease.name !== 'taku-sites' || sitesRelease.version !== release.version) {
+  throw new Error('taku-sites Skill version does not match the Publisher release.');
+}
+const cursorSitesFiles = await writeHostPayload({
+  source: cursorSitesSkill,
+  host: 'cursor',
+  skill: 'taku-sites',
+  schemaVersion: 'taku.cursor.install.v1',
+  ...releaseFiles('cursor', 'taku-sites'),
+});
+const agentSkillsSitesFiles = await writeHostPayload({
+  source: portableSitesSkill,
+  host: 'agent-skills',
+  skill: 'taku-sites',
+  schemaVersion: 'taku.agent-skills.install.v1',
+  ...releaseFiles('agent-skills', 'taku-sites'),
+  syntheticAdapter: true,
+});
 for (const name of ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'TRADEMARKS.md']) {
   await fs.copyFile(path.join(root, name), path.join(output, name));
 }
 await fs.copyFile(path.join(root, 'docs/cursor-release.md'), path.join(output, 'README.md'));
 await fs.writeFile(path.join(output, 'package.json'), `${JSON.stringify({
   name: '@taku/publisher', version: release.version, type: 'module', license: 'Apache-2.0',
-  description: 'Install the bundled Taku Publisher Skill for Cursor or compatible Agent Skills hosts.',
+  description: 'Install the bundled Taku Publisher and Taku Sites Skills for Cursor or compatible Agent Skills hosts.',
   bin: { 'taku-publisher': './bin/taku-publisher.mjs' }, engines: { node: '>=20' },
   files: ['bin', 'payload', 'payload-agent-skills', 'integrity.json', 'integrity-agent-skills.json',
+    'payload-sites', 'payload-agent-skills-sites', 'integrity-sites.json', 'integrity-agent-skills-sites.json',
     'LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'TRADEMARKS.md', 'README.md'],
 }, null, 2)}\n`);
 const packed = JSON.parse(execFileSync('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', releases],
@@ -78,6 +100,8 @@ console.log(JSON.stringify({ ok: true, version: release.version, published: fals
   installer: path.relative(root, output), hosts: {
     cursor: cursorFiles.length,
     'agent-skills': agentSkillsFiles.length,
+    'cursor-sites': cursorSitesFiles.length,
+    'agent-skills-sites': agentSkillsSitesFiles.length,
   }, artifacts }, null, 2));
 
 async function writeHostPayload(options) {
@@ -112,7 +136,7 @@ async function writeHostPayload(options) {
   }
   await fs.writeFile(path.join(output, options.indexFile), `${JSON.stringify({
     schemaVersion: options.schemaVersion,
-    name: release.name,
+    name: options.skill ?? release.name,
     host: options.host,
     version: release.version,
     files,

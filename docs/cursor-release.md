@@ -1,11 +1,14 @@
-# Cursor and Agent Skills installer 0.3.27
+# Cursor and Agent Skills installer 0.3.28
 
-This documents the separate `--auth-site-url` override in the creator CLI and
-aligns the legacy Python compatibility entrypoint with the Node runtime. Local
-and preview authorization can target their own Web host without changing the
-Publisher product site. The production plugin is still named
+This release installs two Skills from one package: `taku-publisher` and
+`taku-sites`. Taku Sites lets the host agent build and test a Site with its own
+tools, then use the bundled CLI to sign in, read the live capability catalog,
+validate, and publish to an exact, user-confirmed `*.taku.site` subdomain.
+Sites is limited to server-verified @taku.ai accounts during internal testing.
+Pass `--skill taku-publisher` or `--skill taku-sites` to install only one.
+The production plugin is still named
 `taku-publisher`, without a test-version suffix. Distribution is through the
-GitHub `marketplace` branch and the `v0.3.27` release assets. It is not
+GitHub `marketplace` branch and the `v0.3.28` release assets. It is not
 published to npm or listed in the official Cursor Marketplace.
 
 Install or update to the latest release directly from GitHub (Node.js 20+):
@@ -19,16 +22,17 @@ The stable `taku-publisher.tgz` asset is byte-for-byte identical to the
 versioned installer in that release. Use the versioned asset below when an
 installation must be pinned for reproducibility or rollback.
 
-Download `taku-publisher-0.3.27.tgz` from the trusted
-[GitHub release](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.3.27),
+Download `taku-publisher-0.3.28.tgz` from the trusted
+[GitHub release](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.3.28),
 then run from the download directory (Node.js 20+):
 
 ```sh
-npx --yes --package ./taku-publisher-0.3.27.tgz taku-publisher install --host cursor
-npx --yes --package ./taku-publisher-0.3.27.tgz taku-publisher install --host agent-skills
+npx --yes --package ./taku-publisher-0.3.28.tgz taku-publisher install --host cursor
+npx --yes --package ./taku-publisher-0.3.28.tgz taku-publisher install --host agent-skills
 ```
 
-The `agent-skills` target installs to `~/.agents/skills/taku-publisher`.
+The `agent-skills` target installs to `~/.agents/skills/taku-publisher` and
+`~/.agents/skills/taku-sites`; the `cursor` target uses `~/.cursor/skills/`.
 OpenCode discovers this shared directory by default. Its local adapter reads
 bounded project metadata and explicit per-session Token counters without
 querying prompts or messages. Quit and restart the host after installation so
@@ -65,15 +69,15 @@ For a previously manually copied, unmanaged Skill, explicit `--backup-existing`
 moves the entire old directory to a recoverable backup before installing.
 It does not bypass protections for edited managed installs.
 
-The local npm tarball is `dist/releases/taku-publisher-0.3.27.tgz`:
+The local npm tarball is `dist/releases/taku-publisher-0.3.28.tgz`:
 
 ```sh
-npx --yes --package ./dist/releases/taku-publisher-0.3.27.tgz taku-publisher install --host cursor
-npx --yes --package ./dist/releases/taku-publisher-0.3.27.tgz taku-publisher install --host agent-skills
+npx --yes --package ./dist/releases/taku-publisher-0.3.28.tgz taku-publisher install --host cursor
+npx --yes --package ./dist/releases/taku-publisher-0.3.28.tgz taku-publisher install --host agent-skills
 ```
 
 This tarball command uses a local file, not a released npm package. A public
-`npx --yes --package @taku/publisher@0.3.27 taku-publisher install --host cursor`
+`npx --yes --package @taku/publisher@0.3.28 taku-publisher install --host cursor`
 command must not be advertised until package ownership and npm publication
 are confirmed. Installation checks bundled file hashes; hashes detect
 corruption, not publisher authenticity. Obtain the package from a trusted source.

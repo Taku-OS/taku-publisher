@@ -9,6 +9,7 @@ const outputRoot = path.join(repositoryRoot, 'dist', 'plugins');
 const portableOutputRoot = path.join(repositoryRoot, 'dist', 'skills');
 const marketplaceOutputRoot = path.join(repositoryRoot, 'dist', 'marketplaces');
 const pluginName = 'taku-publisher';
+const sitesSkillName = 'taku-sites';
 const templateBuildArtifactNames = new Set([
   '.biome',
   '.next',
@@ -35,7 +36,7 @@ const adapterSpecs = [
   { host: 'cursor', creatorHost: 'cursor', manifestDir: '.cursor-plugin' },
 ];
 
-const skillRuntimeEntries = [
+const publisherSkillEntries = [
   'LICENSE',
   'NOTICE',
   'SKILL.md',
@@ -45,13 +46,17 @@ const skillRuntimeEntries = [
   'creator',
   'references',
 ];
+const sitesSkillEntries = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'TRADEMARKS.md'];
 
 async function main() {
   await fs.mkdir(outputRoot, { recursive: true });
-  const portableSkillRoot = await buildPortableSkill();
+  const portableSkillRoots = new Map([
+    [pluginName, await buildPortableSkill(pluginName)],
+    [sitesSkillName, await buildPortableSkill(sitesSkillName)],
+  ]);
   const outputs = [];
   for (const spec of adapterSpecs) {
-    outputs.push(await buildAdapter(spec, portableSkillRoot));
+    outputs.push(await buildAdapter(spec, portableSkillRoots));
   }
   const marketplaces = [
     await buildCodexMarketplace(outputs.find((output) =>
@@ -62,14 +67,14 @@ async function main() {
   ];
   console.log(JSON.stringify({
     ok: true,
-    portableSkill: path.relative(repositoryRoot, portableSkillRoot),
+    portableSkills: [...portableSkillRoots.values()].map(root => path.relative(repositoryRoot, root)),
     outputs: outputs.map((output) => path.relative(repositoryRoot, output)),
     marketplaces: marketplaces.map((output) => path.relative(repositoryRoot, output)),
   }, null, 2));
 }
 
-async function buildPortableSkill() {
-  const skillRoot = path.join(portableOutputRoot, pluginName);
+async function buildPortableSkill(skillName) {
+  const skillRoot = path.join(portableOutputRoot, skillName);
   assertInside(portableOutputRoot, skillRoot);
   await fs.rm(skillRoot, { recursive: true, force: true });
   await fs.mkdir(skillRoot, { recursive: true });
@@ -79,18 +84,23 @@ async function buildPortableSkill() {
   ).version));
   if (new Set(versions).size !== 1) throw new Error('Host plugin versions disagree.');
   await fs.writeFile(path.join(skillRoot, 'publisher-version.json'),
-    `${JSON.stringify({ name: pluginName, version: versions[0], channel: 'standard' }, null, 2)}\n`);
-  for (const entry of skillRuntimeEntries) {
+    `${JSON.stringify({ name: skillName, version: versions[0], channel: 'standard' }, null, 2)}\n`);
+  for (const entry of skillName === pluginName ? publisherSkillEntries : sitesSkillEntries) {
     await copyTree(path.join(repositoryRoot, entry), path.join(skillRoot, entry));
   }
-  await copyOptionalFile(
-    path.join(repositoryRoot, 'adapters', 'portable', pluginName, 'README.md'),
-    path.join(skillRoot, 'README.md'),
-  );
-  await copyOptionalFile(
-    path.join(repositoryRoot, 'adapters', 'opencode', 'README.md'),
-    path.join(skillRoot, 'OPENCODE.md'),
-  );
+  if (skillName === sitesSkillName) {
+    await fs.copyFile(path.join(repositoryRoot, 'skills', sitesSkillName, 'SKILL.md'), path.join(skillRoot, 'SKILL.md'));
+    await copyTree(path.join(repositoryRoot, 'skills', sitesSkillName, 'references'), path.join(skillRoot, 'references'));
+  } else {
+    await copyOptionalFile(
+      path.join(repositoryRoot, 'adapters', 'portable', pluginName, 'README.md'),
+      path.join(skillRoot, 'README.md'),
+    );
+    await copyOptionalFile(
+      path.join(repositoryRoot, 'adapters', 'opencode', 'README.md'),
+      path.join(skillRoot, 'OPENCODE.md'),
+    );
+  }
   await fs.mkdir(path.join(skillRoot, 'scripts'), { recursive: true });
   await fs.copyFile(
     path.join(repositoryRoot, 'scripts', 'taku-publisher.mjs'),
@@ -138,7 +148,7 @@ async function buildPortableSkill() {
   return skillRoot;
 }
 
-async function buildAdapter(spec, portableSkillRoot) {
+async function buildAdapter(spec, portableSkillRoots) {
   const sourceRoot = path.join(repositoryRoot, 'adapters', spec.host, pluginName);
   const targetRoot = path.join(outputRoot, spec.host, pluginName);
   assertInside(outputRoot, targetRoot);
@@ -162,18 +172,20 @@ async function buildAdapter(spec, portableSkillRoot) {
       skill: pluginName,
     }, null, 2)}\n`,
   );
-  await copyTree(
-    portableSkillRoot,
-    path.join(targetRoot, 'skills', pluginName),
-    { includeNodeModules: true },
-  );
-  await fs.writeFile(
-    path.join(targetRoot, 'skills', pluginName, 'host-adapter.json'),
-    `${JSON.stringify({
-      schemaVersion: 'taku.host-adapter.v1',
-      host: spec.creatorHost,
-    }, null, 2)}\n`,
-  );
+  for (const [skillName, portableSkillRoot] of portableSkillRoots) {
+    await copyTree(
+      portableSkillRoot,
+      path.join(targetRoot, 'skills', skillName),
+      { includeNodeModules: true },
+    );
+    await fs.writeFile(
+      path.join(targetRoot, 'skills', skillName, 'host-adapter.json'),
+      `${JSON.stringify({
+        schemaVersion: 'taku.host-adapter.v1',
+        host: spec.creatorHost,
+      }, null, 2)}\n`,
+    );
+  }
   return targetRoot;
 }
 
@@ -287,6 +299,11 @@ async function copyRuntimePackage(name, target) {
     path.join(target, 'dist'),
     { runtimeOnly: true },
   );
+  if (name === 'publisher-runtime') {
+    await copyTree(path.join(source, 'sites-core'), path.join(target, 'sites-core'), {
+      runtimeOnly: true,
+    });
+  }
   if (name === 'capability-contract' || name === 'subapp-contract') {
     for (const entry of ['schemas', 'fixtures']) {
       await copyTree(path.join(source, entry), path.join(target, entry), {

@@ -25,6 +25,7 @@ Run `npm run smoke:clean` before handing off repository, build, or packaging cha
 - Do not commit `dist/`, dependencies, caches, environment files, local Taku state, session files, archives, logs, or credentials.
 - Do not edit generated Adapter output. Change the canonical source and rebuild it.
 - Keep `creator/` and `scripts/taku_publisher/` compatible until their replacement is separately reviewed.
+- `packages/publisher-runtime/sites-core/` is a vendored build of `taku-sites-platform` (Site CLI core and browser SDK). Do not edit it by hand. Re-sync it from a committed platform revision with `npm run sync:sites-core -- --platform <taku-sites-platform checkout> [--ref <commit>]`. Use `--check` to verify it without writing. The script requires git, bun, and an installed platform checkout, and records the source commit and hashes in `provenance.json`.
 
 ## Security
 

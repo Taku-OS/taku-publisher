@@ -98,6 +98,16 @@ test('publish-tool authorization requires and preserves the dedicated Flowchart 
   const session = JSON.parse(await fs.readFile(path.join(root, 'session.json'), 'utf8'));
   assert.equal(session.flowchartToken, 'private-flowchart-test-token');
 });
+test('sites-login requests publish_site scopes and records the dedicated intent', async t => {
+  const { root, run, workerUrl } = await fixture(t, ['sites.read', 'sites.preview', 'sites.publish']);
+  const pending = await run('sites-login', '--no-open-browser', '--worker-url', workerUrl);
+  assert.equal(pending.intent, 'publish_site');
+  await confirm(pending);
+  assert.equal((await completed(run, pending.request_id)).status, 'authenticated');
+  const session = JSON.parse(await fs.readFile(path.join(root, 'session.json'), 'utf8'));
+  assert.equal(session.intent, 'publish_site');
+  assert.deepEqual(session.scopes, ['sites.read', 'sites.preview', 'sites.publish']);
+});
 test('business command defers before scanning, then original command resumes after verified continue', async t => {
   const { root, run, env } = await fixture(t);
   const skillRoot = path.join(root, 'skill');

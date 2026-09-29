@@ -67,6 +67,7 @@ export async function checkAuthFlow(requestId?: string, env = process.env): Prom
     if (
       session?.createdAt !== state.session_created_at
       || auth.source !== 'publisher_session'
+      || auth.intent !== state.intent
       || !auth.token
       || !scopes.every(scope => authHasScope(auth, scope))
       || (state.required_flowchart_token === true && !auth.flowchartToken)
