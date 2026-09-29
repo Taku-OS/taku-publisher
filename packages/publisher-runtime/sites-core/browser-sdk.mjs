@@ -1,4 +1,6 @@
 // packages/sdk/src/index.ts
+var SITE_CAPABILITY_INTERNAL_ONLY = "SITE_CAPABILITY_INTERNAL_ONLY";
+
 class TakuSitesRequestError extends Error {
   status;
   code;
@@ -10,11 +12,19 @@ class TakuSitesRequestError extends Error {
     this.retryAfter = retryAfter;
     this.name = "TakuSitesRequestError";
   }
+  get internalOnly() {
+    return this.code === SITE_CAPABILITY_INTERNAL_ONLY;
+  }
 }
 var CAPABILITY_NAME = /^[a-z][a-z0-9_-]{0,63}$/;
 var RECORD_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 var SCOPE_NAME = /^[a-z][a-z0-9_-]*(?:\.[a-z][a-z0-9_-]*)+$/;
-var MEDIA_JOB_ID = /^med_[0-9a-f]{32}$/;
+var MEDIA_JOB_ID = /^(?:med|mgn)_[0-9a-f]{32}$/;
+var MEDIA_GENERATION_JOB_ID = /^mgn_[0-9a-f]{32}$/;
+var MEDIA_VIDEO_MAX_BYTES = 40 * 1024 * 1024;
+var MEDIA_VIDEO_CONTENT_TYPES = ["video/mp4", "video/webm"];
+var IMAGE_ASPECT_RATIOS = ["21:9", "16:9", "3:2", "4:3", "5:4", "1:1", "4:5", "3:4", "2:3", "9:16"];
+var VIDEO_ASPECT_RATIOS = ["16:9", "9:16"];
 var MEDIA_INPUT_ID = /^min_[0-9a-f]{32}$/;
 var MEDIA_REQUEST_ID = /^[A-Za-z0-9._:-]{8,128}$/;
 var MEDIA_MAX_BYTES = 20 * 1024 * 1024;
@@ -78,6 +88,38 @@ function createTakuSitesClient(options = {}) {
     if (response.status === 204)
       return null;
     return response.json();
+  }
+  function startedJob(value, jobId) {
+    if (!isRecord(value) || value.schema_version !== "taku.site-media-job.v1" || typeof value.job_id !== "string" || !jobId.test(value.job_id) || typeof value.status !== "string" || typeof value.terminal !== "boolean" || value.asset_content !== undefined || value.expires_at !== undefined || Object.keys(value).some((key) => ![
+      "schema_version",
+      "job_id",
+      "status",
+      "terminal",
+      "poll_after_ms"
+    ].includes(key)) || value.poll_after_ms !== undefined && (!Number.isSafeInteger(value.poll_after_ms) || value.poll_after_ms < 1000 || value.poll_after_ms > 30000))
+      throw new Error("invalid_platform_response");
+    return value;
+  }
+  async function generate(kind, prompt, options2) {
+    if (typeof prompt !== "string" || !prompt.trim() || [...prompt.trim()].length > 4000)
+      throw new Error("invalid_media_prompt");
+    const requestId = options2.requestId ?? crypto.randomUUID();
+    if (!MEDIA_REQUEST_ID.test(requestId))
+      throw new Error("invalid_request_id");
+    if (options2.aspectRatio !== undefined && !(kind === "videos" ? VIDEO_ASPECT_RATIOS : IMAGE_ASPECT_RATIOS).includes(options2.aspectRatio))
+      throw new Error("invalid_media_aspect_ratio");
+    if (options2.durationSeconds !== undefined && (kind !== "videos" || ![4, 6, 8].includes(options2.durationSeconds)))
+      throw new Error("invalid_media_duration");
+    const value = await request(`/__taku/media/generations/${kind}`, {
+      method: "POST",
+      headers: { "Idempotency-Key": requestId },
+      body: JSON.stringify({
+        prompt: prompt.trim(),
+        ...options2.aspectRatio === undefined ? {} : { aspect_ratio: options2.aspectRatio },
+        ...options2.durationSeconds === undefined ? {} : { duration_seconds: options2.durationSeconds }
+      })
+    });
+    return startedJob(value, MEDIA_GENERATION_JOB_ID);
   }
   function capabilityName(value) {
     if (!CAPABILITY_NAME.test(value))
@@ -228,15 +270,13 @@ function createTakuSitesClient(options = {}) {
             ...options2.outputFormat === undefined ? {} : { output_format: options2.outputFormat }
           })
         });
-        if (!isRecord(value) || value.schema_version !== "taku.site-media-job.v1" || typeof value.job_id !== "string" || !MEDIA_JOB_ID.test(value.job_id) || typeof value.status !== "string" || typeof value.terminal !== "boolean" || value.asset_content !== undefined || value.expires_at !== undefined || Object.keys(value).some((key) => ![
-          "schema_version",
-          "job_id",
-          "status",
-          "terminal",
-          "poll_after_ms"
-        ].includes(key)) || value.poll_after_ms !== undefined && (!Number.isSafeInteger(value.poll_after_ms) || value.poll_after_ms < 1000 || value.poll_after_ms > 30000))
-          throw new Error("invalid_platform_response");
-        return value;
+        return startedJob(value, /^med_[0-9a-f]{32}$/);
+      },
+      async generateImage(prompt, options2 = {}) {
+        return generate("images", prompt, options2);
+      },
+      async generateVideo(prompt, options2 = {}) {
+        return generate("videos", prompt, options2);
       },
       async getJob(jobId) {
         if (!MEDIA_JOB_ID.test(jobId))
@@ -285,7 +325,9 @@ function createTakuSitesClient(options = {}) {
         const type = response.headers.get("Content-Type")?.trim() ?? "";
         const length = response.headers.get("Content-Length") ?? "";
         const declared = Number(length);
-        if (!["image/png", "image/jpeg", "image/webp"].includes(type) || !/^[1-9][0-9]*$/.test(length) || !Number.isSafeInteger(declared) || declared > MEDIA_MAX_BYTES || !response.body) {
+        const generated = MEDIA_GENERATION_JOB_ID.test(jobId);
+        const types = generated ? [...MEDIA_CONTENT_TYPES, ...MEDIA_VIDEO_CONTENT_TYPES] : MEDIA_CONTENT_TYPES;
+        if (!types.includes(type) || !/^[1-9][0-9]*$/.test(length) || !Number.isSafeInteger(declared) || declared > (generated ? MEDIA_VIDEO_MAX_BYTES : MEDIA_MAX_BYTES) || !response.body) {
           await response.body?.cancel();
           throw new Error("invalid_platform_response");
         }
@@ -423,5 +465,6 @@ var taku = createTakuSitesClient();
 export {
   taku,
   createTakuSitesClient,
-  TakuSitesRequestError
+  TakuSitesRequestError,
+  SITE_CAPABILITY_INTERNAL_ONLY
 };
