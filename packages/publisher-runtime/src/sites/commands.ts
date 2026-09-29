@@ -106,7 +106,7 @@ export async function runSiteCommand(args: SiteCommandArguments): Promise<JsonOb
     const client = await sitesClient(args);
     const session = await client.get('/v1/sites/cli-session');
     if (args.command === 'sites-whoami') return jsonOutput('sites_identity', { identity: session as JsonObject });
-    if (args.command === 'sites-list') return jsonOutput('sites_list', { identity: session as JsonObject, ...await client.get('/v1/sites/') as JsonObject });
+    if (args.command === 'sites-list') return jsonOutput('sites_list', { identity: session as JsonObject, ...await client.get('/v1/sites') as JsonObject });
     const projectId = required(args, 'project-id');
     return jsonOutput('sites_status', { identity: session as JsonObject, site: await client.get(`/v1/sites/${encodeURIComponent(projectId)}`) as JsonObject });
   }

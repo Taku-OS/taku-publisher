@@ -71,7 +71,7 @@ test('non-TTY publish asks for the exact target, then resumes the same confirmed
       contentDigest: artifact.contentDigest, manifestDigest: artifact.manifestDigest,
       status: 'uploading', projectId,
     });
-    if (pathname === '/v1/sites/' && method === 'POST') return send(202, {
+    if (pathname === '/v1/sites' && method === 'POST') return send(202, {
       projectId, slug: 'chosen-site', hostname: 'chosen-site.taku.site', status: 'provisioning',
     });
     if (pathname === `/v1/sites/${projectId}/artifact-uploads` && method === 'POST') {

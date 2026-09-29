@@ -128,7 +128,7 @@ export async function publishSite(args: SiteCommandArguments, core: SitesCore): 
   }
   if (!checkpoint.projectId) {
     if (target.kind === 'new') {
-      const site = await client.post('/v1/sites/', {
+      const site = await client.post('/v1/sites', {
         publishRequestId: checkpoint.publishRequestId,
         slug: target.slug, displayName: optional(args, 'name') ?? target.slug,
         manifest: project.siteManifest,
