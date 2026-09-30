@@ -5670,6 +5670,9 @@ function siteSdkContractError(source, kind, manifest) {
     }
   }
   const scopes = new Set(manifest.auth.scopes);
+  const mediaOperations = { "media.image.edit": "image_edit", "media.image.generate": "image_generate", "media.video.generate": "video_generate" };
+  const mediaDeclaration = manifest.integrations.find((item) => item.name === "media");
+  const usableMedia = Object.entries(mediaOperations).filter(([scope, operation]) => manifest.auth.mode === "required" && scopes.has(scope) && mediaDeclaration?.scopes.includes(scope) && mediaDeclaration.operations.includes(operation));
   for (const node of nodes) {
     if (node.type !== "CallExpression")
       continue;
@@ -5678,6 +5681,13 @@ function siteSdkContractError(source, kind, manifest) {
       continue;
     const route = parts.slice(1).join(".");
     const args = node.arguments;
+    if (route.startsWith("media.")) {
+      const scope = ["media.createInput", "media.uploadInput", "media.editImage"].includes(route) ? "media.image.edit" : route === "media.generateImage" ? "media.image.generate" : route === "media.generateVideo" ? "media.video.generate" : null;
+      if (!scope && !["media.getJob", "media.getAsset", "media.getAssetLink"].includes(route))
+        return "SITE_SDK_OPERATION_UNSUPPORTED";
+      if (scope ? !usableMedia.some(([candidate]) => candidate === scope) : usableMedia.length === 0)
+        return "SITE_SDK_CAPABILITY_UNDECLARED";
+    }
     if (route === "integration.call") {
       const name = literal2(args[0]);
       const operation = literal2(args[1]);
