@@ -1,14 +1,26 @@
 import { validateWorkerUrl } from '../api.js';
-import { resolveAuth, type ResolvedAuth } from '../auth.js';
+import { resolveAuth, readSession, publisherSessionPath, type ResolvedAuth, type RefreshTransport } from '../auth.js';
+import { readBoundedResponse, responseErrorDetails } from '../http-errors.js';
 import { DEFAULT_WORKER_URL } from '../constants.js';
 import { isRecord, PublisherError } from '../util.js';
 
 const SITES_SCOPES = ['sites.read', 'sites.preview', 'sites.publish'];
 
-export async function resolveSitesAuth(env: NodeJS.ProcessEnv = process.env): Promise<ResolvedAuth> {
+export async function resolveSitesAuth(env: NodeJS.ProcessEnv = process.env, options: {
+  workerUrl?: string; allowCustomWorkerUrl?: boolean; force?: boolean;
+  expectedAccessToken?: string; transport?: RefreshTransport;
+} = {}): Promise<ResolvedAuth> {
+  const session = readSession(publisherSessionPath(env));
+  if (session && options.workerUrl && session.workerUrl &&
+    new URL(validateWorkerUrl(String(session.workerUrl), options.allowCustomWorkerUrl || session.allowCustomWorkerUrl === true)).origin !==
+    new URL(validateWorkerUrl(options.workerUrl, options.allowCustomWorkerUrl)).origin) {
+    throw new PublisherError('This Publisher session belongs to another Worker origin. Run sites-login for that origin.', 'publisher_session_origin_mismatch');
+  }
   const auth = await resolveAuth({
     env: { ...env, TAKU_BEARER_TOKEN: '', TAKU_PUBLISH_TOKEN: '' },
     allowDesktopSession: false,
+    transport: options.transport,
+    publisherRefresh: options,
   });
   if (auth.source !== 'publisher_session' || !auth.token) {
     throw new PublisherError('Sign in with sites-login.', 'sites_login_required');
@@ -26,9 +38,10 @@ export class SitesHttpClient {
 
   constructor(
     workerUrl = DEFAULT_WORKER_URL,
-    private readonly publisherToken: string,
+    private publisherToken: string,
     private readonly fetcher: SitesFetch = fetch,
     allowCustomWorkerUrl = false,
+    private readonly renew?: (expectedToken: string) => Promise<string>,
   ) {
     this.workerUrl = validateWorkerUrl(workerUrl, allowCustomWorkerUrl);
     const origin = new URL(this.workerUrl);
@@ -57,7 +70,7 @@ export class SitesHttpClient {
 
   private async request(
     method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown,
-    idempotencyKey?: string, uploadToken?: string,
+    idempotencyKey?: string, uploadToken?: string, retried = false,
   ): Promise<Record<string, unknown>> {
     if (!/^\/v1\/sites(?:\/|$)/.test(path)) {
       throw new PublisherError('Invalid Sites API path.', 'sites_invalid_api_path');
@@ -88,14 +101,18 @@ export class SitesHttpClient {
     } catch {
       throw new PublisherError('Could not reach Taku Sites. Retry the same command.', 'sites_network_unavailable');
     }
-    let value: unknown;
-    try { value = await response.json(); } catch { value = {}; }
+    const { value, summary } = await readBoundedResponse(response);
+    if (response.status === 401 && !retried && !uploadToken && this.renew) {
+      this.publisherToken = await this.renew(this.publisherToken);
+      if (!this.publisherToken.startsWith('taku_pub_')) throw new PublisherError('Publisher renewal failed.', 'sites_login_required');
+      return this.request(method, path, body, idempotencyKey, undefined, true);
+    }
     if (!response.ok) {
-      const code = isRecord(value) && typeof value.error === 'string' ? value.error : 'SITES_REQUEST_FAILED';
+      const details = responseErrorDetails(response, value, summary);
+      const code = details.server_error;
       const actionable = response.status === 401 ? ' Sign in again with sites-login.' : '';
-      throw new PublisherError(`Taku Sites returned ${code}.${actionable}`, 'sites_api_error', {
-        http_status: response.status, server_error: code,
-      });
+      const eligibility = response.status === 404 ? ' Check internal access eligibility and the CLI version.' : '';
+      throw new PublisherError(`Taku Sites returned ${code}.${actionable}${eligibility}`, 'sites_api_error', details);
     }
     if (!isRecord(value)) throw new PublisherError('Taku Sites returned an invalid response.', 'sites_invalid_response');
     return value;

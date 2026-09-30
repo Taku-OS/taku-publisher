@@ -8,6 +8,24 @@ The runtime preserves the `taku.publisher.v1` JSON command contract. The legacy
 Python entrypoint remains a compatibility shim during migration and is not
 included in generated user plugins.
 
+## Sites authorization
+
+`sites-login` uses a dedicated Publisher authorization, separate from Desktop
+and Supabase sessions. Access lasts at most one hour/256 requests. New sessions
+renew automatically within a fixed 30-day window; rotation does not extend it.
+Concurrent commands share an on-disk lock. A lost refresh response can be
+recovered by repeating the command promptly (the server recovery window is 60s).
+Older sessions without refresh credentials require another `sites-login` when
+they expire. `auth-refresh` renews immediately. `auth-logout` clears the local
+session and attempts remote family revocation; inspect `remote_session_revoked`
+and `revocation_error_code` if connectivity prevented confirmation.
+
+Sites requests retry one 401 after renewal, preserving the original publish
+checkpoint, body and idempotency key. Upload credentials, 403, 404 and 5xx are not
+renewal loops. Error JSON retains HTTP status, server code, request ID and a
+bounded sanitized summary. A 404 calls for checking internal eligibility and
+the CLI version; it does not prove which one is wrong.
+
 ## Host project import and portable Skills
 
 `project-discover` reads bounded local session metadata, including OpenCode's

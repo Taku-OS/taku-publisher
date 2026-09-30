@@ -9,7 +9,7 @@ import { publisherHome } from './constants.js';
 import type { JsonObject } from './types.js';
 import { atomicWriteJson, jsonOutput, PublisherError, secureDirectory } from './util.js';
 
-export type AuthFlowOptions = Pick<BrowserAuthOptions, 'workerUrl' | 'siteUrl' | 'intent' | 'timeoutMs' | 'openBrowser'> & {
+export type AuthFlowOptions = Pick<BrowserAuthOptions, 'workerUrl' | 'siteUrl' | 'intent' | 'timeoutMs' | 'openBrowser' | 'allowCustomWorkerUrl'> & {
   requiredScopes: string[];
   requiredFlowchartToken?: boolean;
 };

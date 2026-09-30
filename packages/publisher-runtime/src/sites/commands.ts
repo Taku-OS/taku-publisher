@@ -115,10 +115,12 @@ export async function runSiteCommand(args: SiteCommandArguments): Promise<JsonOb
 }
 
 async function sitesClient(args: SiteCommandArguments): Promise<SitesHttpClient> {
-  const auth = await resolveSitesAuth();
+  const workerUrl = optional(args, 'worker-url') ?? DEFAULT_WORKER_URL;
+  const allowCustomWorkerUrl = flag(args, 'allow-custom-worker-url');
+  const auth = await resolveSitesAuth(process.env, { workerUrl, allowCustomWorkerUrl });
   return new SitesHttpClient(
-    optional(args, 'worker-url') ?? DEFAULT_WORKER_URL,
-    auth.token, fetch, flag(args, 'allow-custom-worker-url'),
+    workerUrl, auth.token, fetch, allowCustomWorkerUrl,
+    async expectedAccessToken => (await resolveSitesAuth(process.env, { workerUrl, allowCustomWorkerUrl, force: true, expectedAccessToken })).token,
   );
 }
 
