@@ -6,6 +6,7 @@ import test from 'node:test';
 import { execFile } from 'node:child_process';
 import { createServer } from 'node:http';
 import { promisify } from 'node:util';
+import { randomUUID } from 'node:crypto';
 import * as auth from '../dist/auth.js';
 import { resolveSitesAuth, SitesHttpClient } from '../dist/sites/http.js';
 
@@ -77,7 +78,7 @@ test('a lost refresh response persists its request ID and safely recovers on the
 
 test('exhausted access refreshes even before its time limit, without using Desktop or env auth', async (t) => {
   const f = await fixture(t, { expiresAt: Date.now() + 600_000, usesRemaining: 0 });
-  f.env.TAKU_BEARER_TOKEN = 'desktop-ignored';
+  f.env.TAKU_BEARER_TOKEN = `fixture-desktop-${randomUUID()}`;
   let calls = 0;
   const result = await resolveSitesAuth(f.env, { transport: async () => { calls++; return response(); } });
   assert.equal(result.token, 'taku_pub_next_fixture');
