@@ -106,7 +106,7 @@ export async function runSiteCommand(args: SiteCommandArguments): Promise<JsonOb
     const client = await sitesClient(args);
     const session = await client.get('/v1/sites/cli-session');
     if (args.command === 'sites-whoami') return jsonOutput('sites_identity', { identity: session as JsonObject });
-    if (args.command === 'sites-list') return jsonOutput('sites_list', { identity: session as JsonObject, ...await client.get('/v1/sites/') as JsonObject });
+    if (args.command === 'sites-list') return jsonOutput('sites_list', { identity: session as JsonObject, ...await client.get('/v1/sites') as JsonObject });
     const projectId = required(args, 'project-id');
     return jsonOutput('sites_status', { identity: session as JsonObject, site: await client.get(`/v1/sites/${encodeURIComponent(projectId)}`) as JsonObject });
   }
@@ -115,10 +115,12 @@ export async function runSiteCommand(args: SiteCommandArguments): Promise<JsonOb
 }
 
 async function sitesClient(args: SiteCommandArguments): Promise<SitesHttpClient> {
-  const auth = await resolveSitesAuth();
+  const workerUrl = optional(args, 'worker-url') ?? DEFAULT_WORKER_URL;
+  const allowCustomWorkerUrl = flag(args, 'allow-custom-worker-url');
+  const auth = await resolveSitesAuth(process.env, { workerUrl, allowCustomWorkerUrl });
   return new SitesHttpClient(
-    optional(args, 'worker-url') ?? DEFAULT_WORKER_URL,
-    auth.token, fetch, flag(args, 'allow-custom-worker-url'),
+    workerUrl, auth.token, fetch, allowCustomWorkerUrl,
+    async expectedAccessToken => (await resolveSitesAuth(process.env, { workerUrl, allowCustomWorkerUrl, force: true, expectedAccessToken })).token,
   );
 }
 

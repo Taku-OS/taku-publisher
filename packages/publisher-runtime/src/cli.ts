@@ -21,7 +21,7 @@ import {
 import {
   authHasScope,
   authStatus,
-  clearPublisherSession,
+  revokePublisherSession,
   publisherAccountHint,
   resolveAuth,
   type ResolvedAuth,
@@ -313,6 +313,7 @@ async function dispatchCommand(args: ParsedArguments): Promise<JsonObject> {
     };
     if (!scopes[intent]) throw new PublisherError('Unsupported login intent.', 'invalid_auth_intent');
     const options: AuthFlowOptions = {
+      allowCustomWorkerUrl: booleanFlag(args, 'allow-custom-worker-url'),
       requiredScopes: scopes[intent],
       requiredFlowchartToken: intent === 'publish_tool' && publisherFlowchartGenerationEnabled(),
       workerUrl,
@@ -326,9 +327,10 @@ async function dispatchCommand(args: ParsedArguments): Promise<JsonObject> {
     return jsonOutput('authenticated', { auth: status });
   }
   if (args.command === 'auth-logout') {
-    let removed = false;
-    await cancelAuthFlow(process.env, async () => { removed = await clearPublisherSession(); });
-    return jsonOutput('logged_out', { publisher_session_removed: removed });
+    let result: Awaited<ReturnType<typeof revokePublisherSession>> = { removed: false, revoked: false };
+    await cancelAuthFlow(process.env, async () => { result = await revokePublisherSession(); });
+    return jsonOutput('logged_out', { publisher_session_removed: result.removed,
+      remote_session_revoked: result.revoked, revocation_error_code: result.revocation_error_code ?? null });
   }
   if (args.command === 'marketplace-search') {
     const limit = numberFlag(args, 'limit', 20);
@@ -2180,6 +2182,7 @@ Commands:
   auth-start, auth-login [--intent publish_tool|publish_stax_card|publish_site] [--no-open-browser] [--timeout 300] [--wait]
   auth-check [--request-id <id>], auth-cancel
   sites-login [--wait], sites-whoami, sites-contract (live capability catalog), sites-init --project <dir>
+  Sites authorization renews automatically for 30 days; auth-refresh renews now; auth-logout revokes and clears it.
   sites-sdk-export --output <project>/dist/assets/taku-sites-sdk.mjs
   sites-validate --project <dir>, sites-build --project <dir> [--project-id <owned-id>]
   sites-list, sites-status --project-id <id>

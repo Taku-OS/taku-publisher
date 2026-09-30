@@ -4,6 +4,8 @@ import * as path from 'node:path';
 import { publisherHome } from './constants.js';
 import type { JsonObject } from './types.js';
 import { atomicWriteJson, isRecord } from './util.js';
+import { publisherSessionPath, refreshPublisherSession, withPublisherSessionLock, type PublisherRefreshOptions } from './publisher-session.js';
+export { publisherSessionPath, refreshPublisherSession, revokePublisherSession } from './publisher-session.js';
 
 const TAKU_ACCOUNT_BASE_URL = 'https://auth.taku.ai';
 // This is a Supabase publishable browser/client value, not a service credential.
@@ -36,6 +38,7 @@ export async function resolveAuth(
     env?: NodeJS.ProcessEnv;
     transport?: RefreshTransport;
     allowDesktopSession?: boolean;
+    publisherRefresh?: Omit<PublisherRefreshOptions, 'env' | 'transport'>;
   } = {},
 ): Promise<ResolvedAuth> {
   const env = options.env ?? process.env;
@@ -47,7 +50,14 @@ export async function resolveAuth(
     if (fallback) return resolvedEnv(fallback, 'env:TAKU_PUBLISH_TOKEN');
   }
   const publisherPath = publisherSessionPath(env);
-  const publisherSession = readSession(publisherPath);
+  let publisherSession = readSession(publisherPath);
+  let publisherRefreshed = false;
+  if (publisherSession?.intent === 'publish_site' && publisherSession.refreshToken &&
+    (isExpired(publisherSession) || publisherSession.usesRemaining === 0 || options.publisherRefresh?.force)) {
+    const before = publisherSession.accessToken;
+    publisherSession = await refreshPublisherSession({ ...options.publisherRefresh, env, transport: options.transport });
+    publisherRefreshed = publisherSession?.accessToken !== before;
+  }
   if (publisherSession && !isExpired(publisherSession)) {
     return {
       token: String(publisherSession.accessToken ?? '').trim(),
@@ -59,7 +69,7 @@ export async function resolveAuth(
         ? publisherSession.scopes.filter((scope): scope is string => typeof scope === 'string' && Boolean(scope.trim()))
         : [],
       sessionPath: publisherPath,
-      refreshed: false,
+      refreshed: publisherRefreshed,
     };
   }
   if (options.allowDesktopSession === false) {
@@ -106,8 +116,10 @@ export async function authStatus(
   const tokenEnv = options.tokenEnv ?? 'TAKU_BEARER_TOKEN';
   const desktopPath = sessionPath(env);
   let session = readSession(desktopPath);
-  if (options.refresh && session) session = await refreshSession(session, { path: desktopPath, transport: options.transport }) ?? session;
-  const resolved = await resolveAuth({ tokenEnv, env, transport: options.transport });
+  if (options.refresh && session && readSession(publisherSessionPath(env))?.intent !== 'publish_site') {
+    session = await refreshSession(session, { path: desktopPath, transport: options.transport }) ?? session;
+  }
+  const resolved = await resolveAuth({ tokenEnv, env, transport: options.transport, publisherRefresh: { force: options.refresh } });
   if (!session) session = readSession(desktopPath);
   const effective = resolved.source === 'publisher_session' ? readSession(publisherSessionPath(env)) : session;
   const expiration = expiresAtMs(effective ?? {});
@@ -119,7 +131,7 @@ export async function authStatus(
     session_file_exists: fs.existsSync(desktopPath),
     publisher_session_path: publisherSessionPath(env),
     publisher_session_file_exists: fs.existsSync(publisherSessionPath(env)),
-    can_refresh: Boolean(session?.refreshToken),
+    can_refresh: Boolean(effective?.refreshToken),
     refreshed: resolved.refreshed,
     expires_in_seconds: expiration === undefined ? null : Math.max(0, Math.trunc((expiration - Date.now()) / 1000)),
   };
@@ -157,14 +169,9 @@ export function sessionPath(env: NodeJS.ProcessEnv = process.env): string {
   return path.resolve(home || path.join(publisherHome({ ...env, TAKU_PUBLISHER_HOME: '' }), '..'), 'session.json');
 }
 
-export function publisherSessionPath(env: NodeJS.ProcessEnv = process.env): string {
-  const explicit = String(env.TAKU_PUBLISHER_SESSION_PATH ?? '').trim();
-  return path.resolve(explicit || path.join(publisherHome(env), 'session.json'));
-}
-
 export async function savePublisherSession(payload: JsonObject, env: NodeJS.ProcessEnv = process.env): Promise<string> {
   const target = publisherSessionPath(env);
-  await atomicWriteJson(target, payload, 0o600);
+  await withPublisherSessionLock(env, () => atomicWriteJson(target, payload, 0o600));
   return target;
 }
 

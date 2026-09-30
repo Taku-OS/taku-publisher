@@ -1,6 +1,6 @@
 ---
 name: taku-sites
-description: Build a real Taku Site (https://<subdomain>.taku.site) from a user's request with your own coding, build, and browser tools, then publish it with the bundled Publisher CLI after the user enters and confirms an exact subdomain. Use for Taku Sites website requests, not Marketplace Skills, SubApps, or Stax Cards.
+description: Use when a user wants to build or update a Taku Site on a taku.site subdomain. Excludes Marketplace Skills, SubApps, and Stax Cards.
 ---
 
 # Build and publish a Taku Site
@@ -20,3 +20,9 @@ Run every CLI command from **this Skill's directory**: `cd <directory-containing
 7. **Check availability, then confirm.** Run `sites-publish --project <abs-dir> --slug <exact-subdomain> --json` (or `--project-id <owned-id>`). The CLI checks eligibility and availability. If `sites_slug_unavailable`, ask the user for another subdomain. Otherwise it returns `needs_input` with `confirm_target` (the exact hostname or projectId) and a build summary. Show both to the user.
 8. **Publish only after the user explicitly confirms that exact target.** Rerun the same command with `--confirm-target <exact confirm_target>`.
 9. **Report honestly.** A Site is live only when the result is `sites_published` with `ready: true`, or when `sites-status --project-id <id> --json` shows the release. `sites_publishing` means it is still pending. If the run is interrupted, rerun the same command; it resumes. `sites_build_changed` / `sites_target_changed` means files or the target changed after confirmation: review with the user, get a new confirmation, then use `--reset`. Report quota, ownership, expired-login, and platform errors exactly as returned.
+
+## Session renewal and errors
+
+New Site sessions renew automatically for a fixed 30 days. `auth-refresh --json` renews now; `auth-status --json` reports validity without exposing credentials. A lost refresh response is recovered by promptly repeating the original command (within 60s). `sites_login_required` requires `sites-login`; `publisher_refresh_unavailable` means renewal could not be confirmed, so retry the same command without discarding its publish checkpoint. Older sessions without refresh support need login again when expired.
+
+Report `http_status`, `server_error`, `request_id` and the sanitized summary from API errors. A 404 needs an internal-eligibility/CLI-version check; do not claim either cause is confirmed. `auth-logout --json` clears local authorization and attempts server revocation; `remote_session_revoked: false` means revocation was not verified.

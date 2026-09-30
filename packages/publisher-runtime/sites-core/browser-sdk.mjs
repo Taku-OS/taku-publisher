@@ -5,11 +5,13 @@ class TakuSitesRequestError extends Error {
   status;
   code;
   retryAfter;
-  constructor(status, code, retryAfter) {
+  requestId;
+  constructor(status, code, retryAfter, requestId) {
     super(code);
     this.status = status;
     this.code = code;
     this.retryAfter = retryAfter;
+    this.requestId = requestId;
     this.name = "TakuSitesRequestError";
   }
   get internalOnly() {
@@ -47,6 +49,35 @@ function retryAfter(value) {
   const seconds = Number(value);
   return Number.isSafeInteger(seconds) && seconds >= 0 ? seconds : undefined;
 }
+async function boundedResponseJson(response, limit) {
+  const reader = response.body?.getReader();
+  if (!reader)
+    throw new Error("invalid_platform_response");
+  let size = 0;
+  const chunks = [];
+  try {
+    while (true) {
+      const next = await reader.read();
+      if (next.done)
+        break;
+      size += next.value.byteLength;
+      if (size > limit) {
+        await reader.cancel();
+        throw new Error("invalid_platform_response");
+      }
+      chunks.push(next.value);
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } finally {
+    reader.releaseLock();
+  }
+}
 function createTakuSitesClient(options = {}) {
   const fetcher = options.fetcher ?? ((request2) => fetch(request2));
   const baseUrl = safeBaseUrl(options.baseUrl);
@@ -55,7 +86,7 @@ function createTakuSitesClient(options = {}) {
       throw new Error("auth_unavailable");
     globalThis.location.assign(url);
   });
-  async function request(path, init = {}) {
+  async function request(path, init = {}, maxBytes) {
     if (!baseUrl)
       throw new Error("site_origin_unavailable");
     const url = new URL(path, baseUrl);
@@ -79,15 +110,15 @@ function createTakuSitesClient(options = {}) {
     if (!response.ok) {
       let code = "request_failed";
       try {
-        const body = await response.clone().json();
+        const body = maxBytes ? await boundedResponseJson(response, maxBytes) : await response.clone().json();
         if (isRecord(body) && typeof body.error === "string")
           code = body.error;
       } catch {}
-      throw new TakuSitesRequestError(response.status, code, retryAfter(response.headers.get("Retry-After")));
+      throw new TakuSitesRequestError(response.status, code, retryAfter(response.headers.get("Retry-After")), /^[A-Za-z0-9_.:-]{1,128}$/.test(response.headers.get("X-Request-Id") ?? "") ? response.headers.get("X-Request-Id") : undefined);
     }
     if (response.status === 204)
       return null;
-    return response.json();
+    return maxBytes ? boundedResponseJson(response, maxBytes) : response.json();
   }
   function startedJob(value, jobId) {
     if (!isRecord(value) || value.schema_version !== "taku.site-media-job.v1" || typeof value.job_id !== "string" || !jobId.test(value.job_id) || typeof value.status !== "string" || typeof value.terminal !== "boolean" || value.asset_content !== undefined || value.expires_at !== undefined || Object.keys(value).some((key) => ![
@@ -297,6 +328,36 @@ function createTakuSitesClient(options = {}) {
           throw new Error("invalid_platform_response");
         }
         return value;
+      },
+      async getAssetLink(jobId) {
+        if (!MEDIA_JOB_ID.test(jobId))
+          throw new Error("invalid_media_job_id");
+        const value = await request(`/__taku/media/jobs/${jobId}/asset-link`, {
+          method: "GET",
+          headers: { "X-Taku-CSRF": "1" }
+        }, 16 * 1024);
+        if (!isRecord(value) || value.schema_version !== "taku.media-asset-link.v1")
+          throw new Error("invalid_platform_response");
+        if ((value.state === "pending" || value.state === "copying") && Object.keys(value).length === 2)
+          throw new TakuSitesRequestError(409, "media_asset_not_ready", 5);
+        if (value.state === "failed" && Object.keys(value).length === 4 && typeof value.error_code === "string" && /^[a-z][a-z0-9_]{1,80}$/.test(value.error_code) && typeof value.retryable === "boolean")
+          throw new TakuSitesRequestError(value.retryable ? 503 : 422, value.error_code, value.retryable ? 5 : undefined);
+        const fields = ["schema_version", "state", "url", "expires_at", "asset_expires_at", "content_type", "byte_length"];
+        if (value.state !== "ready" || Object.keys(value).length !== fields.length || !fields.every((key) => Object.hasOwn(value, key)) || typeof value.url !== "string" || value.url.length > 2048 || typeof value.expires_at !== "string" || typeof value.asset_expires_at !== "string" || typeof value.content_type !== "string" || typeof value.byte_length !== "number" || !Number.isSafeInteger(value.byte_length) || value.byte_length < 1)
+          throw new Error("invalid_platform_response");
+        let url;
+        try {
+          url = new URL(value.url);
+        } catch {
+          throw new Error("invalid_platform_response");
+        }
+        const video = value.content_type.startsWith("video/"), generated = MEDIA_GENERATION_JOB_ID.test(jobId);
+        const types = generated && video ? MEDIA_VIDEO_CONTENT_TYPES : MEDIA_CONTENT_TYPES;
+        const maxBytes = generated ? (video ? 100 : 25) * 1024 * 1024 : 64 * 1024 * 1024;
+        const expires = Date.parse(value.expires_at), assetExpires = Date.parse(value.asset_expires_at), now = Date.now();
+        if (url.protocol !== "https:" || url.username || url.password || url.hash || !/^\/media\/assets\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/content$/i.test(url.pathname) || [...url.searchParams.keys()].length !== 1 || !url.searchParams.get("ticket") || !types.includes(value.content_type) || value.byte_length > maxBytes || !Number.isFinite(expires) || !Number.isFinite(assetExpires) || expires <= now || expires > now + 330000 || assetExpires < expires)
+          throw new Error("invalid_platform_response");
+        return { url: url.href, urlExpiresAt: value.expires_at, assetExpiresAt: value.asset_expires_at, contentType: value.content_type, byteLength: value.byte_length };
       },
       async getAsset(jobId) {
         if (!MEDIA_JOB_ID.test(jobId))

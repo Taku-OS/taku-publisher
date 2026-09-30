@@ -34,10 +34,12 @@ const PLACEHOLDER_ID = 'prj_pending_cli';
 
 export async function publishSite(args: SiteCommandArguments, core: SitesCore): Promise<JsonObject> {
   const root = path.resolve(required(args, 'project'));
-  const auth = await resolveSitesAuth();
+  const workerUrl = optional(args, 'worker-url') ?? DEFAULT_WORKER_URL;
+  const allowCustomWorkerUrl = bool(args, 'allow-custom-worker-url');
+  const auth = await resolveSitesAuth(process.env, { workerUrl, allowCustomWorkerUrl });
   const client = new SitesHttpClient(
-    optional(args, 'worker-url') ?? DEFAULT_WORKER_URL,
-    auth.token, fetch, bool(args, 'allow-custom-worker-url'),
+    workerUrl, auth.token, fetch, allowCustomWorkerUrl,
+    async expectedAccessToken => (await resolveSitesAuth(process.env, { workerUrl, allowCustomWorkerUrl, force: true, expectedAccessToken })).token,
   );
   const identity = await client.get('/v1/sites/cli-session');
   const userId = typeof identity.userId === 'string' ? identity.userId : '';
@@ -128,7 +130,7 @@ export async function publishSite(args: SiteCommandArguments, core: SitesCore): 
   }
   if (!checkpoint.projectId) {
     if (target.kind === 'new') {
-      const site = await client.post('/v1/sites/', {
+      const site = await client.post('/v1/sites', {
         publishRequestId: checkpoint.publishRequestId,
         slug: target.slug, displayName: optional(args, 'name') ?? target.slug,
         manifest: project.siteManifest,

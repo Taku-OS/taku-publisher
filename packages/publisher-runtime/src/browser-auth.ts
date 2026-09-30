@@ -12,6 +12,7 @@ const LOOPBACK_HOST = '127.0.0.1';
 
 export interface BrowserAuthOptions {
   workerUrl: string;
+  allowCustomWorkerUrl?: boolean;
   siteUrl?: string;
   intent?: string;
   accountMode?: 'confirm' | 'switch';
@@ -177,6 +178,14 @@ export async function loginWithBrowser(options: BrowserAuthOptions): Promise<Jso
     intent,
     accountHint: String(payload.accountHint ?? '').trim() || null,
     createdAt: now,
+    workerUrl: options.workerUrl.replace(/\/+$/, ''),
+    allowCustomWorkerUrl: options.allowCustomWorkerUrl === true,
+    ...(intent === 'publish_site' && typeof payload.refreshToken === 'string' ? {
+      sessionId: payload.sessionId,
+      refreshToken: payload.refreshToken,
+      refreshExpiresAt: payload.refreshExpiresAt,
+      usesRemaining: payload.usesRemaining,
+    } : {}),
   }, options.env).catch(() => {
     throw new PublisherError('Authorization was received, but the Publisher session could not be saved. Check Publisher storage permissions before retrying.', 'auth_session_save_failed');
   });
