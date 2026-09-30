@@ -1,6 +1,6 @@
 {
   "name": "taku-publisher",
-  "version": "0.3.28",
+  "version": "0.3.29",
   "description": "Build and publish Taku Sites, generate Stax Cards, and prepare Taku Skills or SubApps with the current Agent.",
   "author": { "name": "Taku", "url": "https://taku.ai/" },
   "homepage": "https://taku.ai/",
