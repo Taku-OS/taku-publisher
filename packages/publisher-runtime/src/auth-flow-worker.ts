@@ -52,6 +52,10 @@ process.once('message', async (message: { options: AuthFlowOptions; state: JsonO
     state.status = controller.signal.aborted ? 'authorization_cancelled'
       : error instanceof PublisherError && error.code === 'auth_timeout' ? 'authorization_expired' : 'authorization_failed';
     state.error_code = error instanceof PublisherError ? error.code : 'auth_receiver_failed';
+    if (error instanceof PublisherError && error.code === 'auth_redeem_failed') {
+      state.http_status = error.details.http_status ?? null;
+      state.server_error = error.details.server_error ?? null;
+    }
   } finally {
     clearInterval(timer);
     delete state.authorization_url;
