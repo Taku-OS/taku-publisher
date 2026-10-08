@@ -228,7 +228,7 @@ export async function publishSite(args: SiteCommandArguments, core: SitesCore): 
     project_id: checkpoint.projectId, publish_request_id: checkpoint.publishRequestId,
     upload_id: checkpoint.uploadId, release_id: artifact.releaseId,
     url: `https://${target.hostname}`, ready: false, site_status: String(site.status ?? 'unknown'),
-    next_command: `sites-status --project-id ${checkpoint.projectId}`,
+    next_command: `sites-status --project-id ${checkpoint.projectId} --publish-request-id ${checkpoint.publishRequestId}`,
   }, { requiresAction: true, actionType: 'check_site_status' });
 }
 

@@ -108,7 +108,13 @@ export async function runSiteCommand(args: SiteCommandArguments): Promise<JsonOb
     if (args.command === 'sites-whoami') return jsonOutput('sites_identity', { identity: session as JsonObject });
     if (args.command === 'sites-list') return jsonOutput('sites_list', { identity: session as JsonObject, ...await client.get('/v1/sites') as JsonObject });
     const projectId = required(args, 'project-id');
-    return jsonOutput('sites_status', { identity: session as JsonObject, site: await client.get(`/v1/sites/${encodeURIComponent(projectId)}`) as JsonObject });
+    const site = await client.get(`/v1/sites/${encodeURIComponent(projectId)}`) as JsonObject;
+    const requestId = optional(args, 'publish-request-id');
+    if (!requestId) return jsonOutput('sites_status', { identity: session as JsonObject, site });
+    const request = await client.get(`/v1/sites/publish-requests/${encodeURIComponent(requestId)}`) as JsonObject;
+    if (request.projectId !== projectId) throw new PublisherError('Publish request belongs to another Site.', 'sites_target_changed');
+    return jsonOutput('sites_status', { identity: session as JsonObject, site,
+      publication: { publish_request_id: request.publishRequestId ?? requestId, status: request.status ?? null, release_id: request.releaseId ?? null } });
   }
   if (args.command === 'sites-publish') return publishSite(args, core);
   throw new PublisherError(`Unknown Sites command: ${args.command}`, 'unknown_command');

@@ -2185,7 +2185,7 @@ Commands:
   Sites authorization renews automatically for 30 days; auth-refresh renews now; auth-logout revokes and clears it.
   sites-sdk-export --output <project>/dist/assets/taku-sites-sdk.mjs
   sites-validate --project <dir>, sites-build --project <dir> [--project-id <owned-id>]
-  sites-list, sites-status --project-id <id>
+  sites-list, sites-status --project-id <id> [--publish-request-id <id>]
   sites-publish --project <dir> [--slug <user-chosen-subdomain>|--project-id <owned-id>] [--confirm-target <exact-hostname-or-id>] [--wait-seconds 60]
   marketplace-search, marketplace-show, marketplace-open
   marketplace-install --host codex|claude-code|cursor|opencode|gemini-cli|agent-skills --item-id <id> [--confirm-item-id <same-id>]
