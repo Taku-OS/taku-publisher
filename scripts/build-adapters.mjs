@@ -189,6 +189,7 @@ async function buildAdapter(spec, portableSkillRoots) {
     const file = path.join(targetRoot, spec.manifestDir, 'plugin.json');
     const manifest = JSON.parse(await fs.readFile(file, 'utf8'));
     manifest.description = 'Generate Stax Cards, discover projects, and review and publish Skills with explicit Taku Web confirmation.';
+    if (Array.isArray(manifest.skills)) manifest.skills = [`./skills/${pluginName}`];
     manifest.keywords = (manifest.keywords || []).filter(keyword => keyword !== 'sites');
     if (manifest.interface) {
       manifest.interface.shortDescription = 'Create Cards and publish reviewed Skills to Taku.';

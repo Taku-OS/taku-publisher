@@ -25,6 +25,8 @@ test('native Publisher profile is isolated and shares one host runtime', async (
     const manifest = await readJson(path.join(plugin, manifestDir, 'plugin.json'));
     const skill = path.join(plugin, 'skills/taku-publisher');
     assert.equal(manifest.version, '0.3.30');
+    assert.deepEqual(manifest.skills, host === 'claude' ? ['./skills/taku-publisher'] : './skills/');
+    for (const declared of [manifest.skills].flat()) await fs.access(path.join(plugin, declared));
     assert.doesNotMatch(manifest.description, /Sites/);
     assert.ok(!manifest.keywords.includes('sites'));
     assert.deepEqual(await readJson(path.join(skill, 'publisher-version.json')),

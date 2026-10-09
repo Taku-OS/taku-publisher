@@ -48,6 +48,8 @@ for (const [index, host, marker, manifestDir, marketplaceDir] of [
   const skill = path.join(plugin, 'skills/taku-publisher');
   assert.equal(manifest.name, 'taku-publisher');
   assert.equal(manifest.version, release.version, 'Manifest version mismatch');
+  assert.deepEqual(manifest.skills, host === 'claude' ? ['./skills/taku-publisher'] : './skills/', 'Registered Skill mismatch');
+  for (const declared of [manifest.skills].flat()) await fs.access(path.join(plugin, declared));
   assert.deepEqual(await readJson(path.join(skill, 'publisher-version.json')),
     { name: 'taku-publisher', version: release.version, channel: 'standard' });
   assert.equal((await readJson(path.join(skill, 'host-adapter.json'))).host, marker);
