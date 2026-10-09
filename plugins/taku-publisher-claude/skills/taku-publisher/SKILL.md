@@ -5,6 +5,8 @@ description: Discover recent Codex, Claude Code, and Cursor projects or public r
 
 # Taku Publisher
 
+For requests to build or update a website hosted on Taku Sites, use the separate `taku-sites` Skill in this plugin. This Skill handles Marketplace Skills, SubApps, Stax Cards, Creator Center, and other Publisher surfaces.
+
 Run every command from this skill directory with `node scripts/taku-publisher.mjs`. Treat CLI JSON as the workflow authority. Parse `ok`, `status`, `requires_action`, and `action_type` before responding.
 
 In every host shell call, always change into the directory that contains this `SKILL.md` in the same command before invoking the CLI, for example `cd <this-skill-directory> && node scripts/taku-publisher.mjs ...`. Never run `node scripts/taku-publisher.mjs ...` from the user's project or workspace directory.
