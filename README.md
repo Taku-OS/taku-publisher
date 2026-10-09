@@ -121,11 +121,18 @@ node dist/installers/cursor/bin/taku-publisher.mjs install --host agent-skills
 Start a new Cursor Agent chat and invoke `/taku-publisher` or `/taku-sites`. The generic target
 installs to `~/.agents/skills/taku-publisher` and `~/.agents/skills/taku-sites`, which OpenCode loads by default;
 start a new host session after installation. GitHub production distribution
-uses the `marketplace` branch and `v0.3.28` release assets, not
+uses the `marketplace` branch and separately verified release assets, not
 the npm registry or the official Cursor store. `npm run build:marketplace`
 generates the combined three-host GitHub bundle. Stax Challenge is an explicit,
 optional Card-to-one-Skill workflow; ordinary Card, Skill and SubApp routes remain available. See
 [Cursor installation and release gates](docs/cursor-release.md).
+
+For independent Publisher native updates, `npm run build:native` creates the
+Publisher-only Codex, Claude Code and Cursor candidate in
+`dist/native-publisher/`. `npm run smoke:native` verifies its provenance,
+archives and local Card-to-Skill workflow. This channel omits the Sites Skill
+and does not enable Sites GA. See the
+[0.3.30 native candidate and acceptance guide](docs/release-0.3.30-native.md).
 
 OpenCode can load the portable artifact from its global
 `~/.config/opencode/skills/taku-publisher` directory or a project's

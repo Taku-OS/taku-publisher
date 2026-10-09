@@ -1,0 +1,44 @@
+name: Prepare Publisher native candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Use isolated configuration
+        run: |
+          mkdir -p "$RUNNER_TEMP/publisher-home"
+          echo "HOME=$RUNNER_TEMP/publisher-home" >> "$GITHUB_ENV"
+          echo "TAKU_PUBLISHER_HOME=$RUNNER_TEMP/publisher-home/publisher" >> "$GITHUB_ENV"
+      - run: npm ci
+      - run: npm run audit:repo
+      - run: npm test
+      - run: npm run build:native
+      - run: npm run smoke:native
+      - name: Check native runtime in each host without Python
+        run: |
+          for host in codex claude cursor; do
+            node scripts/no-python-plugin-smoke.mjs "$host" "dist/native-publisher/marketplace-release/plugins/taku-publisher-$host/skills/taku-publisher"
+          done
+      - name: Upload reviewable candidate only
+        uses: actions/upload-artifact@v4
+        with:
+          name: publisher-native-${{ github.sha }}
+          path: |
+            dist/native-publisher/marketplace-release/
+            dist/native-publisher/releases/
+          if-no-files-found: error

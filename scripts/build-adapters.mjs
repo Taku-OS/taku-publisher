@@ -3,11 +3,15 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const outputRoot = path.join(repositoryRoot, 'dist', 'plugins');
-const portableOutputRoot = path.join(repositoryRoot, 'dist', 'skills');
-const marketplaceOutputRoot = path.join(repositoryRoot, 'dist', 'marketplaces');
+const publisherOnly = process.argv.includes('--publisher-only');
+if (process.argv.slice(2).some(arg => arg !== '--publisher-only')) throw new Error('Unknown adapter build option.');
+const buildRoot = path.join(repositoryRoot, 'dist', ...(publisherOnly ? ['native-publisher'] : []));
+const outputRoot = path.join(buildRoot, 'plugins');
+const portableOutputRoot = path.join(buildRoot, 'skills');
+const marketplaceOutputRoot = path.join(buildRoot, 'marketplaces');
 const pluginName = 'taku-publisher';
 const sitesSkillName = 'taku-sites';
 const templateBuildArtifactNames = new Set([
@@ -52,7 +56,7 @@ async function main() {
   await fs.mkdir(outputRoot, { recursive: true });
   const portableSkillRoots = new Map([
     [pluginName, await buildPortableSkill(pluginName)],
-    [sitesSkillName, await buildPortableSkill(sitesSkillName)],
+    ...(!publisherOnly ? [[sitesSkillName, await buildPortableSkill(sitesSkillName)]] : []),
   ]);
   const outputs = [];
   for (const spec of adapterSpecs) {
@@ -65,6 +69,15 @@ async function main() {
       output === path.join(outputRoot, 'claude', pluginName))),
     await buildCursorMarketplace(path.join(outputRoot, 'cursor', pluginName)),
   ];
+  if (publisherOnly) {
+    const source = JSON.parse(execFileSync(process.execPath, ['scripts/source-checksum.mjs'],
+      { cwd: repositoryRoot, encoding: 'utf8' }));
+    const sourceCommit = process.env.TAKU_CONTRACT_SOURCE_COMMIT || execFileSync('git',
+      ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' }).trim();
+    await fs.writeFile(path.join(buildRoot, 'build-provenance.json'), `${JSON.stringify({
+      sourceCommit, sourceTreeChecksum: source.sourceTreeChecksum,
+    }, null, 2)}\n`);
+  }
   console.log(JSON.stringify({
     ok: true,
     portableSkills: [...portableSkillRoots.values()].map(root => path.relative(repositoryRoot, root)),
@@ -159,6 +172,19 @@ async function buildAdapter(spec, portableSkillRoots) {
     path.join(sourceRoot, spec.manifestDir),
     path.join(targetRoot, spec.manifestDir),
   );
+  if (publisherOnly) {
+    const file = path.join(targetRoot, spec.manifestDir, 'plugin.json');
+    const manifest = JSON.parse(await fs.readFile(file, 'utf8'));
+    manifest.description = 'Generate Stax Cards, discover projects, and review and publish Skills with explicit Taku Web confirmation.';
+    manifest.keywords = (manifest.keywords || []).filter(keyword => keyword !== 'sites');
+    if (manifest.interface) {
+      manifest.interface.shortDescription = 'Create Cards and publish reviewed Skills to Taku.';
+      manifest.interface.longDescription = manifest.description;
+      manifest.interface.capabilities = manifest.interface.capabilities.filter(value => !/sites/i.test(value));
+      manifest.interface.defaultPrompt = ['Generate a private Stax Card, list candidate Skills and let me choose one or skip; wait for my confirmation before uploading or publishing.'];
+    }
+    await fs.writeFile(file, `${JSON.stringify(manifest, null, 2)}\n`);
+  }
   await copyOptionalFile(
     path.join(sourceRoot, 'README.md'),
     path.join(targetRoot, 'README.md'),
