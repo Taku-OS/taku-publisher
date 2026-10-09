@@ -1,6 +1,6 @@
 # Taku Publisher native marketplace candidate
 
-Version **0.3.30**, Publisher-only profile. Source: `ec978d42bb34c395ff7e2a58f5f4f60c4f1dd557`; dirty: false.
+Version **0.3.30**, Publisher-only profile. Source: `1cd5da84df2234030184a7c8c5525aa4138f5278`; dirty: false.
 
 Three native plugins support the existing Card → candidate Skill → scan/review/package → private draft → Taku Web confirmation flow. Only `taku-publisher` is registered as a Skill. The shared runtime is retained from main for compatibility; Sites eligibility remains restricted by the server. This update does not enable Sites GA or include the Sites Skill.
 
