@@ -28,10 +28,17 @@ const sourceDirty = ['true', 'false'].includes(process.env.TAKU_CONTRACT_SOURCE_
   ? process.env.TAKU_CONTRACT_SOURCE_DIRTY === 'true'
   : Boolean(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim());
 if (!/^[a-f0-9]{40}$/.test(sourceCommit)) throw new Error('Invalid source commit.');
+const adapterInventories = new Map();
 if (publisherOnly) {
   const provenance = JSON.parse(await fs.readFile(path.join(buildRoot, 'build-provenance.json'), 'utf8'));
   if (provenance.sourceCommit !== sourceCommit || provenance.sourceTreeChecksum !== source.sourceTreeChecksum) {
     throw new Error('Adapter source provenance mismatch: rebuild native adapters.');
+  }
+  for (const spec of specs) {
+    const expected = provenance.plugins?.find(plugin => plugin.host === spec.host)?.files;
+    const actual = await inventory(path.join(buildRoot, 'plugins', spec.host, 'taku-publisher'));
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`Adapter inventory mismatch: ${spec.host}`);
+    adapterInventories.set(spec.host, expected);
   }
 }
 await fs.rm(output, { recursive: true, force: true });
@@ -40,6 +47,9 @@ const plugins = [];
 for (const spec of specs) {
   const pluginSource = path.join(buildRoot, 'plugins', spec.host, 'taku-publisher');
   const files = await inventory(pluginSource);
+  if (publisherOnly && JSON.stringify(files) !== JSON.stringify(adapterInventories.get(spec.host))) {
+    throw new Error(`Adapter inventory mismatch: ${spec.host}`);
+  }
   // Keep the existing production Codex/Claude paths stable when adding Cursor.
   const destination = `plugins/taku-publisher-${spec.host}`;
   await fs.cp(pluginSource, path.join(output, destination), { recursive: true });
@@ -72,7 +82,7 @@ for (const spec of specs) {
     const marketplaceFile = `${spec.marketplace}/marketplace.json`;
     const entries = await Promise.all(files.map(async file => ({
       name: `${destination}/${file.path}`, mode: file.mode,
-      data: await fs.readFile(path.join(pluginSource, file.path)),
+      data: await fs.readFile(path.join(output, destination, file.path)),
     })));
     entries.push({ name: marketplaceFile, mode: 0o644,
       data: await fs.readFile(path.join(output, marketplaceFile)) });

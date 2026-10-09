@@ -30,27 +30,27 @@
 
 Files: scripts/build-adapters.mjs, scripts/challenge-test-smoke.mjs, scripts/native-release.test.mjs, package.json, adapters/*/taku-publisher/*/plugin.json.
 
-- [ ] Run baseline tests and reproduce the Challenge smoke version failure.
-- [ ] Add failing native profile test asserting one Skill, version identity, runtime equality, and unchanged standard output.
-- [ ] Add isolated --publisher-only profile and 0.3.30 candidate manifest versions.
-- [ ] Replace stale Challenge smoke literals with expectations from the independently built standard version and exact next-patch arithmetic; retain all workflow assertions.
-- [ ] Run regression and profile tests.
+- [x] Run baseline tests and reproduce the Challenge smoke version failure.
+- [x] Add failing native profile test asserting one Skill, version identity, runtime equality, and unchanged standard output.
+- [x] Add isolated --publisher-only profile and 0.3.30 candidate manifest versions.
+- [x] Replace stale Challenge smoke literals with expectations from the independently built standard version and exact next-patch arithmetic; retain all workflow assertions.
+- [x] Run regression and profile tests.
 
 ## Task 2: Promotable marketplace artifacts
 
 Files: scripts/build-marketplace-release.mjs, scripts/native-release.test.mjs, scripts/native-release-smoke.mjs, .github/workflows/publisher-native.yml, docs/release-0.3.30-native.md.
 
-- [ ] Add failing assertions for source checksum, clean source, per-file integrity and archive contents.
-- [ ] Extend marketplace builder for native profile, deterministic host ZIPs and provenance.
-- [ ] Validate runtime and archive identity, including negative corruption/version cases.
-- [ ] Add manually dispatched build/verify/upload workflow with read-only repository permissions and no marketplace write.
-- [ ] Document Kristen acceptance, explicit production gaps and promotion/rollback steps.
+- [x] Add failing assertions for source checksum, clean source, per-file integrity and archive contents.
+- [x] Extend marketplace builder for native profile, deterministic host ZIPs and provenance.
+- [x] Validate runtime and archive identity, including negative corruption/version cases.
+- [x] Add manually dispatched build/verify/upload workflow with read-only repository permissions and no marketplace write.
+- [x] Document Kristen acceptance, explicit production gaps and promotion/rollback steps.
 
 ## Task 3: Controlled acceptance and local delivery
 
-- [ ] Run complete tests, standard installer and native no-Python smoke on three hosts.
-- [ ] Run packaged Card/candidate/scan/package/draft/status/Web-confirmation flow against loopback fixtures only.
-- [ ] Test fresh installs and upgrade/rollback to actual 0.3.27 bundle in isolated directories; retain old artifacts.
+- [x] Run complete tests, standard installer and native no-Python smoke on three hosts.
+- [x] Run packaged Card/candidate/scan/package/draft/status/Web-confirmation flow against loopback fixtures only.
+- [x] Test fresh installs and upgrade/rollback to actual 0.3.27 bundle in isolated directories; retain old artifacts.
 - [ ] Commit source; run clean-copy smoke from git archive HEAD with task-local npm cache.
 - [ ] Generate final clean artifacts; prepare marketplace branch/diff on verified marketplace base.
 - [ ] Independent reviewer examines source and generated marketplace patch; resolve important findings and repeat affected checks.

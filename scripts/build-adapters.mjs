@@ -4,6 +4,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { inventory } from './cursor-installer.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const publisherOnly = process.argv.includes('--publisher-only');
@@ -53,6 +54,14 @@ const publisherSkillEntries = [
 const sitesSkillEntries = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'TRADEMARKS.md'];
 
 async function main() {
+  if (publisherOnly) {
+    // Native provenance covers freshly compiled runtime, including direct script invocations.
+    // tsc overwrites emitted files but does not remove output from deleted source files.
+    for (const name of ['capability-contract', 'subapp-contract', 'passport-core', 'publisher-runtime']) {
+      await fs.rm(path.join(repositoryRoot, 'packages', name, 'dist'), { recursive: true, force: true });
+    }
+    execFileSync('npm', ['run', 'build:runtime'], { cwd: repositoryRoot, stdio: 'inherit' });
+  }
   await fs.mkdir(outputRoot, { recursive: true });
   const portableSkillRoots = new Map([
     [pluginName, await buildPortableSkill(pluginName)],
@@ -76,6 +85,10 @@ async function main() {
       ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' }).trim();
     await fs.writeFile(path.join(buildRoot, 'build-provenance.json'), `${JSON.stringify({
       sourceCommit, sourceTreeChecksum: source.sourceTreeChecksum,
+      plugins: await Promise.all(adapterSpecs.map(async spec => ({
+        host: spec.host,
+        files: await inventory(path.join(outputRoot, spec.host, pluginName)),
+      }))),
     }, null, 2)}\n`);
   }
   console.log(JSON.stringify({

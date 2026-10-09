@@ -20,6 +20,11 @@ business logic or importing unmerged features.
 all host file inventories and archive checksums. Each host archive has its own
 marketplace entry and provenance. `npm run smoke:native` refuses dirty source
 provenance by default and verifies archive contents and host runtime parity.
+The native adapter build removes stale compiled outputs and rebuilds the runtime
+before recording each adapter inventory. Marketplace generation checks those
+inventories before packaging, so changed generated adapters cannot acquire fresh
+source provenance. Clean-copy smoke also verifies the source checksum stays
+unchanged after tests and builds, excluding the converter's generated test workspaces.
 Use `node scripts/native-release-smoke.mjs --allow-dirty` only during local
 implementation; those bundles must not be promoted.
 

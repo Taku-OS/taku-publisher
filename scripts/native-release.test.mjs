@@ -98,3 +98,32 @@ test('marketplace builder refuses stale adapter source provenance', async () => 
     assert.throws(() => run('scripts/build-marketplace-release.mjs', '--publisher-only'), /Adapter source provenance mismatch/);
   } finally { await fs.writeFile(file, bytes); }
 });
+
+test('marketplace builder rejects generated adapter modification after source build', async () => {
+  const files = ['codex', 'claude', 'cursor'].map(host => path.join(native, 'plugins', host, 'taku-publisher/skills/taku-publisher/SKILL.md'));
+  const originals = await Promise.all(files.map(file => fs.readFile(file)));
+  try {
+    for (const file of files) await fs.appendFile(file, '\nUnexpected fixture modification\n');
+    assert.throws(() => run('scripts/build-marketplace-release.mjs', '--publisher-only'), /Adapter inventory mismatch/);
+  } finally {
+    for (const [index, file] of files.entries()) await fs.writeFile(file, originals[index]);
+    run('scripts/build-marketplace-release.mjs', '--publisher-only');
+  }
+});
+
+test('native adapter build refreshes stale compiled runtime before source stamping', async () => {
+  const file = path.join(root, 'packages/publisher-runtime/dist/constants.js');
+  const orphan = path.join(root, 'packages/publisher-runtime/dist/deleted-source-fixture.js');
+  const bytes = await fs.readFile(file);
+  try {
+    await fs.appendFile(file, '\n// fixture-stale-compiled-runtime\n');
+    await fs.writeFile(orphan, '// compiled output of a deleted source fixture\n');
+    run('scripts/build-adapters.mjs', '--publisher-only');
+    const built = await fs.readFile(path.join(native, 'plugins/codex/taku-publisher/skills/taku-publisher/node_modules/@taku/publisher-runtime/dist/constants.js'), 'utf8');
+    assert.doesNotMatch(built, /fixture-stale-compiled-runtime/);
+    await assert.rejects(fs.stat(path.join(native, 'plugins/codex/taku-publisher/skills/taku-publisher/node_modules/@taku/publisher-runtime/dist/deleted-source-fixture.js')), { code: 'ENOENT' });
+  } finally {
+    await fs.writeFile(file, bytes);
+    await fs.rm(orphan, { force: true });
+  }
+});
