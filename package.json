@@ -49,10 +49,14 @@
     "smoke:core": "npm run build:core && node scripts/passport-core-install-smoke.mjs",
     "smoke:plugin": "npm run build:adapters && node scripts/no-python-plugin-smoke.mjs codex && node scripts/no-python-plugin-smoke.mjs claude && node scripts/no-python-plugin-smoke.mjs cursor && node scripts/sites-skill-smoke.mjs",
     "test:installer": "node --test scripts/cursor-installer.test.mjs",
-    "test": "npm run test:node && npm run test:python && npm run test:installer",
+    "test": "npm run test:node && npm run test:python && npm run test:installer && npm run test:source && npm run test:native",
     "test:converter": "npm test --workspace repo-to-stax-converter",
     "test:node": "npm run test:converter && npm run build:runtime && node --test creator/scripts/*.test.mjs packages/capability-contract/test/*.test.mjs packages/subapp-contract/test/*.test.mjs packages/creator-core/test/*.test.mjs packages/passport-core/test/*.test.mjs packages/publisher-runtime/test/*.test.mjs",
-    "test:python": "python3 -m unittest discover -s tests"
+    "test:python": "python3 -m unittest discover -s tests",
+    "build:native": "node scripts/build-adapters.mjs --publisher-only && node scripts/build-marketplace-release.mjs --publisher-only",
+    "smoke:native": "node scripts/native-release-smoke.mjs && node scripts/publisher-acceptance-smoke.mjs",
+    "test:native": "node --test scripts/native-release.test.mjs",
+    "test:source": "node --test scripts/repository-files.test.mjs"
   },
   "dependencies": {
     "qrcode-generator": "2.0.4"

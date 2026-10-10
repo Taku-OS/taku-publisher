@@ -45,6 +45,10 @@ it loads the new Skill.
 
 ## Build and install locally
 
+This source branch prepares 0.3.30 locally. The download instructions above
+refer to the existing 0.3.29 release; 0.3.30 is unpublished. Its independent
+Publisher-only native profile is described in [the native candidate guide](release-0.3.30-native.md).
+
 Requires Node.js 20+ (npm is only needed to build or use a tarball).
 Exact local Cursor and OpenCode token reading additionally uses the optional
 `sqlite3` command. If it is missing or a host has no explicit counters, token
@@ -74,11 +78,11 @@ For a previously manually copied, unmanaged Skill, explicit `--backup-existing`
 moves the entire old directory to a recoverable backup before installing.
 It does not bypass protections for edited managed installs.
 
-The local npm tarball is `dist/releases/taku-publisher-0.3.29.tgz`:
+The local candidate npm tarball is `dist/releases/taku-publisher-0.3.30.tgz`:
 
 ```sh
-npx --yes --package ./dist/releases/taku-publisher-0.3.29.tgz taku-publisher install --host cursor
-npx --yes --package ./dist/releases/taku-publisher-0.3.29.tgz taku-publisher install --host agent-skills
+npx --yes --package ./dist/releases/taku-publisher-0.3.30.tgz taku-publisher install --host cursor
+npx --yes --package ./dist/releases/taku-publisher-0.3.30.tgz taku-publisher install --host agent-skills
 ```
 
 This tarball command uses a local file, not a released npm package. A public

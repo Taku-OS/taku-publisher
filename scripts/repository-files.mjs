@@ -18,6 +18,9 @@ const EXCLUDED_SEGMENTS = new Set([
   'out',
   'venv',
 ]);
+// Scoped generated workspaces ignored by the repository's .gitignore files.
+// Keep source fixtures such as tests/fixtures/tmp in the exported audit.
+const EXCLUDED_EXPORT_PATHS = new Set(['tmp', 'packages/repo-to-stax-converter/tmp']);
 
 async function walk(relativeDirectory = '') {
   const directory = path.join(repositoryRoot, relativeDirectory);
@@ -30,6 +33,7 @@ async function walk(relativeDirectory = '') {
       relativeDirectory.split(path.sep).join(path.posix.sep),
       entry.name,
     );
+    if (EXCLUDED_EXPORT_PATHS.has(relativePath)) continue;
     if (entry.isDirectory()) {
       files.push(...(await walk(relativePath)));
     } else if (entry.isFile()) {
