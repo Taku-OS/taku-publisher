@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taku.ai/schemas/subapp-release.v1.schema.json",
+  "title": "Taku SubApp Release v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractVersion",
+    "appId",
+    "versionNumber",
+    "manifest",
+    "source",
+    "build",
+    "publishManifest"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "taku.subapp-release.v1" },
+    "contractVersion": { "const": "0.1.0" },
+    "appId": { "type": "string", "minLength": 1 },
+    "versionNumber": { "type": "integer", "minimum": 1 },
+    "manifest": {
+      "$ref": "subapp-runtime-manifest.v1.schema.json"
+    },
+    "source": {
+      "allOf": [
+        { "$ref": "https://taku.ai/schemas/subapp-release.v1.schema.json#/$defs/artifact" },
+        { "properties": { "fileName": { "const": "source.zip" } } }
+      ]
+    },
+    "build": {
+      "allOf": [
+        { "$ref": "https://taku.ai/schemas/subapp-release.v1.schema.json#/$defs/artifact" },
+        { "properties": { "fileName": { "const": "build.zip" } } }
+      ]
+    },
+    "publishManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "releaseNotes",
+        "buildRequired",
+        "buildOutputDir",
+        "startScriptPreview",
+        "startScriptEdit",
+        "sourceHash",
+        "buildHash",
+        "sourceSize",
+        "buildSize",
+        "sourceRights"
+      ],
+      "properties": {
+        "releaseNotes": { "type": "string" },
+        "buildRequired": { "const": true },
+        "buildOutputDir": { "const": ".next-preview" },
+        "startScriptPreview": { "const": "start:preview" },
+        "startScriptEdit": { "const": "start:edit" },
+        "sourceHash": { "$ref": "https://taku.ai/schemas/subapp-release.v1.schema.json#/$defs/sha256" },
+        "buildHash": { "$ref": "https://taku.ai/schemas/subapp-release.v1.schema.json#/$defs/sha256" },
+        "sourceSize": { "type": "integer", "minimum": 1 },
+        "buildSize": { "type": "integer", "minimum": 1 },
+        "sourceRights": { "$ref": "https://taku.ai/schemas/subapp-release.v1.schema.json#/$defs/sourceRights" },
+        "serviceAuthorizations": {
+          "type": "array",
+          "items": { "$ref": "https://taku.ai/schemas/subapp-release.v1.schema.json#/$defs/serviceAuthorization" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "url", "sha256", "size"],
+      "properties": {
+        "fileName": { "enum": ["source.zip", "build.zip"] },
+        "url": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "sha256": { "$ref": "https://taku.ai/schemas/subapp-release.v1.schema.json#/$defs/sha256" },
+        "size": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "serviceAuthorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["serviceId", "endpointIds"],
+      "properties": {
+        "serviceId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9._-]{0,127}$" },
+        "endpointIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9._-]{0,127}$" }
+        }
+      }
+    },
+    "sourceRights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authorshipKind", "rightsBasis", "sourceUrl", "sourceAuthor", "license", "sourceNotes"],
+      "properties": {
+        "authorshipKind": { "enum": ["original", "derived", "third_party"] },
+        "rightsBasis": { "enum": ["self_owned", "open_source_license", "explicit_permission"] },
+        "sourceUrl": { "type": "string" },
+        "sourceAuthor": { "type": "string" },
+        "license": { "type": "string" },
+        "sourceNotes": { "type": "string" }
+      }
+    }
+  }
+}

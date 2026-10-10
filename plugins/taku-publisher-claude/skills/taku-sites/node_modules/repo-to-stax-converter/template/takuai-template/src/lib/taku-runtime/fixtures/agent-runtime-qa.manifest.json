@@ -1,0 +1,15 @@
+{
+  "name": "taku-agent-runtime-qa-fixture",
+  "description": "Opt-in QA fixture for the complete taku.agent.run/v2 operation surface",
+  "version": "0.0.0",
+  "actions": [],
+  "runtimeCapabilities": {
+    "protocol": "taku.agent.run/v2",
+    "operations": [
+      { "id": "agent.execute", "revision": 1 },
+      { "id": "research.generateReport", "revision": 1 },
+      { "id": "media.image.generate", "revision": 1 },
+      { "id": "media.video.generate", "revision": 1 }
+    ]
+  }
+}

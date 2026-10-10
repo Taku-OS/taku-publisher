@@ -1,8 +1,8 @@
 // src/index.ts
-import { createHash as createHash2 } from "node:crypto";
-import { constants as constants2 } from "node:fs";
-import { lstat as lstat2, open as open2, realpath as realpath2, stat as stat2 } from "node:fs/promises";
-import path2 from "node:path";
+import { createHash as createHash3 } from "node:crypto";
+import { constants as constants3 } from "node:fs";
+import { lstat as lstat3, open as open3, realpath as realpath3, stat as stat2 } from "node:fs/promises";
+import path3 from "node:path";
 
 // ../contracts/src/site-manifest.ts
 var NAME = /^[a-z][a-z0-9_-]{0,63}$/;
@@ -238,12 +238,766 @@ async function contentDigestFromDescriptor(value) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalSiteContent(value)));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
+// ../contracts/src/assets.ts
+var ASSET_STORAGE_LIMITS = {
+  temporaryTtlSeconds: 2592000,
+  maxImageBytes: 26214400,
+  maxVideoBytes: 536870912,
+  multipartBytes: 8388608,
+  filesPerRelease: 1000
+};
+var STATIC_ASSET_CONTENT_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/avif",
+  "image/gif",
+  "video/mp4",
+  "video/webm"
+];
+var exact = (value, keys) => !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === keys.length && Object.keys(value).every((key) => keys.includes(key));
+var safeBytes = (value) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+function isAssetLogicalPath(value) {
+  return typeof value === "string" && value.length <= 512 && /^\/[a-zA-Z0-9/_-]+\.[a-zA-Z0-9]+$/.test(value) && !value.includes("//") && !value.startsWith("/__taku/");
+}
+function isSourcePath(value) {
+  return typeof value === "string" && value.length <= 512 && /^[a-zA-Z0-9_-][a-zA-Z0-9/_.-]*$/.test(value) && !value.includes("//") && value.split("/").every((part) => part.length > 0 && part !== "." && part !== "..");
+}
+function parseAssetManifest(value) {
+  if (!exact(value, ["schema", "files"]) || value.schema !== "taku.sites.asset-manifest.v1" || !Array.isArray(value.files) || value.files.length > ASSET_STORAGE_LIMITS.filesPerRelease)
+    return null;
+  const files = [];
+  for (const file of value.files) {
+    if (!exact(file, [
+      "logicalPath",
+      "sourcePath",
+      "contentType",
+      "size",
+      "sha256",
+      "retention",
+      "visibility"
+    ]) || !isAssetLogicalPath(file.logicalPath) || !isSourcePath(file.sourcePath) || typeof file.contentType !== "string" || !STATIC_ASSET_CONTENT_TYPES.includes(file.contentType) || !safeBytes(file.size) || file.size < 1 || file.size > (file.contentType.startsWith("image/") ? ASSET_STORAGE_LIMITS.maxImageBytes : ASSET_STORAGE_LIMITS.maxVideoBytes) || typeof file.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(file.sha256) || file.retention !== "temporary" && file.retention !== "permanent" || file.visibility !== "public" && file.visibility !== "private")
+      return null;
+    files.push({
+      logicalPath: file.logicalPath,
+      sourcePath: file.sourcePath,
+      contentType: file.contentType,
+      size: file.size,
+      sha256: file.sha256,
+      retention: file.retention,
+      visibility: file.visibility
+    });
+  }
+  if (new Set(files.map((file) => file.logicalPath)).size !== files.length)
+    return null;
+  files.sort((a, b) => a.logicalPath < b.logicalPath ? -1 : a.logicalPath > b.logicalPath ? 1 : 0);
+  return { schema: "taku.sites.asset-manifest.v1", files };
+}
+function parseOwnerAssetPolicy(value) {
+  if (!exact(value, [
+    "schema",
+    "limitBytes",
+    "usedBytes",
+    "reservedBytes",
+    "availableBytes",
+    "overLimit",
+    "canUploadPermanent",
+    "temporaryTtlSeconds",
+    "maxImageBytes",
+    "maxVideoBytes"
+  ]) || value.schema !== "taku.sites.asset-storage.v1" || !safeBytes(value.limitBytes) || !safeBytes(value.usedBytes) || !safeBytes(value.reservedBytes) || !safeBytes(value.availableBytes) || !safeBytes(value.usedBytes + value.reservedBytes) || value.availableBytes !== Math.max(0, value.limitBytes - value.usedBytes - value.reservedBytes) || value.overLimit !== value.usedBytes + value.reservedBytes > value.limitBytes || value.canUploadPermanent !== value.availableBytes > 0 || value.temporaryTtlSeconds !== ASSET_STORAGE_LIMITS.temporaryTtlSeconds || value.maxImageBytes !== ASSET_STORAGE_LIMITS.maxImageBytes || value.maxVideoBytes !== ASSET_STORAGE_LIMITS.maxVideoBytes)
+    return null;
+  return value;
+}
+var ASSET_ID = /^ast_[a-f0-9]{32}$/;
+var validDate = (value) => typeof value === "string" && value.length <= 64 && Number.isFinite(Date.parse(value));
+function parseOwnerAssetRecord(value) {
+  if (!exact(value, [
+    "assetId",
+    "state",
+    "retention",
+    "visibility",
+    "contentType",
+    "byteLength",
+    "sha256",
+    "expiresAt",
+    "createdAt",
+    "partBytes",
+    "partCount"
+  ]) || typeof value.assetId !== "string" || !ASSET_ID.test(value.assetId) || typeof value.state !== "string" || ![
+    "reserved",
+    "uploading",
+    "verifying",
+    "ready",
+    "deleting",
+    "deleted"
+  ].includes(value.state) || typeof value.retention !== "string" || !["temporary", "permanent"].includes(value.retention) || typeof value.visibility !== "string" || !["public", "private"].includes(value.visibility) || typeof value.contentType !== "string" || !STATIC_ASSET_CONTENT_TYPES.includes(value.contentType) || !safeBytes(value.byteLength) || value.byteLength < 1 || value.byteLength > (value.contentType.startsWith("image/") ? ASSET_STORAGE_LIMITS.maxImageBytes : ASSET_STORAGE_LIMITS.maxVideoBytes) || typeof value.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.sha256) || !validDate(value.createdAt) || value.partBytes !== ASSET_STORAGE_LIMITS.multipartBytes || value.partCount !== Math.ceil(value.byteLength / ASSET_STORAGE_LIMITS.multipartBytes) || (value.retention === "permanent" ? value.expiresAt !== null : !validDate(value.expiresAt) || Date.parse(value.expiresAt) <= Date.parse(value.createdAt)))
+    return null;
+  return value;
+}
+function parseOwnerAssetPage(value) {
+  if (!exact(value, ["assets", "next"]) || !Array.isArray(value.assets) || value.assets.length > 100 || value.next !== null && (typeof value.next !== "string" || !ASSET_ID.test(value.next)))
+    return null;
+  const assets = [];
+  for (const candidate of value.assets) {
+    const record = parseOwnerAssetRecord(candidate);
+    if (!record || assets.length && assets[assets.length - 1].assetId >= record.assetId)
+      return null;
+    assets.push(record);
+  }
+  if (value.next !== null && value.next !== assets.at(-1)?.assetId)
+    return null;
+  return { assets, next: value.next };
+}
+// ../contracts/src/owner-assets.ts
+var ROOT = "/v1/sites/{projectId}/artifact-uploads/{uploadId}/assets/{ordinal}";
+var OPERATIONS = [
+  [
+    "assets.policy",
+    "GET",
+    "/v1/sites/assets/policy",
+    "none",
+    "OwnerAssetStoragePolicyV1",
+    "sites.read"
+  ],
+  [
+    "assets.list",
+    "GET",
+    "/v1/sites/assets",
+    "cursor_and_limit",
+    "OwnerAssetPageV1",
+    "sites.read"
+  ],
+  [
+    "assets.upload",
+    "POST",
+    ROOT,
+    "confirmed_manifest_no_body",
+    "AssetRecordV1",
+    "sites.publish"
+  ],
+  [
+    "assets.promote",
+    "POST",
+    `${ROOT}/promote`,
+    "owned_source_asset_id",
+    "AssetRecordV1",
+    "sites.publish"
+  ],
+  [
+    "assets.delete",
+    "DELETE",
+    "/v1/sites/assets/{assetId}",
+    "none",
+    "AssetRecordV1",
+    "sites.publish"
+  ],
+  [
+    "assets.resolve",
+    "GET",
+    "/v1/sites/assets/{assetId}",
+    "none",
+    "AssetRecordV1",
+    "sites.read"
+  ]
+];
+var LOCAL = {
+  manifestFile: "taku.assets.json",
+  artifactSchema: "taku.sites.artifact.v2",
+  assetManifestSchema: "taku.sites.asset-manifest.v1",
+  temporaryTtlSeconds: ASSET_STORAGE_LIMITS.temporaryTtlSeconds,
+  multipartBytes: ASSET_STORAGE_LIMITS.multipartBytes,
+  filesPerRelease: ASSET_STORAGE_LIMITS.filesPerRelease,
+  contentTypes: [...STATIC_ASSET_CONTENT_TYPES],
+  retention: ["temporary", "permanent"],
+  visibility: ["public", "private"],
+  logicalContentPrefix: "/__taku/assets/by-path",
+  preview: "local_files_no_cloud_allocation",
+  capacityUnit: "account_shared_bytes",
+  uploadPartPath: `${ROOT}/parts/{partNumber}`,
+  uploadCompletePath: `${ROOT}/complete`
+};
+function exact2(value, keys) {
+  return !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === keys.length && Object.keys(value).every((key) => keys.includes(key));
+}
+function parseOwnerAssetCapabilities(value) {
+  if (!exact2(value, [
+    "schema",
+    "actor",
+    "visitorSdk",
+    "policy",
+    "local",
+    "operations",
+    "errors"
+  ]) || value.schema !== "taku.sites.owner-assets-capabilities.v1" || value.actor !== "authenticated_owner" || value.visitorSdk !== false)
+    return null;
+  const policy = parseOwnerAssetPolicy(value.policy);
+  if (!policy || !exact2(value.local, Object.keys(LOCAL)))
+    return null;
+  for (const [key, expected] of Object.entries(LOCAL)) {
+    const actual = value.local[key];
+    if (Array.isArray(expected) ? !Array.isArray(actual) || JSON.stringify(actual) !== JSON.stringify(expected) : actual !== expected)
+      return null;
+  }
+  if (!Array.isArray(value.operations) || value.operations.length !== OPERATIONS.length)
+    return null;
+  for (const [index, operation] of value.operations.entries()) {
+    const definition = OPERATIONS[index];
+    if (!definition || !exact2(operation, [
+      "id",
+      "declared",
+      "authorized",
+      "available",
+      "reason",
+      "scopes",
+      "method",
+      "path",
+      "input",
+      "output"
+    ]) || operation.id !== definition[0] || operation.method !== definition[1] || operation.path !== definition[2] || operation.input !== definition[3] || operation.output !== definition[4] || !Array.isArray(operation.scopes) || operation.scopes.length !== 1 || operation.scopes[0] !== definition[5] || operation.declared !== true || typeof operation.authorized !== "boolean" || typeof operation.available !== "boolean" || operation.reason !== null && (typeof operation.reason !== "string" || ![
+      "provider_unavailable",
+      "publishing_disabled",
+      "storage_capacity_exhausted"
+    ].includes(operation.reason)) || operation.available !== (operation.reason === null))
+      return null;
+  }
+  if (!Array.isArray(value.errors) || value.errors.length < 1 || value.errors.length > 20)
+    return null;
+  for (const error of value.errors) {
+    if (!exact2(error, ["status", "code", "action"]) || typeof error.status !== "number" || !Number.isInteger(error.status) || error.status < 400 || error.status > 599 || typeof error.code !== "string" || !/^[A-Z][A-Z0-9_]{2,127}$/.test(error.code) || typeof error.action !== "string" || !/^[a-z][a-z_]{2,127}$/.test(error.action))
+      return null;
+  }
+  return { ...value, policy };
+}
+// ../contracts/src/artifact-v2.ts
+function parseCompatibleArtifactDescriptor(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !("schema" in value) || value.schema !== "taku.sites.artifact.v2")
+    return parseArtifactDescriptor(value);
+  const { assetManifest: candidate, ...rest } = value;
+  const assetManifest = parseAssetManifest(candidate);
+  if (!assetManifest)
+    return { ok: false, code: "MANIFEST_MISMATCH" };
+  const parsed = parseArtifactDescriptor({
+    ...rest,
+    schema: "taku.sites.artifact.v1"
+  });
+  if (!parsed.ok || parsed.value.assets.some((asset) => asset.contentType.toLowerCase().startsWith("image/") || asset.contentType.toLowerCase().startsWith("video/") || /\.(?:png|jpe?g|webp|avif|gif|svg|mp4|webm)$/i.test(asset.path)))
+    return { ok: false, code: "MANIFEST_MISMATCH" };
+  try {
+    if (new TextEncoder().encode(JSON.stringify(value)).byteLength > ARTIFACT_LIMITS.descriptorBytes)
+      return { ok: false, code: "MANIFEST_MISMATCH" };
+  } catch {
+    return { ok: false, code: "MANIFEST_MISMATCH" };
+  }
+  return {
+    ok: true,
+    value: { ...parsed.value, schema: "taku.sites.artifact.v2", assetManifest }
+  };
+}
+async function compatibleArtifactDigest(value) {
+  const parsed = parseCompatibleArtifactDescriptor(value);
+  if (!parsed.ok)
+    throw new Error("invalid_artifact_descriptor");
+  if (parsed.value.schema === "taku.sites.artifact.v1")
+    return artifactDigestFromDescriptor(parsed.value);
+  const {
+    projectId,
+    mainModule,
+    assets,
+    migrations,
+    siteManifest,
+    assetManifest
+  } = parsed.value;
+  return sha256(canonicalSiteJson({
+    schema: "taku.sites.artifact.v2",
+    projectId,
+    mainModule,
+    assets,
+    migrations,
+    siteManifest,
+    assetManifest
+  }));
+}
+async function materialContentDigest(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("invalid_content_descriptor");
+  const record = value;
+  const keys = [
+    "mainModule",
+    "assets",
+    "migrations",
+    "siteManifest",
+    "assetManifest"
+  ];
+  if (Object.keys(record).length !== keys.length || Object.keys(record).some((key) => !keys.includes(key)))
+    throw new Error("invalid_content_descriptor");
+  const parsed = parseCompatibleArtifactDescriptor({
+    ...record,
+    schema: "taku.sites.artifact.v2",
+    projectId: "prj_local_content",
+    buildId: "local_content_validation",
+    gitSha: "0000000000000000000000000000000000000000",
+    builtAt: "1970-01-01T00:00:00.000Z"
+  });
+  if (!parsed.ok || parsed.value.schema !== "taku.sites.artifact.v2")
+    throw new Error("invalid_content_descriptor");
+  return sha256(canonicalSiteJson({
+    ...JSON.parse(canonicalSiteContent(parsed.value)),
+    schema: "taku.sites.content.v2",
+    assetManifest: parsed.value.assetManifest
+  }));
+}
+async function sha256(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+// ../contracts/src/image-model-structured-parameters.ts
+var bytes = (value) => new TextEncoder().encode(value).byteLength;
+var record = (value) => !!value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+var safe = (value) => typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER;
+var integer = (value, maximum) => typeof value === "number" && Number.isSafeInteger(value) && value >= 1 && value <= maximum;
+function isImageModelParameterName(name) {
+  return /^[a-z][a-z0-9_]{0,63}$/.test(name) && !/(_urls?$|api_key|authorization|token)/.test(name) && ![
+    "provider",
+    "model",
+    "endpoint",
+    "payer",
+    "owner",
+    "prompt",
+    "input_ids",
+    "disable_safety_checker",
+    "disable_safety",
+    "schema_version"
+  ].includes(name);
+}
+function validImageModelStructuredSchema(value) {
+  const budget = { nodes: 0 };
+  const visit = (node, depth) => {
+    if (depth > 6 || ++budget.nodes > 256 || !record(node) || !Object.hasOwn(node, "type") || Object.hasOwn(node, "nullable") && typeof node.nullable !== "boolean")
+      return false;
+    const typeKeys = {
+      object: ["properties", "required"],
+      array: ["items", "maxItems"],
+      string: ["maxBytes"],
+      integer: ["minimum", "maximum"],
+      number: ["minimum", "maximum"],
+      boolean: []
+    };
+    if (typeof node.type !== "string" || !Object.hasOwn(typeKeys, node.type) || Object.keys(node).some((key) => ![
+      "type",
+      "nullable",
+      ...typeKeys[node.type] ?? []
+    ].includes(key)))
+      return false;
+    switch (node.type) {
+      case "object": {
+        if (!record(node.properties))
+          return false;
+        const entries = Object.entries(node.properties);
+        if (entries.length < 1 || entries.length > 64)
+          return false;
+        if (Object.hasOwn(node, "required")) {
+          if (!Array.isArray(node.required) || node.required.length > entries.length)
+            return false;
+          const required = new Set;
+          for (const name of node.required) {
+            if (typeof name !== "string" || !Object.hasOwn(node.properties, name) || required.has(name))
+              return false;
+            required.add(name);
+          }
+        }
+        return entries.every(([name, child]) => isImageModelParameterName(name) && visit(child, depth + 1));
+      }
+      case "array":
+        return integer(node.maxItems, 64) && visit(node.items, depth + 1);
+      case "string":
+        return integer(node.maxBytes, 4096);
+      case "integer":
+      case "number":
+        return safe(node.minimum) && safe(node.maximum) && node.minimum <= node.maximum && (node.type !== "integer" || Number.isSafeInteger(node.minimum) && Number.isSafeInteger(node.maximum));
+      case "boolean":
+        return true;
+      default:
+        return false;
+    }
+  };
+  return record(value) && value.type === "object" && value.nullable !== true && visit(value, 1);
+}
+function validImageModelStructuredValue(value) {
+  const budget = { nodes: 0 };
+  const visit = (node, depth) => {
+    if (depth > 6 || ++budget.nodes > 256)
+      return false;
+    if (node === null || typeof node === "boolean")
+      return true;
+    if (typeof node === "string")
+      return bytes(node) <= 4096;
+    if (typeof node === "number")
+      return safe(node);
+    if (Array.isArray(node)) {
+      if (node.length > 64)
+        return false;
+      for (let index = 0;index < node.length; index++)
+        if (!Object.hasOwn(node, index) || !visit(node[index], depth + 1))
+          return false;
+      return true;
+    }
+    if (!record(node))
+      return false;
+    const entries = Object.entries(node);
+    return entries.length <= 64 && entries.every(([name, child]) => isImageModelParameterName(name) && visit(child, depth + 1));
+  };
+  return record(value) && visit(value, 1) && bytes(JSON.stringify(value)) <= 16384;
+}
+function structuredValueMatchesSchema(schema, value) {
+  if (!validImageModelStructuredSchema(schema) || !validImageModelStructuredValue(value))
+    return false;
+  const visit = (s, node) => {
+    if (!s)
+      return false;
+    if (node === null)
+      return s.nullable === true;
+    switch (s.type) {
+      case "object":
+        return record(node) && (s.required ?? []).every((name) => Object.hasOwn(node, name)) && Object.entries(node).every(([name, child]) => Object.hasOwn(s.properties ?? {}, name) && visit(s.properties?.[name], child));
+      case "array":
+        return Array.isArray(node) && typeof s.maxItems === "number" && node.length <= s.maxItems && node.every((child) => visit(s.items, child));
+      case "string":
+        return typeof node === "string" && typeof s.maxBytes === "number" && bytes(node) <= s.maxBytes;
+      case "integer":
+      case "number":
+        return safe(node) && safe(s.minimum) && safe(s.maximum) && node >= s.minimum && node <= s.maximum && (s.type !== "integer" || Number.isSafeInteger(node));
+      case "boolean":
+        return typeof node === "boolean";
+    }
+  };
+  return visit(schema, value);
+}
+
+// ../contracts/src/image-models.ts
+var IMAGE_MODEL_SIZE_FEATURE_V1 = "size-constraints-v1";
+var IMAGE_MODEL_SIZE_FEATURE_V2 = "size-constraints-v2";
+var IMAGE_MODEL_INPUT_FEATURE_V1 = "input-contract-v1";
+var IMAGE_MODEL_INPUT_FEATURE_V2 = "input-contract-v2";
+var IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1 = "parameter-enum-v1";
+var IMAGE_MODEL_STRUCTURED_FEATURE_V1 = "structured-parameters-v1";
+var IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 = "aspect-ratio-v1";
+var IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1 = "generation-references-v1";
+
+class ImageModelCatalogError extends Error {
+  status;
+  code;
+  constructor(status, code) {
+    super(code);
+    this.status = status;
+    this.code = code;
+  }
+}
+var IMAGE_MODEL_CATALOG_MAX_BYTES = 512 * 1024;
+var SURFACES = [
+  "subapp",
+  "site-preview",
+  "site-published"
+];
+var REASONS = [
+  "runtime_bridge_unverified",
+  "provider_deprecated",
+  "provider_contract_unavailable",
+  "model_parameters_unverified",
+  "model_quote_unavailable"
+];
+var bytes2 = (value) => new TextEncoder().encode(value).byteLength;
+var bounded = (value, max) => typeof value === "string" && bytes2(value) <= max;
+var record2 = (value) => !!value && typeof value === "object" && !Array.isArray(value);
+var keys = (value, required, optional = []) => required.every((key) => Object.hasOwn(value, key)) && Object.keys(value).every((key) => required.includes(key) || optional.includes(key));
+var integer2 = (value, min, max) => typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= max;
+var finite = (value) => typeof value === "number" && Number.isFinite(value);
+var isImageOperation = (value) => value === "media.image.generate" || value === "media.image.edit";
+var cursor = (value) => bounded(value, 1024) && /^[A-Za-z0-9_-]+$/.test(value);
+var unavailable = () => {
+  throw new ImageModelCatalogError(503, "image_model_catalog_unavailable");
+};
+function parseImageModelQuery(value) {
+  if (!record2(value) || !keys(value, ["operation"], ["query", "cursor", "limit"]) || !isImageOperation(value.operation) || value.query !== undefined && !bounded(value.query, 128) || value.cursor !== undefined && !cursor(value.cursor) || value.limit !== undefined && !integer2(value.limit, 1, 100)) {
+    throw new ImageModelCatalogError(400, "invalid_image_model_catalog_query");
+  }
+  return {
+    operation: value.operation,
+    limit: value.limit ?? 50,
+    ...value.query === undefined ? {} : { query: value.query.trim().toLowerCase() },
+    ...value.cursor === undefined ? {} : { cursor: value.cursor }
+  };
+}
+function validSizeConstraints(value, parameter, feature) {
+  const grid = feature === IMAGE_MODEL_SIZE_FEATURE_V2 || feature === IMAGE_MODEL_INPUT_FEATURE_V1 || feature === IMAGE_MODEL_INPUT_FEATURE_V2 || feature === IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1 || feature === IMAGE_MODEL_STRUCTURED_FEATURE_V1 || (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1);
+  if (!record2(value) || !keys(value, [
+    "minWidth",
+    "maxWidth",
+    "minHeight",
+    "maxHeight",
+    "minPixels",
+    "maxPixels",
+    ...grid ? ["widthStep", "heightStep"] : []
+  ], ["minAspectRatio", "maxAspectRatio"]))
+    return false;
+  if (!integer2(value.minWidth, 1, 4096) || !integer2(value.maxWidth, value.minWidth, 4096) || !integer2(value.minHeight, 1, 4096) || !integer2(value.maxHeight, value.minHeight, 4096) || !integer2(value.minPixels, 1, 8388608) || !integer2(value.maxPixels, value.minPixels, 8388608) || value.minWidth * value.minHeight > value.maxPixels || value.maxWidth * value.maxHeight < value.minPixels)
+    return false;
+  if (grid && (!integer2(value.widthStep, 1, 4096) || !integer2(value.heightStep, 1, 4096)))
+    return false;
+  const widthStep = grid ? value.widthStep : 1;
+  const heightStep = grid ? value.heightStep : 1;
+  const minimumWidth = Math.ceil(value.minWidth / widthStep) * widthStep;
+  const minimumHeight = Math.ceil(value.minHeight / heightStep) * heightStep;
+  const maximumWidth = Math.floor(value.maxWidth / widthStep) * widthStep;
+  const maximumHeight = Math.floor(value.maxHeight / heightStep) * heightStep;
+  if (minimumWidth > maximumWidth || minimumHeight > maximumHeight || minimumWidth * minimumHeight > value.maxPixels || maximumWidth * maximumHeight < value.minPixels)
+    return false;
+  if (finite(parameter.minimum) && (value.minWidth < parameter.minimum || value.minHeight < parameter.minimum) || finite(parameter.maximum) && (value.maxWidth > parameter.maximum || value.maxHeight > parameter.maximum))
+    return false;
+  for (const key of ["minAspectRatio", "maxAspectRatio"]) {
+    if (Object.hasOwn(value, key) && (!finite(value[key]) || value[key] < 1 / 4096 || value[key] > 4096))
+      return false;
+  }
+  if (finite(value.minAspectRatio) && (finite(value.maxAspectRatio) && value.minAspectRatio > value.maxAspectRatio || value.minAspectRatio > maximumWidth / minimumHeight))
+    return false;
+  if (finite(value.maxAspectRatio) && value.maxAspectRatio < minimumWidth / maximumHeight)
+    return false;
+  return true;
+}
+function sizeWithinConstraints(size, constraints) {
+  const pixels = size.width * size.height;
+  return size.width >= constraints.minWidth && size.width <= constraints.maxWidth && size.height >= constraints.minHeight && size.height <= constraints.maxHeight && size.width % (constraints.widthStep ?? 1) === 0 && size.height % (constraints.heightStep ?? 1) === 0 && pixels >= constraints.minPixels && pixels <= constraints.maxPixels && (constraints.minAspectRatio === undefined || size.width >= constraints.minAspectRatio * size.height) && (constraints.maxAspectRatio === undefined || size.width <= constraints.maxAspectRatio * size.height);
+}
+function validAspectRatioValue(value, minimum, maximum) {
+  if (!bounded(value, 11))
+    return false;
+  const match = /^([1-9][0-9]{0,4}):([1-9][0-9]{0,4})$/.exec(value);
+  if (!match || match[0] !== value)
+    return false;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  return width >= minimum * height && width <= maximum * height;
+}
+function validParameter(value, name, outputs, feature) {
+  if (record2(value) && value.type === "aspect-ratio") {
+    return (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1) && keys(value, ["type", "minimum", "maximum"], ["required", "default"]) && (value.required === undefined || typeof value.required === "boolean") && !["sync_mode", "enable_safety_checker", "limit_generations", "num_images"].includes(name) && finite(value.minimum) && finite(value.maximum) && value.minimum >= 1 / 99999 && value.maximum <= 99999 && value.minimum <= value.maximum && (!Object.hasOwn(value, "default") || validAspectRatioValue(value.default, value.minimum, value.maximum));
+  }
+  if (record2(value) && (value.type === "object" || Object.hasOwn(value, "structuredSchema"))) {
+    return (feature === IMAGE_MODEL_STRUCTURED_FEATURE_V1 || (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1)) && value.type === "object" && keys(value, ["type", "structuredSchema"], ["required", "default"]) && (value.required === undefined || typeof value.required === "boolean") && !["sync_mode", "enable_safety_checker", "limit_generations", "num_images"].includes(name) && validImageModelStructuredSchema(value.structuredSchema) && (!Object.hasOwn(value, "default") || structuredValueMatchesSchema(value.structuredSchema, value.default));
+  }
+  if (!record2(value) || !keys(value, ["type"], [
+    "values",
+    "minimum",
+    "maximum",
+    "required",
+    "default",
+    "sizeConstraints",
+    ...feature === IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1 || feature === IMAGE_MODEL_STRUCTURED_FEATURE_V1 || (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1) ? ["integerValues"] : []
+  ]) || value.required !== undefined && typeof value.required !== "boolean" || value.minimum !== undefined && !finite(value.minimum) || value.maximum !== undefined && !finite(value.maximum) || finite(value.minimum) && finite(value.maximum) && value.minimum > value.maximum)
+    return false;
+  const enumeration = value.values;
+  if (value.type === "enum") {
+    if (!Array.isArray(enumeration) || enumeration.length < 1 || enumeration.length > 64 || !enumeration.every((item) => bounded(item, 256)))
+      return false;
+  } else if (enumeration !== undefined)
+    return false;
+  const numericChoices = value.integerValues;
+  if (Object.hasOwn(value, "integerValues")) {
+    if (feature !== IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1 && feature !== IMAGE_MODEL_STRUCTURED_FEATURE_V1 && feature !== IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 && feature !== IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1 || value.type !== "integer" || !Array.isArray(numericChoices) || numericChoices.length < 1 || numericChoices.length > 64)
+      return false;
+    for (let index = 0;index < numericChoices.length; index++) {
+      const choice = numericChoices[index];
+      if (!integer2(choice, -9007199254740991, 9007199254740991) || index > 0 && choice <= numericChoices[index - 1] || finite(value.minimum) && choice < value.minimum || finite(value.maximum) && choice > value.maximum)
+        return false;
+    }
+  }
+  if (!["enum", "string", "integer", "number", "boolean", "size"].includes(String(value.type)))
+    return false;
+  if (Object.hasOwn(value, "sizeConstraints") && (value.type !== "size" || !validSizeConstraints(value.sizeConstraints, value, feature)))
+    return false;
+  if (["sync_mode", "enable_safety_checker", "limit_generations"].includes(name) && value.type !== "boolean")
+    return false;
+  if (name === "num_images" && (value.type !== "integer" || finite(value.maximum) && value.maximum > outputs))
+    return false;
+  if (!Object.hasOwn(value, "default"))
+    return true;
+  const fallback = value.default;
+  if (name === "sync_mode" && fallback !== false || ["enable_safety_checker", "limit_generations"].includes(name) && fallback !== true || name === "num_images" && !integer2(fallback, 1, outputs))
+    return false;
+  switch (value.type) {
+    case "enum":
+      return enumeration.includes(fallback);
+    case "string":
+      return bounded(fallback, 4096);
+    case "boolean":
+      return typeof fallback === "boolean";
+    case "number":
+    case "integer":
+      return finite(fallback) && (value.type !== "integer" || Number.isSafeInteger(fallback)) && (!Array.isArray(numericChoices) || numericChoices.includes(fallback)) && (!finite(value.minimum) || fallback >= value.minimum) && (!finite(value.maximum) || fallback <= value.maximum);
+    case "size":
+      return record2(fallback) && keys(fallback, ["width", "height"]) && integer2(fallback.width, 1, 4096) && integer2(fallback.height, 1, 4096) && fallback.width * fallback.height <= 8 * 1024 * 1024 && (!finite(value.minimum) || fallback.width >= value.minimum && fallback.height >= value.minimum) && (!finite(value.maximum) || fallback.width <= value.maximum && fallback.height <= value.maximum) && (!Object.hasOwn(value, "sizeConstraints") || sizeWithinConstraints({ width: fallback.width, height: fallback.height }, value.sizeConstraints));
+    default:
+      return false;
+  }
+}
+function validModel(value, operation, feature) {
+  const generationFeature = feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1;
+  const inputFeature = feature === IMAGE_MODEL_INPUT_FEATURE_V1 || feature === IMAGE_MODEL_INPUT_FEATURE_V2 || feature === IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1 || feature === IMAGE_MODEL_STRUCTURED_FEATURE_V1 || (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1);
+  const referenceFeature = feature === IMAGE_MODEL_INPUT_FEATURE_V2 || feature === IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1 || feature === IMAGE_MODEL_STRUCTURED_FEATURE_V1 || (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1);
+  if (!record2(value) || !keys(value, [
+    "id",
+    "displayName",
+    "operations",
+    "availability",
+    "parameterSchemaVersion",
+    "priceVersion",
+    "parameters",
+    "maximumInputs",
+    "maximumOutputs"
+  ], inputFeature ? ["inputContract"] : []) || !bounded(value.id, 96) || !/^[a-z][a-z0-9.-]{0,95}$/.test(value.id) || !bounded(value.displayName, 256) || !value.displayName.trim() || !Array.isArray(value.operations) || value.operations.length !== 1 || value.operations[0] !== operation || !bounded(value.parameterSchemaVersion, 128) || !bounded(value.priceVersion, 128) || !integer2(value.maximumInputs, operation === "media.image.edit" ? 1 : 0, operation === "media.image.edit" ? referenceFeature ? 17 : 16 : generationFeature ? 16 : 0) || !integer2(value.maximumOutputs, 1, (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1) && value.id === "muse-image" && value.parameterSchemaVersion === `muse-image-${operation === "media.image.edit" ? "edit" : "generate"}-v2-2026-10-09` ? 10 : 4) || !record2(value.availability) || !keys(value.availability, SURFACES))
+    return false;
+  let referenceMask = false;
+  let generationReferences = false;
+  if (Object.hasOwn(value, "inputContract")) {
+    const contract = value.inputContract;
+    if (!record2(contract) || !Array.isArray(contract.roles))
+      return false;
+    if (contract.schema === "taku.image-input-contract.v3") {
+      const policy = contract.generationReferences;
+      if (!generationFeature || operation !== "media.image.generate" || contract.sameDimensions !== false || contract.roles.length !== 1 || contract.roles[0] !== "reference" || !keys(contract, ["schema", "roles", "sameDimensions", "generationReferences"]) || !record2(policy) || !keys(policy, ["minimumReferences", "maximumReferences"]) || policy.minimumReferences !== 0 || !integer2(policy.maximumReferences, 1, 16) || value.maximumInputs !== policy.maximumReferences)
+        return false;
+      generationReferences = true;
+    } else {
+      if (operation !== "media.image.edit" || !Array.isArray(contract.roles) || contract.roles.length !== 2 || contract.roles[0] !== "source" || contract.roles[1] !== "mask")
+        return false;
+      if (contract.schema === "taku.image-input-contract.v1") {
+        if (value.maximumInputs !== 2 || contract.sameDimensions !== true || !keys(contract, ["schema", "roles", "sameDimensions"]))
+          return false;
+      } else {
+        const policy = contract.referenceMask;
+        if (!referenceFeature || contract.schema !== "taku.image-input-contract.v2" || contract.sameDimensions !== false || value.maximumInputs !== 17 || !keys(contract, ["schema", "roles", "sameDimensions", "referenceMask"]) || !record2(policy) || !keys(policy, ["minimumSources", "maximumSources", "maskParameter", "maskMatchesFirstSource"]) || policy.minimumSources !== 1 || policy.maximumSources !== 16 || policy.maskParameter !== "mask_input" || policy.maskMatchesFirstSource !== true)
+          return false;
+        referenceMask = true;
+      }
+    }
+  }
+  if (operation === "media.image.generate" && value.maximumInputs !== 0 && !generationReferences)
+    return false;
+  if (value.maximumInputs === 17 && !referenceMask)
+    return false;
+  let ready = false;
+  for (const surface of SURFACES) {
+    const state = value.availability[surface];
+    if (!record2(state) || !keys(state, ["status"], ["reason"]))
+      return false;
+    if (state.status === "ready") {
+      if (state.reason !== undefined)
+        return false;
+      ready = true;
+    } else if (!["unavailable", "deprecated"].includes(String(state.status)) || !REASONS.includes(String(state.reason)))
+      return false;
+  }
+  if (ready && (!value.parameterSchemaVersion || !value.priceVersion || !record2(value.parameters)))
+    return false;
+  if (value.parameters === null) {
+    if (referenceMask) {
+      const availability = value.availability;
+      return !value.parameterSchemaVersion && !value.priceVersion && SURFACES.every((surface) => {
+        const state = availability[surface];
+        return record2(state) && state.status === "unavailable" && state.reason === "provider_contract_unavailable";
+      });
+    }
+    return !ready;
+  }
+  if (!record2(value.parameters) || Object.keys(value.parameters).length > 64)
+    return false;
+  if (referenceMask) {
+    const selector = value.parameters.mask_input;
+    if (!record2(selector) || !keys(selector, ["type", "minimum", "maximum"], ["required"]) || selector.type !== "integer" || selector.minimum !== 2 || selector.maximum !== 17 || selector.required === true)
+      return false;
+  }
+  for (const [name, parameter] of Object.entries(value.parameters)) {
+    if (!isImageModelParameterName(name) || !validParameter(parameter, name, value.maximumOutputs, feature))
+      return false;
+  }
+  return true;
+}
+function parseImageModelCatalog(value, operation, limit, feature = IMAGE_MODEL_SIZE_FEATURE_V1) {
+  if (![IMAGE_MODEL_SIZE_FEATURE_V1, IMAGE_MODEL_SIZE_FEATURE_V2, IMAGE_MODEL_INPUT_FEATURE_V1, IMAGE_MODEL_INPUT_FEATURE_V2, IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1, IMAGE_MODEL_STRUCTURED_FEATURE_V1, IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1, IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1].includes(feature) || !record2(value) || !keys(value, [
+    "schema",
+    "catalogVersion",
+    "observedAt",
+    "models",
+    "nextCursor"
+  ]) || value.schema !== "taku.image-model-catalog.v1" || !bounded(value.catalogVersion, 64) || !/^[a-f0-9]{64}$/.test(value.catalogVersion) || !bounded(value.observedAt, 64) || !/^\d{4}-\d{2}-\d{2}T.*Z$/.test(value.observedAt) || !Number.isFinite(Date.parse(value.observedAt)) || !integer2(limit, 1, 100) || !Array.isArray(value.models) || value.models.length > limit || value.nextCursor !== null && !cursor(value.nextCursor))
+    return unavailable();
+  const ids = new Set;
+  for (const model of value.models) {
+    if (!validModel(model, operation, feature) || ids.has(model.id))
+      return unavailable();
+    ids.add(model.id);
+  }
+  if (value.models.length === 0 && value.nextCursor !== null)
+    return unavailable();
+  return structuredClone(value);
+}
+// ../contracts/src/image-executions.ts
+var IMAGE_EXECUTION_MAX_BYTES = 128 * 1024;
+var IMAGE_EXECUTION_ERRORS = new Set([
+  "image_model_unavailable",
+  "image_model_receipt_unavailable",
+  "image_execution_not_found",
+  "image_results_pending",
+  "image_model_authorization_unavailable",
+  "image_model_quote_not_found",
+  "image_execution_submission_uncertain",
+  "image_execution_submission_already_attempted",
+  "image_execution_cancelled",
+  "media_asset_conflict",
+  "media_job_conflict",
+  "media_job_not_found",
+  "image_model_quote_expired",
+  "image_model_quote_conflict",
+  "image_model_request_conflict",
+  "invalid_image_model_request",
+  "image_model_access_denied",
+  "media_asset_not_found",
+  "media_asset_expired",
+  "media_asset_not_ready",
+  "media_asset_failed",
+  "media_asset_unavailable",
+  "invalid_request_id",
+  "invalid_idempotency_key",
+  "media_input_invalid",
+  "insufficient_credits",
+  "authentication_required",
+  "preview_session_required",
+  "capability_unavailable",
+  "site_frozen",
+  "site_unavailable",
+  "site_media_rate_limited",
+  "site_quota_unavailable",
+  "forbidden",
+  "insufficient_scope",
+  "scope_not_declared",
+  "integration_not_declared",
+  "operation_not_declared",
+  "SITE_CAPABILITY_INTERNAL_ONLY",
+  "request_too_large"
+]);
 // src/artifact-builder.ts
-import { Buffer } from "node:buffer";
-import { createHash } from "node:crypto";
-import { constants } from "node:fs";
-import { lstat, open, readFile, readdir, realpath, stat } from "node:fs/promises";
-import path from "node:path";
+import { Buffer as Buffer2 } from "node:buffer";
+import { createHash as createHash2 } from "node:crypto";
+import { constants as constants2 } from "node:fs";
+import {
+  lstat as lstat2,
+  open as open2,
+  readFile,
+  readdir,
+  realpath as realpath2,
+  stat
+} from "node:fs/promises";
+import path2 from "node:path";
 
 // ../../node_modules/.bun/acorn@8.18.0/node_modules/acorn/dist/acorn.mjs
 var astralIdentifierCodes = [509, 0, 227, 0, 150, 4, 294, 9, 1368, 2, 2, 1, 6, 3, 41, 2, 5, 0, 166, 1, 574, 3, 9, 9, 7, 9, 32, 4, 318, 1, 78, 5, 71, 10, 50, 3, 123, 2, 54, 14, 32, 10, 3, 1, 11, 3, 46, 10, 8, 0, 46, 9, 7, 2, 37, 13, 2, 9, 6, 1, 45, 0, 13, 2, 49, 13, 9, 3, 2, 11, 83, 11, 7, 0, 3, 0, 158, 11, 6, 9, 7, 3, 56, 1, 2, 6, 3, 1, 3, 2, 10, 0, 11, 1, 3, 6, 4, 4, 68, 8, 2, 0, 3, 0, 2, 3, 2, 4, 2, 0, 15, 1, 83, 17, 10, 9, 5, 0, 82, 19, 13, 9, 214, 6, 3, 8, 28, 1, 83, 16, 16, 9, 82, 12, 9, 9, 7, 19, 58, 14, 5, 9, 243, 14, 166, 9, 71, 5, 2, 1, 3, 3, 2, 0, 2, 1, 13, 9, 120, 6, 3, 6, 4, 0, 29, 9, 41, 6, 2, 3, 9, 0, 10, 10, 47, 15, 199, 7, 137, 9, 54, 7, 2, 7, 17, 9, 57, 21, 2, 13, 123, 5, 4, 0, 2, 1, 2, 6, 2, 0, 9, 9, 49, 4, 2, 1, 2, 4, 9, 9, 55, 9, 266, 3, 10, 1, 2, 0, 49, 6, 4, 4, 14, 10, 5350, 0, 7, 14, 11465, 27, 2343, 9, 87, 9, 39, 4, 60, 6, 26, 9, 535, 9, 470, 0, 2, 54, 8, 3, 82, 0, 12, 1, 19628, 1, 4178, 9, 519, 45, 3, 22, 543, 4, 4, 5, 9, 7, 3, 6, 31, 3, 149, 2, 1418, 49, 513, 54, 5, 49, 9, 0, 15, 0, 23, 4, 2, 14, 1361, 6, 2, 16, 3, 6, 2, 1, 2, 4, 101, 0, 161, 6, 10, 9, 357, 0, 62, 13, 499, 13, 245, 1, 2, 9, 233, 0, 3, 0, 8, 1, 6, 0, 475, 6, 110, 6, 6, 9, 4759, 9, 787719, 239];
@@ -5604,6 +6358,15 @@ function parse3(input, options) {
 
 // src/site-sdk-contract.ts
 var AIRBNB_OPERATIONS = new Set(["autocomplete", "search", "detail", "price"]);
+var IMAGE_EXECUTION_METHODS = new Set([
+  "media.quoteImageRequest",
+  "media.submitImageRequest",
+  "media.getImageExecution",
+  "media.findImageExecution",
+  "media.cancelImageExecution",
+  "media.getImageOutputs",
+  "media.getImageOutputLink"
+]);
 function siteSdkContractError(source, kind, manifest) {
   let program;
   try {
@@ -5631,9 +6394,15 @@ function siteSdkContractError(source, kind, manifest) {
   const sessionFunctions = new Set;
   let importsSdk = false;
   for (const node of nodes) {
-    if (node.type === "ImportDeclaration" && literal2(node.source)?.startsWith("@taku-sites/sdk")) {
+    if (node.type === "ImportDeclaration") {
+      const moduleName = literal2(node.source);
+      const packageSdk = moduleName?.startsWith("@taku-sites/sdk") === true;
+      const localModule = moduleName?.startsWith("./") === true || moduleName?.startsWith("../") === true;
+      const specifiers = node.specifiers.filter((specifier) => packageSdk || localModule && ["createTakuSitesClient", "taku"].includes(identifier(specifier.imported) ?? ""));
+      if (specifiers.length === 0)
+        continue;
       importsSdk = true;
-      for (const specifier of node.specifiers) {
+      for (const specifier of specifiers) {
         const name = identifier(specifier.local);
         if (!name)
           continue;
@@ -5682,6 +6451,22 @@ function siteSdkContractError(source, kind, manifest) {
     const route = parts.slice(1).join(".");
     const args = node.arguments;
     if (route.startsWith("media.")) {
+      if (IMAGE_EXECUTION_METHODS.has(route)) {
+        const requested = literal2(args[0]);
+        if (requested !== null && !["media.image.generate", "media.image.edit"].includes(requested))
+          return "SITE_SDK_OPERATION_UNSUPPORTED";
+        if (!usableMedia.some(([scope2]) => scope2 !== "media.video.generate" && (requested === null || scope2 === requested)))
+          return "SITE_SDK_CAPABILITY_UNDECLARED";
+        continue;
+      }
+      if (route === "media.listImageModels") {
+        const requested = objectLiteral(args[0], "operation");
+        if (requested !== null && !["media.image.generate", "media.image.edit"].includes(requested))
+          return "SITE_SDK_OPERATION_UNSUPPORTED";
+        if (!usableMedia.some(([scope2]) => scope2 !== "media.video.generate" && (requested === null || scope2 === requested)))
+          return "SITE_SDK_CAPABILITY_UNDECLARED";
+        continue;
+      }
       const scope = ["media.createInput", "media.uploadInput", "media.editImage"].includes(route) ? "media.image.edit" : route === "media.generateImage" ? "media.image.generate" : route === "media.generateVideo" ? "media.video.generate" : null;
       if (!scope && !["media.getJob", "media.getAsset", "media.getAssetLink"].includes(route))
         return "SITE_SDK_OPERATION_UNSUPPORTED";
@@ -5723,6 +6508,15 @@ function identifier(value) {
 function literal2(value) {
   return isNode(value) && value.type === "Literal" && typeof value.value === "string" ? value.value : null;
 }
+function objectLiteral(value, key) {
+  if (!isNode(value) || value.type !== "ObjectExpression")
+    return null;
+  for (const property of value.properties) {
+    if (property.type === "Property" && (identifier(property.key) ?? literal2(property.key)) === key)
+      return literal2(property.value);
+  }
+  return null;
+}
 function members(value) {
   if (!isNode(value))
     return null;
@@ -5736,6 +6530,212 @@ function members(value) {
   const parent = members(value.object);
   const property = value.computed ? literal2(value.property) : identifier(value.property);
   return parent && property ? [...parent, property] : null;
+}
+
+// src/material-files.ts
+import { createHash } from "node:crypto";
+import { Buffer } from "node:buffer";
+import { constants } from "node:fs";
+import { lstat, open, realpath } from "node:fs/promises";
+import path from "node:path";
+function fail(code) {
+  throw new SiteArtifactBuildError(code);
+}
+var sameIdentity = (a, b) => a.dev === b.dev && a.ino === b.ino && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
+async function inspectLocalMaterials(projectRoot, signal) {
+  signal?.throwIfAborted();
+  const manifestPath = path.join(projectRoot, "taku.assets.json");
+  const info = await lstat(manifestPath).catch((error) => {
+    if (error?.code === "ENOENT")
+      return;
+    throw error;
+  });
+  if (!info)
+    return;
+  if (info.isSymbolicLink())
+    fail("SYMLINK_NOT_ALLOWED");
+  if (!info.isFile() || info.size > ARTIFACT_LIMITS.descriptorBytes)
+    fail("INVALID_MATERIAL_MANIFEST");
+  const handle = await open(manifestPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+  let manifest = null;
+  try {
+    const before = await handle.stat();
+    if (!sameIdentity(info, before) || before.size !== info.size)
+      fail("BUILD_CHANGED");
+    const bytes3 = Buffer.alloc(info.size + 1);
+    let count = 0;
+    while (count < bytes3.length) {
+      signal?.throwIfAborted();
+      const read = await handle.read(bytes3, count, bytes3.length - count, count);
+      if (!read.bytesRead)
+        break;
+      count += read.bytesRead;
+    }
+    if (count !== info.size || !sameIdentity(before, await handle.stat()))
+      fail("BUILD_CHANGED");
+    try {
+      manifest = parseAssetManifest(JSON.parse(bytes3.subarray(0, count).toString("utf8")));
+    } catch {
+      fail("INVALID_MATERIAL_MANIFEST");
+    }
+  } finally {
+    await handle.close();
+  }
+  if (!manifest)
+    fail("INVALID_MATERIAL_MANIFEST");
+  const files = [];
+  for (const file of manifest.files) {
+    signal?.throwIfAborted();
+    assertArtifactFileName(file.sourcePath);
+    assertArtifactFileName(file.logicalPath);
+    const {
+      handle: source,
+      absolutePath,
+      identity
+    } = await openSource(projectRoot, file);
+    try {
+      const buffer = Buffer.alloc(Math.min(file.size, ASSET_STORAGE_LIMITS.multipartBytes));
+      const prefix = Buffer.alloc(Math.min(file.size, 4096));
+      const hash = createHash("sha256");
+      let count = 0, prefixCount = 0;
+      while (count < file.size) {
+        signal?.throwIfAborted();
+        const read = await source.read(buffer, 0, Math.min(buffer.length, file.size - count), count);
+        if (!read.bytesRead)
+          break;
+        const chunk = buffer.subarray(0, read.bytesRead);
+        hash.update(chunk);
+        const take = Math.min(prefix.length - prefixCount, chunk.length);
+        chunk.copy(prefix, prefixCount, 0, take);
+        prefixCount += take;
+        count += read.bytesRead;
+      }
+      const after = await source.stat();
+      if (count !== file.size || after.size !== file.size || !sameIdentity(identity, after) || hash.digest("hex") !== file.sha256)
+        fail("BUILD_CHANGED");
+      if (detectedType(prefix.subarray(0, prefixCount)) !== file.contentType)
+        fail("INVALID_MATERIAL_FILE");
+      files.push({ ...file, projectRoot, absolutePath, identity });
+    } finally {
+      await source.close();
+    }
+  }
+  return { manifest, files };
+}
+async function readMaterialPart(file, partNumber, signal) {
+  if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > Math.ceil(file.size / ASSET_STORAGE_LIMITS.multipartBytes))
+    fail("INVALID_MATERIAL_PART");
+  signal?.throwIfAborted();
+  const opened = await openSource(file.projectRoot, file);
+  try {
+    if (opened.absolutePath !== file.absolutePath || !sameIdentity(file.identity, opened.identity))
+      fail("BUILD_CHANGED");
+    const offset2 = (partNumber - 1) * ASSET_STORAGE_LIMITS.multipartBytes;
+    const bytes3 = Buffer.alloc(Math.min(ASSET_STORAGE_LIMITS.multipartBytes, file.size - offset2));
+    let count = 0;
+    while (count < bytes3.length) {
+      signal?.throwIfAborted();
+      const result = await opened.handle.read(bytes3, count, bytes3.length - count, offset2 + count);
+      if (!result.bytesRead)
+        break;
+      count += result.bytesRead;
+    }
+    const after = await opened.handle.stat();
+    if (count !== bytes3.length || after.size !== file.size || !sameIdentity(file.identity, after))
+      fail("BUILD_CHANGED");
+    return bytes3;
+  } finally {
+    await opened.handle.close();
+  }
+}
+async function openSource(root, file) {
+  if (await realpath(root).catch(() => {
+    return;
+  }) !== root)
+    fail("BUILD_CHANGED");
+  const candidate = path.resolve(root, file.sourcePath);
+  const relative = path.relative(root, candidate);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative))
+    fail("PATH_OUTSIDE_PROJECT");
+  let cursor2 = root;
+  for (const segment of file.sourcePath.split("/")) {
+    cursor2 = path.join(cursor2, segment);
+    const info2 = await lstat(cursor2).catch(() => {
+      return;
+    });
+    if (!info2)
+      fail("BUILD_CHANGED");
+    if (info2.isSymbolicLink())
+      fail("SYMLINK_NOT_ALLOWED");
+  }
+  const resolved = await realpath(candidate);
+  if (resolved !== candidate)
+    fail("BUILD_CHANGED");
+  const info = await lstat(resolved);
+  if (!info.isFile() || info.size !== file.size)
+    fail("BUILD_CHANGED");
+  const handle = await open(resolved, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const opened = await handle.stat();
+    if (!opened.isFile() || opened.size !== file.size || !sameIdentity(info, opened) || await realpath(candidate) !== resolved)
+      fail("BUILD_CHANGED");
+    return {
+      handle,
+      absolutePath: resolved,
+      identity: {
+        dev: opened.dev,
+        ino: opened.ino,
+        mtimeMs: opened.mtimeMs,
+        ctimeMs: opened.ctimeMs
+      }
+    };
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
+}
+function detectedType(bytes3) {
+  const text = (start, end) => String.fromCharCode(...bytes3.subarray(start, end));
+  const starts = (signature) => signature.every((value, index) => bytes3[index] === value);
+  if (bytes3.length >= 24 && starts([137, 80, 78, 71, 13, 10, 26, 10]) && text(12, 16) === "IHDR")
+    return "image/png";
+  if (bytes3[0] === 255 && bytes3[1] === 216 && bytes3[2] === 255)
+    return "image/jpeg";
+  if (bytes3.length >= 12 && text(0, 4) === "RIFF" && text(8, 12) === "WEBP")
+    return "image/webp";
+  if (["GIF87a", "GIF89a"].includes(text(0, 6)))
+    return "image/gif";
+  if (bytes3.length >= 16 && text(4, 8) === "ftyp") {
+    const boxSize = new DataView(bytes3.buffer, bytes3.byteOffset, bytes3.byteLength).getUint32(0);
+    if (boxSize < 16)
+      return null;
+    const brands = [text(8, 12)];
+    for (let i2 = 16;i2 + 4 <= Math.min(bytes3.length, boxSize); i2 += 4)
+      brands.push(text(i2, i2 + 4));
+    if (brands.some((brand) => ["avif", "avis"].includes(brand)))
+      return "image/avif";
+    if (brands.some((brand) => [
+      "isom",
+      "iso2",
+      "iso3",
+      "iso4",
+      "iso5",
+      "iso6",
+      "mp41",
+      "mp42",
+      "avc1",
+      "M4V ",
+      "dash",
+      "qt  "
+    ].includes(brand)))
+      return "video/mp4";
+  }
+  if (starts([26, 69, 223, 163])) {
+    for (let i2 = 4;i2 + 7 <= bytes3.length; i2++)
+      if (bytes3[i2] === 66 && bytes3[i2 + 1] === 130 && bytes3[i2 + 2] === 132 && text(i2 + 3, i2 + 7) === "webm")
+        return "video/webm";
+  }
+  return null;
 }
 
 // src/artifact-builder.ts
@@ -5752,30 +6752,35 @@ class SiteArtifactBuildError extends Error {
 async function inspectSiteContent(input) {
   validateMetadata(input);
   throwIfAborted(input.signal);
-  const projectRoot = await realpath(input.projectRoot).catch(() => {
+  const projectRoot = await realpath2(input.projectRoot).catch(() => {
     throw buildError("PROJECT_ROOT_NOT_FOUND");
   });
   const rootInfo = await stat(projectRoot).catch(() => null);
   if (!rootInfo?.isDirectory())
     throw buildError("PROJECT_ROOT_NOT_FOUND");
+  const materials = await inspectLocalMaterials(projectRoot, input.signal);
   const workerPath = await resolveSafePath(projectRoot, input.workerEntrypoint, "file");
   const assetsPath = await resolveSafePath(projectRoot, input.assetsDirectory, "directory");
   const migrationPath = input.migrationsDirectory ? await resolveSafePath(projectRoot, input.migrationsDirectory, "directory") : null;
   const candidates = [
     await fileCandidate(workerPath, "worker", "worker.mjs", null)
   ];
-  const assets = await walkFiles(projectRoot, assetsPath);
-  if (assets.length > SITE_ARTIFACT_LIMITS.assets)
-    throw buildError("TOO_MANY_ASSETS");
+  const assets2 = await walkFiles(projectRoot, assetsPath);
   const assetPaths = new Set;
-  for (const absolutePath of assets) {
-    const relative = path.relative(assetsPath, absolutePath).split(path.sep).join("/");
+  for (const absolutePath of assets2) {
+    if (materials?.files.some((file) => file.absolutePath === absolutePath))
+      continue;
+    const relative = path2.relative(assetsPath, absolutePath).split(path2.sep).join("/");
     const urlPath = `/${relative.normalize("NFKC")}`;
     if (!validAssetPath2(urlPath))
       throw buildError("INVALID_ASSET_PATH");
     if (assetPaths.has(urlPath))
       throw buildError("DUPLICATE_ASSET_PATH");
     assetPaths.add(urlPath);
+    if (assetPaths.size > SITE_ARTIFACT_LIMITS.assets)
+      throw buildError("TOO_MANY_ASSETS");
+    if (materials && (contentTypeFor(urlPath).startsWith("image/") || /\.(?:mp4|webm)$/i.test(urlPath)))
+      throw buildError("MATERIAL_MANIFEST_REQUIRED");
     candidates.push(await fileCandidate(absolutePath, "asset", urlPath, contentTypeFor(urlPath)));
   }
   if (migrationPath) {
@@ -5784,7 +6789,7 @@ async function inspectSiteContent(input) {
       throw buildError("TOO_MANY_MIGRATIONS");
     }
     for (const absolutePath of migrations) {
-      const relative = path.relative(migrationPath, absolutePath).split(path.sep).join("/");
+      const relative = path2.relative(migrationPath, absolutePath).split(path2.sep).join("/");
       if (relative.includes("/") || !/^[0-9]{4}_[a-z0-9_-]{1,96}\.sql$/.test(relative)) {
         throw buildError("INVALID_MIGRATION_NAME");
       }
@@ -5803,17 +6808,17 @@ async function inspectSiteContent(input) {
   for (const [ordinal, candidate] of candidates.entries()) {
     throwIfAborted(input.signal);
     assertArtifactFileName(candidate.logicalName);
-    const bytes = await readArtifactBytes(candidate.absolutePath, candidate.size, input.signal);
-    assertNoObviousCredential(bytes);
+    const bytes3 = await readArtifactBytes(candidate.absolutePath, candidate.size, input.signal);
+    assertNoObviousCredential(bytes3);
     if (candidate.kind === "worker" || candidate.kind === "asset" && /\.m?js$/i.test(candidate.logicalName)) {
-      const contractError = siteSdkContractError(new TextDecoder().decode(bytes), candidate.kind === "worker" ? "worker" : "browser", input.siteManifest);
+      const contractError = siteSdkContractError(new TextDecoder().decode(bytes3), candidate.kind === "worker" ? "worker" : "browser", input.siteManifest);
       if (contractError)
         throw buildError(contractError);
     }
     objects.push({
       ...candidate,
       ordinal,
-      sha256: sha256Bytes(bytes)
+      sha256: sha256Bytes(bytes3)
     });
   }
   const mainModule = objectDescriptor(objects[0]);
@@ -5831,38 +6836,51 @@ async function inspectSiteContent(input) {
       ...objectDescriptor(object),
       name: object.logicalName
     })),
-    siteManifest: input.siteManifest
+    siteManifest: input.siteManifest,
+    ...materials ? { assetManifest: materials.manifest } : {}
   };
-  if (Buffer.byteLength(JSON.stringify(descriptor), "utf8") > SITE_ARTIFACT_LIMITS.descriptorBytes) {
+  if (Buffer2.byteLength(JSON.stringify(descriptor), "utf8") > SITE_ARTIFACT_LIMITS.descriptorBytes) {
     throw buildError("DESCRIPTOR_TOO_LARGE");
   }
-  return { descriptor, objects, totalBytes: objects.reduce((total, object) => total + object.size, 0) };
+  return {
+    descriptor,
+    objects,
+    materials: materials?.files ?? [],
+    totalBytes: objects.reduce((total, object) => total + object.size, 0)
+  };
 }
 function bindInspectedSiteContent(content2, projectId) {
   if (!/^prj_[a-z0-9][a-z0-9_]{2,62}$/.test(projectId))
     throw buildError("INVALID_PROJECT_ID");
-  const descriptor = { schema: "taku.sites.artifact.v1", projectId, ...content2.descriptor };
-  if (Buffer.byteLength(JSON.stringify(descriptor), "utf8") > SITE_ARTIFACT_LIMITS.descriptorBytes) {
+  const descriptor = content2.descriptor.assetManifest ? {
+    ...content2.descriptor,
+    schema: "taku.sites.artifact.v2",
+    projectId,
+    assetManifest: content2.descriptor.assetManifest
+  } : { schema: "taku.sites.artifact.v1", projectId, ...content2.descriptor };
+  if (Buffer2.byteLength(JSON.stringify(descriptor), "utf8") > SITE_ARTIFACT_LIMITS.descriptorBytes) {
     throw buildError("DESCRIPTOR_TOO_LARGE");
   }
-  const artifactDigest = sha256Bytes(Buffer.from(canonicalJson2({
+  const artifactDigest = sha256Bytes(Buffer2.from(canonicalJson2({
     schema: descriptor.schema,
     projectId: descriptor.projectId,
     mainModule: descriptor.mainModule,
     assets: descriptor.assets,
     migrations: descriptor.migrations,
-    siteManifest: descriptor.siteManifest
+    siteManifest: descriptor.siteManifest,
+    ...descriptor.schema === "taku.sites.artifact.v2" ? { assetManifest: descriptor.assetManifest } : {}
   })));
   return {
     descriptor,
     objects: content2.objects,
+    materials: content2.materials,
     artifactDigest,
     releaseId: `rel_${artifactDigest.slice(0, 32)}`,
     totalBytes: content2.totalBytes
   };
 }
 async function validateWorkerModule(absolutePath, signal) {
-  if (![".js", ".mjs"].includes(path.extname(absolutePath))) {
+  if (![".js", ".mjs"].includes(path2.extname(absolutePath))) {
     throw buildError("WORKER_NOT_JAVASCRIPT");
   }
   throwIfAborted(signal);
@@ -5896,21 +6914,21 @@ function validateSiteManifest(value) {
     throw buildError("INVALID_SITE_MANIFEST");
 }
 async function resolveSafePath(projectRoot, relativePath, expected) {
-  if (typeof relativePath !== "string" || relativePath.length === 0 || path.isAbsolute(relativePath) || relativePath.includes("\\") || relativePath.includes("\x00") || relativePath.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
+  if (typeof relativePath !== "string" || relativePath.length === 0 || path2.isAbsolute(relativePath) || relativePath.includes("\\") || relativePath.includes("\x00") || relativePath.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
     throw buildError("PATH_OUTSIDE_PROJECT");
   }
-  const candidate = path.resolve(projectRoot, relativePath);
+  const candidate = path2.resolve(projectRoot, relativePath);
   assertDescendant(projectRoot, candidate);
-  let cursor = projectRoot;
+  let cursor2 = projectRoot;
   for (const segment of relativePath.split("/")) {
-    cursor = path.join(cursor, segment);
-    const info2 = await lstat(cursor).catch(() => null);
+    cursor2 = path2.join(cursor2, segment);
+    const info2 = await lstat2(cursor2).catch(() => null);
     if (!info2)
       throw buildError(expected === "file" ? "FILE_NOT_FOUND" : "DIRECTORY_NOT_FOUND");
     if (info2.isSymbolicLink())
       throw buildError("SYMLINK_NOT_ALLOWED");
   }
-  const resolved = await realpath(candidate).catch(() => null);
+  const resolved = await realpath2(candidate).catch(() => null);
   if (!resolved)
     throw buildError(expected === "file" ? "FILE_NOT_FOUND" : "DIRECTORY_NOT_FOUND");
   assertDescendant(projectRoot, resolved);
@@ -5924,7 +6942,7 @@ async function walkFiles(projectRoot, directory) {
   const files = [];
   const entries = await readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
-    const absolutePath = path.join(directory, entry.name);
+    const absolutePath = path2.join(directory, entry.name);
     assertDescendant(projectRoot, absolutePath);
     if (entry.isSymbolicLink())
       throw buildError("SYMLINK_NOT_ALLOWED");
@@ -5956,23 +6974,23 @@ function validateSizes(candidates) {
   }
 }
 async function readArtifactBytes(absolutePath, expectedSize, signal) {
-  const handle = await open(absolutePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const handle = await open2(absolutePath, constants2.O_RDONLY | constants2.O_NOFOLLOW);
   try {
     const info = await handle.stat();
     if (!info.isFile() || info.size !== expectedSize || expectedSize > SITE_ARTIFACT_LIMITS.assetBytes)
       throw buildError("BUILD_CHANGED");
-    const bytes = Buffer.alloc(expectedSize + 1);
+    const bytes3 = Buffer2.alloc(expectedSize + 1);
     let offset2 = 0;
-    while (offset2 < bytes.length) {
+    while (offset2 < bytes3.length) {
       throwIfAborted(signal);
-      const result = await handle.read(bytes, offset2, bytes.length - offset2, offset2);
+      const result = await handle.read(bytes3, offset2, bytes3.length - offset2, offset2);
       if (result.bytesRead === 0)
         break;
       offset2 += result.bytesRead;
     }
     if (offset2 !== expectedSize || (await handle.stat()).size !== expectedSize)
       throw buildError("BUILD_CHANGED");
-    return bytes.subarray(0, expectedSize);
+    return bytes3.subarray(0, expectedSize);
   } finally {
     await handle.close();
   }
@@ -5993,13 +7011,13 @@ function validAssetPath2(value) {
   return value.startsWith("/") && value.length <= 1024 && value !== "/" && !value.includes("\\") && !value.includes("\x00") && !value.includes("//") && !value.includes("?") && !value.includes("#") && !/%(?:2e|2f|5c)/i.test(value) && value.split("/").every((segment) => segment !== "." && segment !== "..");
 }
 function assertDescendant(root, candidate) {
-  const relative = path.relative(root, candidate);
-  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+  const relative = path2.relative(root, candidate);
+  if (!relative || relative.startsWith("..") || path2.isAbsolute(relative)) {
     throw buildError("PATH_OUTSIDE_PROJECT");
   }
 }
 function contentTypeFor(value) {
-  const extension = path.extname(value).toLowerCase();
+  const extension = path2.extname(value).toLowerCase();
   return MIME_TYPES[extension] ?? "application/octet-stream";
 }
 var MIME_TYPES = {
@@ -6031,13 +7049,13 @@ function canonicalJson2(value) {
   if (Array.isArray(value))
     return `[${value.map(canonicalJson2).join(",")}]`;
   if (typeof value === "object") {
-    const record = value;
-    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson2(record[key])}`).join(",")}}`;
+    const record3 = value;
+    return `{${Object.keys(record3).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson2(record3[key])}`).join(",")}}`;
   }
   throw buildError("INVALID_ARTIFACT_DESCRIPTOR");
 }
-function sha256Bytes(bytes) {
-  return createHash("sha256").update(bytes).digest("hex");
+function sha256Bytes(bytes3) {
+  return createHash2("sha256").update(bytes3).digest("hex");
 }
 function throwIfAborted(signal) {
   if (signal?.aborted)
@@ -6051,28 +7069,99 @@ function assertArtifactFileName(name) {
     throw new SiteArtifactBuildError("SENSITIVE_ARTIFACT_FILE");
   }
 }
-function assertNoObviousCredential(bytes) {
-  const text = new TextDecoder().decode(bytes);
+function assertNoObviousCredential(bytes3) {
+  const text = new TextDecoder().decode(bytes3);
   if (/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:sk_(?:live|test)_|sk-proj-|sk-lf-|gh[pousr]_|github_pat_)[A-Za-z0-9_-]{16,}|\bAKIA[A-Z0-9]{16}\b|(?:postgres(?:ql)?|mysql|libsql):\/\/[^\s"']+:[^\s"'@]+@/i.test(text) || /["']?(?:[A-Z_]*(?:SECRET|PASSWORD|PASSWD|PRIVATE_KEY)|TURSO_AUTH_TOKEN|SUPABASE_SERVICE_ROLE_KEY)["']?\s*[:=]\s*["'][^"'\r\n]{8,}["']/i.test(text)) {
     throw new SiteArtifactBuildError("CREDENTIAL_IN_ARTIFACT");
+  }
+}
+// ../contracts/src/image-model-reader.ts
+async function withImageModelDeadline(read, parent) {
+  const controller = new AbortController;
+  const cancel = () => controller.abort();
+  parent?.addEventListener("abort", cancel, { once: true });
+  if (parent?.aborted)
+    cancel();
+  const timer = setTimeout(cancel, 1e4);
+  let rejectAbort;
+  const aborted = new Promise((_, reject) => {
+    rejectAbort = () => reject(new ImageModelCatalogError(503, "image_model_catalog_unavailable"));
+    controller.signal.addEventListener("abort", rejectAbort, { once: true });
+    if (controller.signal.aborted)
+      rejectAbort();
+  });
+  try {
+    return await (controller.signal.aborted ? aborted : Promise.race([read(controller.signal), aborted]));
+  } finally {
+    clearTimeout(timer);
+    parent?.removeEventListener("abort", cancel);
+    if (rejectAbort)
+      controller.signal.removeEventListener("abort", rejectAbort);
+  }
+}
+async function readImageModelJson(response, signal) {
+  if (response.headers.get("Content-Type")?.split(";")[0]?.trim().toLowerCase() !== "application/json") {
+    response.body?.cancel().catch(() => {});
+    throw new ImageModelCatalogError(503, "image_model_catalog_unavailable");
+  }
+  const reader = response.body?.getReader();
+  if (!reader)
+    throw new ImageModelCatalogError(503, "image_model_catalog_unavailable");
+  const cancel = () => {
+    reader.cancel().catch(() => {});
+  };
+  signal.addEventListener("abort", cancel, { once: true });
+  const chunks = [];
+  let size = 0;
+  try {
+    if (signal.aborted) {
+      cancel();
+      throw new ImageModelCatalogError(503, "image_model_catalog_unavailable");
+    }
+    while (true) {
+      const next = await reader.read();
+      if (signal.aborted)
+        throw new ImageModelCatalogError(503, "image_model_catalog_unavailable");
+      if (next.done)
+        break;
+      size += next.value.byteLength;
+      if (size > IMAGE_MODEL_CATALOG_MAX_BYTES) {
+        cancel();
+        throw new ImageModelCatalogError(503, "image_model_catalog_unavailable");
+      }
+      chunks.push(next.value);
+    }
+    const bytes3 = new Uint8Array(size);
+    let offset2 = 0;
+    for (const chunk of chunks) {
+      bytes3.set(chunk, offset2);
+      offset2 += chunk.byteLength;
+    }
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes3));
+  } catch (error) {
+    cancel();
+    throw error;
+  } finally {
+    signal.removeEventListener("abort", cancel);
+    reader.releaseLock();
   }
 }
 
 // src/index.ts
 var SITE_CLI_CONTRACT_VERSION = "taku.sites.cli.v1";
 async function inspectProject(projectRoot) {
-  const root = await realpath2(projectRoot).catch(() => {
+  const root = await realpath3(projectRoot).catch(() => {
     throw new SiteArtifactBuildError("PROJECT_ROOT_NOT_FOUND");
   });
   if (!(await stat2(root)).isDirectory()) {
     throw new SiteArtifactBuildError("PROJECT_ROOT_NOT_FOUND");
   }
-  const configPath = path2.join(root, "taku.site.json");
-  const info = await lstat2(configPath).catch(() => null);
+  const configPath = path3.join(root, "taku.site.json");
+  const info = await lstat3(configPath).catch(() => null);
   if (!info?.isFile() || info.isSymbolicLink() || info.size > ARTIFACT_LIMITS.descriptorBytes) {
     throw new SiteArtifactBuildError("INVALID_PROJECT_CONFIG");
   }
-  const handle = await open2(configPath, constants2.O_RDONLY | constants2.O_NOFOLLOW);
+  const handle = await open3(configPath, constants3.O_RDONLY | constants3.O_NOFOLLOW);
   let config;
   try {
     const current2 = await handle.stat();
@@ -6091,8 +7180,13 @@ async function inspectProject(projectRoot) {
     throw new SiteArtifactBuildError("INVALID_PROJECT_CONFIG");
   }
   const value = config;
-  const keys = Object.keys(value);
-  if (keys.some((key) => !["workerEntrypoint", "assetsDirectory", "migrationsDirectory", "siteManifest"].includes(key)) || typeof value.workerEntrypoint !== "string" || typeof value.assetsDirectory !== "string" || value.migrationsDirectory !== undefined && typeof value.migrationsDirectory !== "string") {
+  const keys2 = Object.keys(value);
+  if (keys2.some((key) => ![
+    "workerEntrypoint",
+    "assetsDirectory",
+    "migrationsDirectory",
+    "siteManifest"
+  ].includes(key)) || typeof value.workerEntrypoint !== "string" || typeof value.assetsDirectory !== "string" || value.migrationsDirectory !== undefined && typeof value.migrationsDirectory !== "string") {
     throw new SiteArtifactBuildError("INVALID_PROJECT_CONFIG");
   }
   const manifest = parseSiteManifest(value.siteManifest);
@@ -6114,24 +7208,36 @@ async function buildArtifact(projectRoot, options) {
     gitSha: "0".repeat(40),
     builtAt: options.builtAt
   });
-  const contentDigest = await contentDigestFromDescriptor(inspected.descriptor);
-  const content2 = canonicalSiteContent(inspected.descriptor);
-  const gitSha = createHash2("sha1").update(content2).digest("hex");
+  const { mainModule, assets: assets2, migrations, siteManifest, assetManifest } = inspected.descriptor;
+  const content2 = assetManifest ? canonicalSiteJson({
+    ...JSON.parse(canonicalSiteContent(inspected.descriptor)),
+    schema: "taku.sites.content.v2",
+    assetManifest
+  }) : canonicalSiteContent(inspected.descriptor);
+  const contentDigest = assetManifest ? await materialContentDigest({
+    mainModule,
+    assets: assets2,
+    migrations,
+    siteManifest,
+    assetManifest
+  }) : await contentDigestFromDescriptor(inspected.descriptor);
+  const gitSha = createHash3("sha1").update(content2).digest("hex");
   const buildId = `build_${contentDigest.slice(0, 32)}`;
   inspected.descriptor.buildId = buildId;
   inspected.descriptor.gitSha = gitSha;
-  const manifestDigest = createHash2("sha256").update(canonicalSiteJson(inspected.descriptor.siteManifest)).digest("hex");
+  const manifestDigest = createHash3("sha256").update(canonicalSiteJson(inspected.descriptor.siteManifest)).digest("hex");
   const bound = bindInspectedSiteContent(inspected, options.projectId);
-  const parsed = parseArtifactDescriptor(bound.descriptor);
+  const parsed = parseCompatibleArtifactDescriptor(bound.descriptor);
   if (!parsed.ok)
     throw new SiteArtifactBuildError("INVALID_ARTIFACT_DESCRIPTOR");
-  const artifactDigest = await artifactDigestFromDescriptor(parsed.value);
+  const artifactDigest = await compatibleArtifactDigest(parsed.value);
   if (artifactDigest !== bound.artifactDigest) {
     throw new SiteArtifactBuildError("ARTIFACT_CONTRACT_MISMATCH");
   }
   return {
     descriptor: parsed.value,
     objects: bound.objects,
+    materials: bound.materials,
     buildId,
     gitSha,
     contentDigest,
@@ -6143,11 +7249,11 @@ async function buildArtifact(projectRoot, options) {
 }
 async function readArtifactObject(object) {
   try {
-    const bytes = await readArtifactBytes(object.absolutePath, object.size);
-    if (createHash2("sha256").update(bytes).digest("hex") !== object.sha256) {
+    const bytes3 = await readArtifactBytes(object.absolutePath, object.size);
+    if (createHash3("sha256").update(bytes3).digest("hex") !== object.sha256) {
       throw new SiteArtifactBuildError("BUILD_CHANGED");
     }
-    return bytes;
+    return bytes3;
   } catch {
     throw new SiteArtifactBuildError("BUILD_CHANGED");
   }
@@ -6162,8 +7268,17 @@ async function validateArtifact(projectRoot, artifact2) {
   }
 }
 export {
+  withImageModelDeadline,
   validateArtifact,
+  readMaterialPart,
+  readImageModelJson,
   readArtifactObject,
+  parseOwnerAssetRecord,
+  parseOwnerAssetPolicy,
+  parseOwnerAssetPage,
+  parseOwnerAssetCapabilities,
+  parseImageModelQuery,
+  parseImageModelCatalog,
   inspectProject,
   buildArtifact,
   SiteArtifactBuildError as SiteCliBuildError,

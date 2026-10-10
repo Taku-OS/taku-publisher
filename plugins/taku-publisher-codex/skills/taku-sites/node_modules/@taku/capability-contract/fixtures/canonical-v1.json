@@ -1,0 +1,79 @@
+{
+  "fixtureVersion": "taku.capability-contract.fixture.v1",
+  "snapshotInput": {
+    "generatedAt": "2026-07-24T00:00:00.000Z",
+    "scanId": "fixture-scan-v1",
+    "items": [
+      {
+        "type": "skill",
+        "source": "codex",
+        "name": "Review",
+        "description": "Review one code change."
+      },
+      {
+        "id": "workflow-ship",
+        "type": "slash-command",
+        "source": "claude-command",
+        "name": "Ship"
+      },
+      {
+        "id": "rule-agents",
+        "type": "agents-md",
+        "source": "workspace-codex",
+        "name": "AGENTS.md"
+      },
+      {
+        "id": "mcp-context7",
+        "type": "mcp-server",
+        "source": "cursor-mcp",
+        "name": "context7"
+      }
+    ],
+    "privateItems": [
+      {
+        "id": "workflow-ship",
+        "localPath": "/tmp/taku-fixture/.claude/commands/ship.md"
+      },
+      {
+        "id": "mcp-context7",
+        "localPath": "/tmp/taku-fixture/.cursor/mcp.json"
+      }
+    ]
+  },
+  "packageInput": {
+    "channel": "publish",
+    "packageVersion": "1.2.3",
+    "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "capability": {
+      "id": "workflow-ship",
+      "kind": "workflow",
+      "name": "Ship",
+      "description": "Prepare an approved release."
+    },
+    "compatibility": {
+      "hosts": [
+        "codex",
+        "claude-code"
+      ],
+      "platforms": [
+        "darwin"
+      ]
+    },
+    "files": [
+      {
+        "path": "commands/ship.md",
+        "size": 128,
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    ],
+    "permissions": [],
+    "requiredSecrets": []
+  },
+  "expected": {
+    "snapshotHash": "10bc9f7e718193cc560c1e62fb1513291eaa68bc05115084d265ea0c80e94703",
+    "packageHash": "8787623eaf5649cf375d29c49a9e83e88933049fa16b7d5f0b1f99bd3bb793bb",
+    "publishedKind": "action",
+    "rulePublishEligibility": "blocked",
+    "mcpPublishEligibility": "blocked"
+  }
+}
