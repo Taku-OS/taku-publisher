@@ -1,9 +1,13 @@
-# Cursor and Agent Skills installer 0.3.29
+# Cursor and Agent Skills installer 0.3.31: limited Sites images candidate
 
-Version 0.3.29 is a release candidate until its uploaded installer passes
-production checks. Use the pinned files below only when the GitHub release
-is published. Version 0.3.28 has a known Sites publish-path defect and is not
-a verified Sites rollback.
+Version 0.3.31 is an unpublished local candidate for TAKU-527. Its image-only
+scope and source layers are documented in the repository's
+`docs/release-0.3.31-sites-images.md`. Local tests and packaging do not prove
+distribution, live model readiness or billing. Use the pinned files below only
+after root review and an explicitly authorized, verified release. Preserve the
+existing v0.3.30 Publisher-only native release and Marketplace layout; they do
+not contain this Sites image update. Version 0.3.28 has a known Sites
+publish-path defect and is not a verified Sites rollback.
 
 This release installs two Skills from one package: `taku-publisher` and
 `taku-sites`. Taku Sites lets the host agent build and test a Site with its own
@@ -13,27 +17,28 @@ Sites is limited to server-verified @taku.ai accounts during internal testing.
 Pass `--skill taku-publisher` or `--skill taku-sites` to install only one.
 The production plugin is still named
 `taku-publisher`, without a test-version suffix. Distribution is through the
-GitHub `marketplace` branch and the `v0.3.29` release assets. It is not
+separate, pinned `v0.3.31` release assets after authorization. This limited
+candidate does not update the GitHub `marketplace` branch. It is not
 published to npm or listed in the official Cursor Marketplace.
 
-Install or update to the latest release directly from GitHub (Node.js 20+):
+After that release exists, install only Sites from its pinned asset (Node.js 20+):
 
 ```sh
-npx --yes --package https://github.com/Taku-OS/taku-publisher/releases/latest/download/taku-publisher.tgz taku-publisher install --host cursor --update
-npx --yes --package https://github.com/Taku-OS/taku-publisher/releases/latest/download/taku-publisher.tgz taku-publisher install --host agent-skills --update
+npx --yes --package https://github.com/Taku-OS/taku-publisher/releases/download/v0.3.31/taku-publisher-0.3.31.tgz taku-publisher install --host cursor --skill taku-sites --update
+npx --yes --package https://github.com/Taku-OS/taku-publisher/releases/download/v0.3.31/taku-publisher-0.3.31.tgz taku-publisher install --host agent-skills --skill taku-sites --update
 ```
 
-The stable `taku-publisher.tgz` asset is byte-for-byte identical to the
-versioned installer in that release. Use the versioned asset below when an
-installation must be pinned for reproducibility or rollback.
+Do not use `releases/latest` or replace v0.3.30 native assets. The local
+`taku-publisher.tgz` alias is byte-for-byte identical to the versioned candidate,
+but that local alias is not evidence of an uploaded stable installer.
 
-Download `taku-publisher-0.3.29.tgz` from the trusted
-[GitHub release](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.3.29),
+Download `taku-publisher-0.3.31.tgz` from the trusted, reviewed release only once
+[v0.3.31](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.3.31) exists,
 then run from the download directory (Node.js 20+):
 
 ```sh
-npx --yes --package ./taku-publisher-0.3.29.tgz taku-publisher install --host cursor
-npx --yes --package ./taku-publisher-0.3.29.tgz taku-publisher install --host agent-skills
+npx --yes --package ./taku-publisher-0.3.31.tgz taku-publisher install --host cursor --skill taku-sites
+npx --yes --package ./taku-publisher-0.3.31.tgz taku-publisher install --host agent-skills --skill taku-sites
 ```
 
 The `agent-skills` target installs to `~/.agents/skills/taku-publisher` and
@@ -45,9 +50,10 @@ it loads the new Skill.
 
 ## Build and install locally
 
-This source branch prepares 0.3.30 locally. The download instructions above
-refer to the existing 0.3.29 release; 0.3.30 is unpublished. Its independent
-Publisher-only native profile is described in [the native candidate guide](release-0.3.30-native.md).
+This source branch prepares 0.3.31 locally. The remote download instructions
+above are conditional, not an announcement that 0.3.31 is published. The
+existing 0.3.30 Publisher-only native profile is a separate distribution; its
+packaging and published assets are not changed by this image candidate.
 
 Requires Node.js 20+ (npm is only needed to build or use a tarball).
 Exact local Cursor and OpenCode token reading additionally uses the optional
@@ -78,11 +84,11 @@ For a previously manually copied, unmanaged Skill, explicit `--backup-existing`
 moves the entire old directory to a recoverable backup before installing.
 It does not bypass protections for edited managed installs.
 
-The local candidate npm tarball is `dist/releases/taku-publisher-0.3.30.tgz`:
+The local candidate npm tarball is `dist/releases/taku-publisher-0.3.31.tgz`:
 
 ```sh
-npx --yes --package ./dist/releases/taku-publisher-0.3.30.tgz taku-publisher install --host cursor
-npx --yes --package ./dist/releases/taku-publisher-0.3.30.tgz taku-publisher install --host agent-skills
+npx --yes --package ./dist/releases/taku-publisher-0.3.31.tgz taku-publisher install --host cursor --skill taku-sites
+npx --yes --package ./dist/releases/taku-publisher-0.3.31.tgz taku-publisher install --host agent-skills --skill taku-sites
 ```
 
 This tarball command uses a local file, not a released npm package. A public

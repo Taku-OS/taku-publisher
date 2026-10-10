@@ -238,6 +238,440 @@ async function contentDigestFromDescriptor(value) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalSiteContent(value)));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
+// ../contracts/src/image-model-structured-parameters.ts
+var bytes = (value) => new TextEncoder().encode(value).byteLength;
+var record = (value) => !!value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+var safe = (value) => typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER;
+var integer = (value, maximum) => typeof value === "number" && Number.isSafeInteger(value) && value >= 1 && value <= maximum;
+function isImageModelParameterName(name) {
+  return /^[a-z][a-z0-9_]{0,63}$/.test(name) && !/(_urls?$|api_key|authorization|token)/.test(name) && ![
+    "provider",
+    "model",
+    "endpoint",
+    "payer",
+    "owner",
+    "prompt",
+    "input_ids",
+    "disable_safety_checker",
+    "disable_safety",
+    "schema_version"
+  ].includes(name);
+}
+function validImageModelStructuredSchema(value) {
+  const budget = { nodes: 0 };
+  const visit = (node, depth) => {
+    if (depth > 6 || ++budget.nodes > 256 || !record(node) || !Object.hasOwn(node, "type") || Object.hasOwn(node, "nullable") && typeof node.nullable !== "boolean")
+      return false;
+    const typeKeys = {
+      object: ["properties", "required"],
+      array: ["items", "maxItems"],
+      string: ["maxBytes"],
+      integer: ["minimum", "maximum"],
+      number: ["minimum", "maximum"],
+      boolean: []
+    };
+    if (typeof node.type !== "string" || !Object.hasOwn(typeKeys, node.type) || Object.keys(node).some((key) => ![
+      "type",
+      "nullable",
+      ...typeKeys[node.type] ?? []
+    ].includes(key)))
+      return false;
+    switch (node.type) {
+      case "object": {
+        if (!record(node.properties))
+          return false;
+        const entries = Object.entries(node.properties);
+        if (entries.length < 1 || entries.length > 64)
+          return false;
+        if (Object.hasOwn(node, "required")) {
+          if (!Array.isArray(node.required) || node.required.length > entries.length)
+            return false;
+          const required = new Set;
+          for (const name of node.required) {
+            if (typeof name !== "string" || !Object.hasOwn(node.properties, name) || required.has(name))
+              return false;
+            required.add(name);
+          }
+        }
+        return entries.every(([name, child]) => isImageModelParameterName(name) && visit(child, depth + 1));
+      }
+      case "array":
+        return integer(node.maxItems, 64) && visit(node.items, depth + 1);
+      case "string":
+        return integer(node.maxBytes, 4096);
+      case "integer":
+      case "number":
+        return safe(node.minimum) && safe(node.maximum) && node.minimum <= node.maximum && (node.type !== "integer" || Number.isSafeInteger(node.minimum) && Number.isSafeInteger(node.maximum));
+      case "boolean":
+        return true;
+      default:
+        return false;
+    }
+  };
+  return record(value) && value.type === "object" && value.nullable !== true && visit(value, 1);
+}
+function validImageModelStructuredValue(value) {
+  const budget = { nodes: 0 };
+  const visit = (node, depth) => {
+    if (depth > 6 || ++budget.nodes > 256)
+      return false;
+    if (node === null || typeof node === "boolean")
+      return true;
+    if (typeof node === "string")
+      return bytes(node) <= 4096;
+    if (typeof node === "number")
+      return safe(node);
+    if (Array.isArray(node)) {
+      if (node.length > 64)
+        return false;
+      for (let index = 0;index < node.length; index++)
+        if (!Object.hasOwn(node, index) || !visit(node[index], depth + 1))
+          return false;
+      return true;
+    }
+    if (!record(node))
+      return false;
+    const entries = Object.entries(node);
+    return entries.length <= 64 && entries.every(([name, child]) => isImageModelParameterName(name) && visit(child, depth + 1));
+  };
+  return record(value) && visit(value, 1) && bytes(JSON.stringify(value)) <= 16384;
+}
+function structuredValueMatchesSchema(schema, value) {
+  if (!validImageModelStructuredSchema(schema) || !validImageModelStructuredValue(value))
+    return false;
+  const visit = (s, node) => {
+    if (!s)
+      return false;
+    if (node === null)
+      return s.nullable === true;
+    switch (s.type) {
+      case "object":
+        return record(node) && (s.required ?? []).every((name) => Object.hasOwn(node, name)) && Object.entries(node).every(([name, child]) => Object.hasOwn(s.properties ?? {}, name) && visit(s.properties?.[name], child));
+      case "array":
+        return Array.isArray(node) && typeof s.maxItems === "number" && node.length <= s.maxItems && node.every((child) => visit(s.items, child));
+      case "string":
+        return typeof node === "string" && typeof s.maxBytes === "number" && bytes(node) <= s.maxBytes;
+      case "integer":
+      case "number":
+        return safe(node) && safe(s.minimum) && safe(s.maximum) && node >= s.minimum && node <= s.maximum && (s.type !== "integer" || Number.isSafeInteger(node));
+      case "boolean":
+        return typeof node === "boolean";
+    }
+  };
+  return visit(schema, value);
+}
+
+// ../contracts/src/image-models.ts
+var IMAGE_MODEL_SIZE_FEATURE_V1 = "size-constraints-v1";
+var IMAGE_MODEL_SIZE_FEATURE_V2 = "size-constraints-v2";
+var IMAGE_MODEL_INPUT_FEATURE_V1 = "input-contract-v1";
+var IMAGE_MODEL_INPUT_FEATURE_V2 = "input-contract-v2";
+var IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1 = "parameter-enum-v1";
+var IMAGE_MODEL_STRUCTURED_FEATURE_V1 = "structured-parameters-v1";
+var IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 = "aspect-ratio-v1";
+var IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1 = "generation-references-v1";
+
+class ImageModelCatalogError extends Error {
+  status;
+  code;
+  constructor(status, code) {
+    super(code);
+    this.status = status;
+    this.code = code;
+  }
+}
+var IMAGE_MODEL_CATALOG_MAX_BYTES = 512 * 1024;
+var SURFACES = [
+  "subapp",
+  "site-preview",
+  "site-published"
+];
+var REASONS = [
+  "runtime_bridge_unverified",
+  "provider_deprecated",
+  "provider_contract_unavailable",
+  "model_parameters_unverified",
+  "model_quote_unavailable"
+];
+var bytes2 = (value) => new TextEncoder().encode(value).byteLength;
+var bounded = (value, max) => typeof value === "string" && bytes2(value) <= max;
+var record2 = (value) => !!value && typeof value === "object" && !Array.isArray(value);
+var keys = (value, required, optional = []) => required.every((key) => Object.hasOwn(value, key)) && Object.keys(value).every((key) => required.includes(key) || optional.includes(key));
+var integer2 = (value, min, max) => typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= max;
+var finite = (value) => typeof value === "number" && Number.isFinite(value);
+var isImageOperation = (value) => value === "media.image.generate" || value === "media.image.edit";
+var cursor = (value) => bounded(value, 1024) && /^[A-Za-z0-9_-]+$/.test(value);
+var unavailable = () => {
+  throw new ImageModelCatalogError(503, "image_model_catalog_unavailable");
+};
+function parseImageModelQuery(value) {
+  if (!record2(value) || !keys(value, ["operation"], ["query", "cursor", "limit"]) || !isImageOperation(value.operation) || value.query !== undefined && !bounded(value.query, 128) || value.cursor !== undefined && !cursor(value.cursor) || value.limit !== undefined && !integer2(value.limit, 1, 100)) {
+    throw new ImageModelCatalogError(400, "invalid_image_model_catalog_query");
+  }
+  return {
+    operation: value.operation,
+    limit: value.limit ?? 50,
+    ...value.query === undefined ? {} : { query: value.query.trim().toLowerCase() },
+    ...value.cursor === undefined ? {} : { cursor: value.cursor }
+  };
+}
+function validSizeConstraints(value, parameter, feature) {
+  const grid = feature === IMAGE_MODEL_SIZE_FEATURE_V2 || feature === IMAGE_MODEL_INPUT_FEATURE_V1 || feature === IMAGE_MODEL_INPUT_FEATURE_V2 || feature === IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1 || feature === IMAGE_MODEL_STRUCTURED_FEATURE_V1 || (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1);
+  if (!record2(value) || !keys(value, [
+    "minWidth",
+    "maxWidth",
+    "minHeight",
+    "maxHeight",
+    "minPixels",
+    "maxPixels",
+    ...grid ? ["widthStep", "heightStep"] : []
+  ], ["minAspectRatio", "maxAspectRatio"]))
+    return false;
+  if (!integer2(value.minWidth, 1, 4096) || !integer2(value.maxWidth, value.minWidth, 4096) || !integer2(value.minHeight, 1, 4096) || !integer2(value.maxHeight, value.minHeight, 4096) || !integer2(value.minPixels, 1, 8388608) || !integer2(value.maxPixels, value.minPixels, 8388608) || value.minWidth * value.minHeight > value.maxPixels || value.maxWidth * value.maxHeight < value.minPixels)
+    return false;
+  if (grid && (!integer2(value.widthStep, 1, 4096) || !integer2(value.heightStep, 1, 4096)))
+    return false;
+  const widthStep = grid ? value.widthStep : 1;
+  const heightStep = grid ? value.heightStep : 1;
+  const minimumWidth = Math.ceil(value.minWidth / widthStep) * widthStep;
+  const minimumHeight = Math.ceil(value.minHeight / heightStep) * heightStep;
+  const maximumWidth = Math.floor(value.maxWidth / widthStep) * widthStep;
+  const maximumHeight = Math.floor(value.maxHeight / heightStep) * heightStep;
+  if (minimumWidth > maximumWidth || minimumHeight > maximumHeight || minimumWidth * minimumHeight > value.maxPixels || maximumWidth * maximumHeight < value.minPixels)
+    return false;
+  if (finite(parameter.minimum) && (value.minWidth < parameter.minimum || value.minHeight < parameter.minimum) || finite(parameter.maximum) && (value.maxWidth > parameter.maximum || value.maxHeight > parameter.maximum))
+    return false;
+  for (const key of ["minAspectRatio", "maxAspectRatio"]) {
+    if (Object.hasOwn(value, key) && (!finite(value[key]) || value[key] < 1 / 4096 || value[key] > 4096))
+      return false;
+  }
+  if (finite(value.minAspectRatio) && (finite(value.maxAspectRatio) && value.minAspectRatio > value.maxAspectRatio || value.minAspectRatio > maximumWidth / minimumHeight))
+    return false;
+  if (finite(value.maxAspectRatio) && value.maxAspectRatio < minimumWidth / maximumHeight)
+    return false;
+  return true;
+}
+function sizeWithinConstraints(size, constraints) {
+  const pixels = size.width * size.height;
+  return size.width >= constraints.minWidth && size.width <= constraints.maxWidth && size.height >= constraints.minHeight && size.height <= constraints.maxHeight && size.width % (constraints.widthStep ?? 1) === 0 && size.height % (constraints.heightStep ?? 1) === 0 && pixels >= constraints.minPixels && pixels <= constraints.maxPixels && (constraints.minAspectRatio === undefined || size.width >= constraints.minAspectRatio * size.height) && (constraints.maxAspectRatio === undefined || size.width <= constraints.maxAspectRatio * size.height);
+}
+function validAspectRatioValue(value, minimum, maximum) {
+  if (!bounded(value, 11))
+    return false;
+  const match = /^([1-9][0-9]{0,4}):([1-9][0-9]{0,4})$/.exec(value);
+  if (!match || match[0] !== value)
+    return false;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  return width >= minimum * height && width <= maximum * height;
+}
+function validParameter(value, name, outputs, feature) {
+  if (record2(value) && value.type === "aspect-ratio") {
+    return (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1) && keys(value, ["type", "minimum", "maximum"], ["required", "default"]) && (value.required === undefined || typeof value.required === "boolean") && !["sync_mode", "enable_safety_checker", "limit_generations", "num_images"].includes(name) && finite(value.minimum) && finite(value.maximum) && value.minimum >= 1 / 99999 && value.maximum <= 99999 && value.minimum <= value.maximum && (!Object.hasOwn(value, "default") || validAspectRatioValue(value.default, value.minimum, value.maximum));
+  }
+  if (record2(value) && (value.type === "object" || Object.hasOwn(value, "structuredSchema"))) {
+    return (feature === IMAGE_MODEL_STRUCTURED_FEATURE_V1 || (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1)) && value.type === "object" && keys(value, ["type", "structuredSchema"], ["required", "default"]) && (value.required === undefined || typeof value.required === "boolean") && !["sync_mode", "enable_safety_checker", "limit_generations", "num_images"].includes(name) && validImageModelStructuredSchema(value.structuredSchema) && (!Object.hasOwn(value, "default") || structuredValueMatchesSchema(value.structuredSchema, value.default));
+  }
+  if (!record2(value) || !keys(value, ["type"], [
+    "values",
+    "minimum",
+    "maximum",
+    "required",
+    "default",
+    "sizeConstraints",
+    ...feature === IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1 || feature === IMAGE_MODEL_STRUCTURED_FEATURE_V1 || (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1) ? ["integerValues"] : []
+  ]) || value.required !== undefined && typeof value.required !== "boolean" || value.minimum !== undefined && !finite(value.minimum) || value.maximum !== undefined && !finite(value.maximum) || finite(value.minimum) && finite(value.maximum) && value.minimum > value.maximum)
+    return false;
+  const enumeration = value.values;
+  if (value.type === "enum") {
+    if (!Array.isArray(enumeration) || enumeration.length < 1 || enumeration.length > 64 || !enumeration.every((item) => bounded(item, 256)))
+      return false;
+  } else if (enumeration !== undefined)
+    return false;
+  const numericChoices = value.integerValues;
+  if (Object.hasOwn(value, "integerValues")) {
+    if (feature !== IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1 && feature !== IMAGE_MODEL_STRUCTURED_FEATURE_V1 && feature !== IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 && feature !== IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1 || value.type !== "integer" || !Array.isArray(numericChoices) || numericChoices.length < 1 || numericChoices.length > 64)
+      return false;
+    for (let index = 0;index < numericChoices.length; index++) {
+      const choice = numericChoices[index];
+      if (!integer2(choice, -9007199254740991, 9007199254740991) || index > 0 && choice <= numericChoices[index - 1] || finite(value.minimum) && choice < value.minimum || finite(value.maximum) && choice > value.maximum)
+        return false;
+    }
+  }
+  if (!["enum", "string", "integer", "number", "boolean", "size"].includes(String(value.type)))
+    return false;
+  if (Object.hasOwn(value, "sizeConstraints") && (value.type !== "size" || !validSizeConstraints(value.sizeConstraints, value, feature)))
+    return false;
+  if (["sync_mode", "enable_safety_checker", "limit_generations"].includes(name) && value.type !== "boolean")
+    return false;
+  if (name === "num_images" && (value.type !== "integer" || finite(value.maximum) && value.maximum > outputs))
+    return false;
+  if (!Object.hasOwn(value, "default"))
+    return true;
+  const fallback = value.default;
+  if (name === "sync_mode" && fallback !== false || ["enable_safety_checker", "limit_generations"].includes(name) && fallback !== true || name === "num_images" && !integer2(fallback, 1, outputs))
+    return false;
+  switch (value.type) {
+    case "enum":
+      return enumeration.includes(fallback);
+    case "string":
+      return bounded(fallback, 4096);
+    case "boolean":
+      return typeof fallback === "boolean";
+    case "number":
+    case "integer":
+      return finite(fallback) && (value.type !== "integer" || Number.isSafeInteger(fallback)) && (!Array.isArray(numericChoices) || numericChoices.includes(fallback)) && (!finite(value.minimum) || fallback >= value.minimum) && (!finite(value.maximum) || fallback <= value.maximum);
+    case "size":
+      return record2(fallback) && keys(fallback, ["width", "height"]) && integer2(fallback.width, 1, 4096) && integer2(fallback.height, 1, 4096) && fallback.width * fallback.height <= 8 * 1024 * 1024 && (!finite(value.minimum) || fallback.width >= value.minimum && fallback.height >= value.minimum) && (!finite(value.maximum) || fallback.width <= value.maximum && fallback.height <= value.maximum) && (!Object.hasOwn(value, "sizeConstraints") || sizeWithinConstraints({ width: fallback.width, height: fallback.height }, value.sizeConstraints));
+    default:
+      return false;
+  }
+}
+function validModel(value, operation, feature) {
+  const generationFeature = feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1;
+  const inputFeature = feature === IMAGE_MODEL_INPUT_FEATURE_V1 || feature === IMAGE_MODEL_INPUT_FEATURE_V2 || feature === IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1 || feature === IMAGE_MODEL_STRUCTURED_FEATURE_V1 || (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1);
+  const referenceFeature = feature === IMAGE_MODEL_INPUT_FEATURE_V2 || feature === IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1 || feature === IMAGE_MODEL_STRUCTURED_FEATURE_V1 || (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1);
+  if (!record2(value) || !keys(value, [
+    "id",
+    "displayName",
+    "operations",
+    "availability",
+    "parameterSchemaVersion",
+    "priceVersion",
+    "parameters",
+    "maximumInputs",
+    "maximumOutputs"
+  ], inputFeature ? ["inputContract"] : []) || !bounded(value.id, 96) || !/^[a-z][a-z0-9.-]{0,95}$/.test(value.id) || !bounded(value.displayName, 256) || !value.displayName.trim() || !Array.isArray(value.operations) || value.operations.length !== 1 || value.operations[0] !== operation || !bounded(value.parameterSchemaVersion, 128) || !bounded(value.priceVersion, 128) || !integer2(value.maximumInputs, operation === "media.image.edit" ? 1 : 0, operation === "media.image.edit" ? referenceFeature ? 17 : 16 : generationFeature ? 16 : 0) || !integer2(value.maximumOutputs, 1, (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1) && value.id === "muse-image" && value.parameterSchemaVersion === `muse-image-${operation === "media.image.edit" ? "edit" : "generate"}-v2-2026-10-09` ? 10 : 4) || !record2(value.availability) || !keys(value.availability, SURFACES))
+    return false;
+  let referenceMask = false;
+  let generationReferences = false;
+  if (Object.hasOwn(value, "inputContract")) {
+    const contract = value.inputContract;
+    if (!record2(contract) || !Array.isArray(contract.roles))
+      return false;
+    if (contract.schema === "taku.image-input-contract.v3") {
+      const policy = contract.generationReferences;
+      if (!generationFeature || operation !== "media.image.generate" || contract.sameDimensions !== false || contract.roles.length !== 1 || contract.roles[0] !== "reference" || !keys(contract, ["schema", "roles", "sameDimensions", "generationReferences"]) || !record2(policy) || !keys(policy, ["minimumReferences", "maximumReferences"]) || policy.minimumReferences !== 0 || !integer2(policy.maximumReferences, 1, 16) || value.maximumInputs !== policy.maximumReferences)
+        return false;
+      generationReferences = true;
+    } else {
+      if (operation !== "media.image.edit" || !Array.isArray(contract.roles) || contract.roles.length !== 2 || contract.roles[0] !== "source" || contract.roles[1] !== "mask")
+        return false;
+      if (contract.schema === "taku.image-input-contract.v1") {
+        if (value.maximumInputs !== 2 || contract.sameDimensions !== true || !keys(contract, ["schema", "roles", "sameDimensions"]))
+          return false;
+      } else {
+        const policy = contract.referenceMask;
+        if (!referenceFeature || contract.schema !== "taku.image-input-contract.v2" || contract.sameDimensions !== false || value.maximumInputs !== 17 || !keys(contract, ["schema", "roles", "sameDimensions", "referenceMask"]) || !record2(policy) || !keys(policy, ["minimumSources", "maximumSources", "maskParameter", "maskMatchesFirstSource"]) || policy.minimumSources !== 1 || policy.maximumSources !== 16 || policy.maskParameter !== "mask_input" || policy.maskMatchesFirstSource !== true)
+          return false;
+        referenceMask = true;
+      }
+    }
+  }
+  if (operation === "media.image.generate" && value.maximumInputs !== 0 && !generationReferences)
+    return false;
+  if (value.maximumInputs === 17 && !referenceMask)
+    return false;
+  let ready = false;
+  for (const surface of SURFACES) {
+    const state = value.availability[surface];
+    if (!record2(state) || !keys(state, ["status"], ["reason"]))
+      return false;
+    if (state.status === "ready") {
+      if (state.reason !== undefined)
+        return false;
+      ready = true;
+    } else if (!["unavailable", "deprecated"].includes(String(state.status)) || !REASONS.includes(String(state.reason)))
+      return false;
+  }
+  if (ready && (!value.parameterSchemaVersion || !value.priceVersion || !record2(value.parameters)))
+    return false;
+  if (value.parameters === null) {
+    if (referenceMask) {
+      const availability = value.availability;
+      return !value.parameterSchemaVersion && !value.priceVersion && SURFACES.every((surface) => {
+        const state = availability[surface];
+        return record2(state) && state.status === "unavailable" && state.reason === "provider_contract_unavailable";
+      });
+    }
+    return !ready;
+  }
+  if (!record2(value.parameters) || Object.keys(value.parameters).length > 64)
+    return false;
+  if (referenceMask) {
+    const selector = value.parameters.mask_input;
+    if (!record2(selector) || !keys(selector, ["type", "minimum", "maximum"], ["required"]) || selector.type !== "integer" || selector.minimum !== 2 || selector.maximum !== 17 || selector.required === true)
+      return false;
+  }
+  for (const [name, parameter] of Object.entries(value.parameters)) {
+    if (!isImageModelParameterName(name) || !validParameter(parameter, name, value.maximumOutputs, feature))
+      return false;
+  }
+  return true;
+}
+function parseImageModelCatalog(value, operation, limit, feature = IMAGE_MODEL_SIZE_FEATURE_V1) {
+  if (![IMAGE_MODEL_SIZE_FEATURE_V1, IMAGE_MODEL_SIZE_FEATURE_V2, IMAGE_MODEL_INPUT_FEATURE_V1, IMAGE_MODEL_INPUT_FEATURE_V2, IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1, IMAGE_MODEL_STRUCTURED_FEATURE_V1, IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1, IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1].includes(feature) || !record2(value) || !keys(value, [
+    "schema",
+    "catalogVersion",
+    "observedAt",
+    "models",
+    "nextCursor"
+  ]) || value.schema !== "taku.image-model-catalog.v1" || !bounded(value.catalogVersion, 64) || !/^[a-f0-9]{64}$/.test(value.catalogVersion) || !bounded(value.observedAt, 64) || !/^\d{4}-\d{2}-\d{2}T.*Z$/.test(value.observedAt) || !Number.isFinite(Date.parse(value.observedAt)) || !integer2(limit, 1, 100) || !Array.isArray(value.models) || value.models.length > limit || value.nextCursor !== null && !cursor(value.nextCursor))
+    return unavailable();
+  const ids = new Set;
+  for (const model of value.models) {
+    if (!validModel(model, operation, feature) || ids.has(model.id))
+      return unavailable();
+    ids.add(model.id);
+  }
+  if (value.models.length === 0 && value.nextCursor !== null)
+    return unavailable();
+  return structuredClone(value);
+}
+// ../contracts/src/image-executions.ts
+var IMAGE_EXECUTION_MAX_BYTES = 128 * 1024;
+var IMAGE_EXECUTION_ERRORS = new Set([
+  "image_model_unavailable",
+  "image_model_receipt_unavailable",
+  "image_execution_not_found",
+  "image_results_pending",
+  "image_model_authorization_unavailable",
+  "image_model_quote_not_found",
+  "image_execution_submission_uncertain",
+  "image_execution_submission_already_attempted",
+  "image_execution_cancelled",
+  "media_asset_conflict",
+  "media_job_conflict",
+  "media_job_not_found",
+  "image_model_quote_expired",
+  "image_model_quote_conflict",
+  "image_model_request_conflict",
+  "invalid_image_model_request",
+  "image_model_access_denied",
+  "media_asset_not_found",
+  "media_asset_expired",
+  "media_asset_not_ready",
+  "media_asset_failed",
+  "media_asset_unavailable",
+  "invalid_request_id",
+  "invalid_idempotency_key",
+  "media_input_invalid",
+  "insufficient_credits",
+  "authentication_required",
+  "preview_session_required",
+  "capability_unavailable",
+  "site_frozen",
+  "site_unavailable",
+  "site_media_rate_limited",
+  "site_quota_unavailable",
+  "forbidden",
+  "insufficient_scope",
+  "scope_not_declared",
+  "integration_not_declared",
+  "operation_not_declared",
+  "SITE_CAPABILITY_INTERNAL_ONLY",
+  "request_too_large"
+]);
 // src/artifact-builder.ts
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
@@ -5604,6 +6038,15 @@ function parse3(input, options) {
 
 // src/site-sdk-contract.ts
 var AIRBNB_OPERATIONS = new Set(["autocomplete", "search", "detail", "price"]);
+var IMAGE_EXECUTION_METHODS = new Set([
+  "media.quoteImageRequest",
+  "media.submitImageRequest",
+  "media.getImageExecution",
+  "media.findImageExecution",
+  "media.cancelImageExecution",
+  "media.getImageOutputs",
+  "media.getImageOutputLink"
+]);
 function siteSdkContractError(source, kind, manifest) {
   let program;
   try {
@@ -5631,9 +6074,15 @@ function siteSdkContractError(source, kind, manifest) {
   const sessionFunctions = new Set;
   let importsSdk = false;
   for (const node of nodes) {
-    if (node.type === "ImportDeclaration" && literal2(node.source)?.startsWith("@taku-sites/sdk")) {
+    if (node.type === "ImportDeclaration") {
+      const moduleName = literal2(node.source);
+      const packageSdk = moduleName?.startsWith("@taku-sites/sdk") === true;
+      const localModule = moduleName?.startsWith("./") === true || moduleName?.startsWith("../") === true;
+      const specifiers = node.specifiers.filter((specifier) => packageSdk || localModule && ["createTakuSitesClient", "taku"].includes(identifier(specifier.imported) ?? ""));
+      if (specifiers.length === 0)
+        continue;
       importsSdk = true;
-      for (const specifier of node.specifiers) {
+      for (const specifier of specifiers) {
         const name = identifier(specifier.local);
         if (!name)
           continue;
@@ -5682,6 +6131,22 @@ function siteSdkContractError(source, kind, manifest) {
     const route = parts.slice(1).join(".");
     const args = node.arguments;
     if (route.startsWith("media.")) {
+      if (IMAGE_EXECUTION_METHODS.has(route)) {
+        const requested = literal2(args[0]);
+        if (requested !== null && !["media.image.generate", "media.image.edit"].includes(requested))
+          return "SITE_SDK_OPERATION_UNSUPPORTED";
+        if (!usableMedia.some(([scope2]) => scope2 !== "media.video.generate" && (requested === null || scope2 === requested)))
+          return "SITE_SDK_CAPABILITY_UNDECLARED";
+        continue;
+      }
+      if (route === "media.listImageModels") {
+        const requested = objectLiteral(args[0], "operation");
+        if (requested !== null && !["media.image.generate", "media.image.edit"].includes(requested))
+          return "SITE_SDK_OPERATION_UNSUPPORTED";
+        if (!usableMedia.some(([scope2]) => scope2 !== "media.video.generate" && (requested === null || scope2 === requested)))
+          return "SITE_SDK_CAPABILITY_UNDECLARED";
+        continue;
+      }
       const scope = ["media.createInput", "media.uploadInput", "media.editImage"].includes(route) ? "media.image.edit" : route === "media.generateImage" ? "media.image.generate" : route === "media.generateVideo" ? "media.video.generate" : null;
       if (!scope && !["media.getJob", "media.getAsset", "media.getAssetLink"].includes(route))
         return "SITE_SDK_OPERATION_UNSUPPORTED";
@@ -5722,6 +6187,15 @@ function identifier(value) {
 }
 function literal2(value) {
   return isNode(value) && value.type === "Literal" && typeof value.value === "string" ? value.value : null;
+}
+function objectLiteral(value, key) {
+  if (!isNode(value) || value.type !== "ObjectExpression")
+    return null;
+  for (const property of value.properties) {
+    if (property.type === "Property" && (identifier(property.key) ?? literal2(property.key)) === key)
+      return literal2(property.value);
+  }
+  return null;
 }
 function members(value) {
   if (!isNode(value))
@@ -5803,17 +6277,17 @@ async function inspectSiteContent(input) {
   for (const [ordinal, candidate] of candidates.entries()) {
     throwIfAborted(input.signal);
     assertArtifactFileName(candidate.logicalName);
-    const bytes = await readArtifactBytes(candidate.absolutePath, candidate.size, input.signal);
-    assertNoObviousCredential(bytes);
+    const bytes3 = await readArtifactBytes(candidate.absolutePath, candidate.size, input.signal);
+    assertNoObviousCredential(bytes3);
     if (candidate.kind === "worker" || candidate.kind === "asset" && /\.m?js$/i.test(candidate.logicalName)) {
-      const contractError = siteSdkContractError(new TextDecoder().decode(bytes), candidate.kind === "worker" ? "worker" : "browser", input.siteManifest);
+      const contractError = siteSdkContractError(new TextDecoder().decode(bytes3), candidate.kind === "worker" ? "worker" : "browser", input.siteManifest);
       if (contractError)
         throw buildError(contractError);
     }
     objects.push({
       ...candidate,
       ordinal,
-      sha256: sha256Bytes(bytes)
+      sha256: sha256Bytes(bytes3)
     });
   }
   const mainModule = objectDescriptor(objects[0]);
@@ -5901,10 +6375,10 @@ async function resolveSafePath(projectRoot, relativePath, expected) {
   }
   const candidate = path.resolve(projectRoot, relativePath);
   assertDescendant(projectRoot, candidate);
-  let cursor = projectRoot;
+  let cursor2 = projectRoot;
   for (const segment of relativePath.split("/")) {
-    cursor = path.join(cursor, segment);
-    const info2 = await lstat(cursor).catch(() => null);
+    cursor2 = path.join(cursor2, segment);
+    const info2 = await lstat(cursor2).catch(() => null);
     if (!info2)
       throw buildError(expected === "file" ? "FILE_NOT_FOUND" : "DIRECTORY_NOT_FOUND");
     if (info2.isSymbolicLink())
@@ -5961,18 +6435,18 @@ async function readArtifactBytes(absolutePath, expectedSize, signal) {
     const info = await handle.stat();
     if (!info.isFile() || info.size !== expectedSize || expectedSize > SITE_ARTIFACT_LIMITS.assetBytes)
       throw buildError("BUILD_CHANGED");
-    const bytes = Buffer.alloc(expectedSize + 1);
+    const bytes3 = Buffer.alloc(expectedSize + 1);
     let offset2 = 0;
-    while (offset2 < bytes.length) {
+    while (offset2 < bytes3.length) {
       throwIfAborted(signal);
-      const result = await handle.read(bytes, offset2, bytes.length - offset2, offset2);
+      const result = await handle.read(bytes3, offset2, bytes3.length - offset2, offset2);
       if (result.bytesRead === 0)
         break;
       offset2 += result.bytesRead;
     }
     if (offset2 !== expectedSize || (await handle.stat()).size !== expectedSize)
       throw buildError("BUILD_CHANGED");
-    return bytes.subarray(0, expectedSize);
+    return bytes3.subarray(0, expectedSize);
   } finally {
     await handle.close();
   }
@@ -6031,13 +6505,13 @@ function canonicalJson2(value) {
   if (Array.isArray(value))
     return `[${value.map(canonicalJson2).join(",")}]`;
   if (typeof value === "object") {
-    const record = value;
-    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson2(record[key])}`).join(",")}}`;
+    const record3 = value;
+    return `{${Object.keys(record3).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson2(record3[key])}`).join(",")}}`;
   }
   throw buildError("INVALID_ARTIFACT_DESCRIPTOR");
 }
-function sha256Bytes(bytes) {
-  return createHash("sha256").update(bytes).digest("hex");
+function sha256Bytes(bytes3) {
+  return createHash("sha256").update(bytes3).digest("hex");
 }
 function throwIfAborted(signal) {
   if (signal?.aborted)
@@ -6051,10 +6525,81 @@ function assertArtifactFileName(name) {
     throw new SiteArtifactBuildError("SENSITIVE_ARTIFACT_FILE");
   }
 }
-function assertNoObviousCredential(bytes) {
-  const text = new TextDecoder().decode(bytes);
+function assertNoObviousCredential(bytes3) {
+  const text = new TextDecoder().decode(bytes3);
   if (/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:sk_(?:live|test)_|sk-proj-|sk-lf-|gh[pousr]_|github_pat_)[A-Za-z0-9_-]{16,}|\bAKIA[A-Z0-9]{16}\b|(?:postgres(?:ql)?|mysql|libsql):\/\/[^\s"']+:[^\s"'@]+@/i.test(text) || /["']?(?:[A-Z_]*(?:SECRET|PASSWORD|PASSWD|PRIVATE_KEY)|TURSO_AUTH_TOKEN|SUPABASE_SERVICE_ROLE_KEY)["']?\s*[:=]\s*["'][^"'\r\n]{8,}["']/i.test(text)) {
     throw new SiteArtifactBuildError("CREDENTIAL_IN_ARTIFACT");
+  }
+}
+// ../contracts/src/image-model-reader.ts
+async function withImageModelDeadline(read, parent) {
+  const controller = new AbortController;
+  const cancel = () => controller.abort();
+  parent?.addEventListener("abort", cancel, { once: true });
+  if (parent?.aborted)
+    cancel();
+  const timer = setTimeout(cancel, 1e4);
+  let rejectAbort;
+  const aborted = new Promise((_, reject) => {
+    rejectAbort = () => reject(new ImageModelCatalogError(503, "image_model_catalog_unavailable"));
+    controller.signal.addEventListener("abort", rejectAbort, { once: true });
+    if (controller.signal.aborted)
+      rejectAbort();
+  });
+  try {
+    return await (controller.signal.aborted ? aborted : Promise.race([read(controller.signal), aborted]));
+  } finally {
+    clearTimeout(timer);
+    parent?.removeEventListener("abort", cancel);
+    if (rejectAbort)
+      controller.signal.removeEventListener("abort", rejectAbort);
+  }
+}
+async function readImageModelJson(response, signal) {
+  if (response.headers.get("Content-Type")?.split(";")[0]?.trim().toLowerCase() !== "application/json") {
+    response.body?.cancel().catch(() => {});
+    throw new ImageModelCatalogError(503, "image_model_catalog_unavailable");
+  }
+  const reader = response.body?.getReader();
+  if (!reader)
+    throw new ImageModelCatalogError(503, "image_model_catalog_unavailable");
+  const cancel = () => {
+    reader.cancel().catch(() => {});
+  };
+  signal.addEventListener("abort", cancel, { once: true });
+  const chunks = [];
+  let size = 0;
+  try {
+    if (signal.aborted) {
+      cancel();
+      throw new ImageModelCatalogError(503, "image_model_catalog_unavailable");
+    }
+    while (true) {
+      const next = await reader.read();
+      if (signal.aborted)
+        throw new ImageModelCatalogError(503, "image_model_catalog_unavailable");
+      if (next.done)
+        break;
+      size += next.value.byteLength;
+      if (size > IMAGE_MODEL_CATALOG_MAX_BYTES) {
+        cancel();
+        throw new ImageModelCatalogError(503, "image_model_catalog_unavailable");
+      }
+      chunks.push(next.value);
+    }
+    const bytes3 = new Uint8Array(size);
+    let offset2 = 0;
+    for (const chunk of chunks) {
+      bytes3.set(chunk, offset2);
+      offset2 += chunk.byteLength;
+    }
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes3));
+  } catch (error) {
+    cancel();
+    throw error;
+  } finally {
+    signal.removeEventListener("abort", cancel);
+    reader.releaseLock();
   }
 }
 
@@ -6091,8 +6636,8 @@ async function inspectProject(projectRoot) {
     throw new SiteArtifactBuildError("INVALID_PROJECT_CONFIG");
   }
   const value = config;
-  const keys = Object.keys(value);
-  if (keys.some((key) => !["workerEntrypoint", "assetsDirectory", "migrationsDirectory", "siteManifest"].includes(key)) || typeof value.workerEntrypoint !== "string" || typeof value.assetsDirectory !== "string" || value.migrationsDirectory !== undefined && typeof value.migrationsDirectory !== "string") {
+  const keys2 = Object.keys(value);
+  if (keys2.some((key) => !["workerEntrypoint", "assetsDirectory", "migrationsDirectory", "siteManifest"].includes(key)) || typeof value.workerEntrypoint !== "string" || typeof value.assetsDirectory !== "string" || value.migrationsDirectory !== undefined && typeof value.migrationsDirectory !== "string") {
     throw new SiteArtifactBuildError("INVALID_PROJECT_CONFIG");
   }
   const manifest = parseSiteManifest(value.siteManifest);
@@ -6143,11 +6688,11 @@ async function buildArtifact(projectRoot, options) {
 }
 async function readArtifactObject(object) {
   try {
-    const bytes = await readArtifactBytes(object.absolutePath, object.size);
-    if (createHash2("sha256").update(bytes).digest("hex") !== object.sha256) {
+    const bytes3 = await readArtifactBytes(object.absolutePath, object.size);
+    if (createHash2("sha256").update(bytes3).digest("hex") !== object.sha256) {
       throw new SiteArtifactBuildError("BUILD_CHANGED");
     }
-    return bytes;
+    return bytes3;
   } catch {
     throw new SiteArtifactBuildError("BUILD_CHANGED");
   }
@@ -6162,8 +6707,12 @@ async function validateArtifact(projectRoot, artifact2) {
   }
 }
 export {
+  withImageModelDeadline,
   validateArtifact,
+  readImageModelJson,
   readArtifactObject,
+  parseImageModelQuery,
+  parseImageModelCatalog,
   inspectProject,
   buildArtifact,
   SiteArtifactBuildError as SiteCliBuildError,

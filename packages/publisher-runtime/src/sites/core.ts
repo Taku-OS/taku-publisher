@@ -32,9 +32,21 @@ export type BuiltSiteArtifact = {
   totalBytes: number;
 };
 
+export type ImageModelQuery = {
+  operation: 'media.image.generate' | 'media.image.edit';
+  query?: string;
+  cursor?: string;
+  limit: number;
+};
+
 export type SitesCore = {
   SITE_CLI_CONTRACT_VERSION: string;
   ARTIFACT_LIMITS: Record<string, number>;
+  parseImageModelQuery(value: unknown): ImageModelQuery;
+  parseImageModelCatalog(value: unknown, operation: ImageModelQuery['operation'], limit: number,
+    feature?: 'size-constraints-v1' | 'size-constraints-v2' | 'input-contract-v1' | 'input-contract-v2' | 'parameter-enum-v1' | 'structured-parameters-v1' | 'aspect-ratio-v1' | 'generation-references-v1'): Record<string, unknown>;
+  readImageModelJson(response: Response, signal: AbortSignal): Promise<unknown>;
+  withImageModelDeadline<T>(read: (signal: AbortSignal) => Promise<T>, parent?: AbortSignal): Promise<T>;
   inspectProject(root: string): Promise<{ projectRoot: string; siteManifest: SiteManifest; assetsDirectory: string; workerEntrypoint: string }>;
   buildArtifact(root: string, options: { projectId: string; builtAt: string }): Promise<BuiltSiteArtifact>;
   validateArtifact(root: string, artifact: BuiltSiteArtifact): Promise<void>;

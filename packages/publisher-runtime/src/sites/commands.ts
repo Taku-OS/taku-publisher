@@ -3,7 +3,7 @@ import path from 'node:path';
 import { DEFAULT_WORKER_URL } from '../constants.js';
 import type { JsonObject } from '../types.js';
 import { jsonOutput, PublisherError } from '../util.js';
-import { browserSdkBytes, loadSitesCore } from './core.js';
+import { browserSdkBytes, loadSitesCore, type ImageModelQuery, type SitesCore } from './core.js';
 import { resolveSitesAuth, SitesHttpClient } from './http.js';
 import { publishSite } from './publish.js';
 
@@ -14,6 +14,7 @@ export type SiteCommandArguments = {
 
 export async function runSiteCommand(args: SiteCommandArguments): Promise<JsonObject> {
   const { core, provenance } = await loadSitesCore();
+  if (args.command === 'sites-image-models') return imageModelCommand(args, core);
   if (args.command === 'sites-contract') {
     // Capability availability is server-owned; pass the live catalog through unchanged.
     const capabilities = await (await sitesClient(args)).get('/v1/sites/capabilities') as JsonObject;
@@ -37,6 +38,14 @@ export async function runSiteCommand(args: SiteCommandArguments): Promise<JsonOb
         rule: 'Browser-only. Declare every SDK scope and integration operation in siteManifest before building.',
       },
       capabilities,
+      image_models: {
+        schema: 'taku.image-model-catalog.v1',
+        command: 'sites-image-models --operation <media.image.generate|media.image.edit> [--query <text>] [--cursor <cursor>] [--limit 1..100]',
+        operations: ['media.image.generate', 'media.image.edit'],
+        surface: 'site-published', discovery_scope: 'sites.read',
+        default_limit: 50, maximum_limit: 100, maximum_response_bytes: 524288, deadline_ms: 10000,
+        inference: false, runtime_permission_required: true,
+      },
       workflow: ['sites-login', 'sites-whoami', 'sites-contract', 'build_and_test_in_harness', 'sites-validate', 'sites-publish'],
       publish_rule: 'The user enters one exact subdomain or chooses an owned projectId and confirms the exact target.',
     });
@@ -112,6 +121,29 @@ export async function runSiteCommand(args: SiteCommandArguments): Promise<JsonOb
   }
   if (args.command === 'sites-publish') return publishSite(args, core);
   throw new PublisherError(`Unknown Sites command: ${args.command}`, 'unknown_command');
+}
+
+async function imageModelCommand(args: SiteCommandArguments, core: SitesCore): Promise<JsonObject> {
+  const allowed = new Set(['operation', 'query', 'cursor', 'limit', 'worker-url', 'allow-custom-worker-url', 'json']);
+  let query: ImageModelQuery;
+  try {
+    if ([...args.flags.keys()].some(key => !allowed.has(key))) throw new Error('invalid_query');
+    const rawLimit = args.flags.get('limit');
+    if (rawLimit !== undefined && (typeof rawLimit !== 'string' || !/^[1-9]\d{0,2}$/.test(rawLimit))) throw new Error('invalid_limit');
+    query = core.parseImageModelQuery({
+      operation: args.flags.get('operation'),
+      ...(args.flags.has('query') ? { query: args.flags.get('query') } : {}),
+      ...(args.flags.has('cursor') ? { cursor: args.flags.get('cursor') } : {}),
+      ...(rawLimit === undefined ? {} : { limit: Number(rawLimit) }),
+    });
+  } catch {
+    throw new PublisherError('Use an exact image operation, bounded query/cursor and a limit from 1 to 100.', 'sites_image_model_query_invalid');
+  }
+  const catalog = await (await sitesClient(args)).getImageModelCatalog(query, core);
+  return jsonOutput('sites_image_models', {
+    operation: query.operation, surface: 'site-published', catalog: catalog as JsonObject,
+    notice: 'Discovery does not authorize inference. Preserve catalog availability and declare the required runtime operation and scope.',
+  });
 }
 
 async function sitesClient(args: SiteCommandArguments): Promise<SitesHttpClient> {

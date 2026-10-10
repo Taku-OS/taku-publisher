@@ -35,6 +35,7 @@
     "build:runtime": "npm run build:converter && npm run build:subapp-contract && npm run build:core && npm run build --workspace @taku/publisher-runtime",
     "checksum:source": "node scripts/source-checksum.mjs",
     "sync:sites-core": "node scripts/sync-sites-core.mjs",
+    "test:sites-images": "npm run build:runtime && node --test packages/publisher-runtime/test/sites-image-executions.test.mjs packages/publisher-runtime/test/sites-image-models.test.mjs packages/publisher-runtime/test/sites-image-model-aspect-ratio.test.mjs packages/publisher-runtime/test/sites-image-model-generation-references.test.mjs packages/publisher-runtime/test/sites-image-model-integer-values.test.mjs packages/publisher-runtime/test/sites-image-model-structured-parameters.test.mjs packages/publisher-runtime/test/sites-commands.test.mjs packages/publisher-runtime/test/sites-core.test.mjs",
     "doctor": "node packages/publisher-cli/bin/taku-creator.mjs doctor --json",
     "pack:contract": "node scripts/package-contract.mjs",
     "pack:runtime": "node scripts/package-publisher-runtime.mjs",

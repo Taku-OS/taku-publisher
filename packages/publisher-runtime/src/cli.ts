@@ -2184,6 +2184,7 @@ Commands:
   sites-login [--wait], sites-whoami, sites-contract (live capability catalog), sites-init --project <dir>
   Sites authorization renews automatically for 30 days; auth-refresh renews now; auth-logout revokes and clears it.
   sites-sdk-export --output <project>/dist/assets/taku-sites-sdk.mjs
+  sites-image-models --operation media.image.generate|media.image.edit [--query <text>] [--cursor <cursor>] [--limit 1..100] (authenticated metadata only)
   sites-validate --project <dir>, sites-build --project <dir> [--project-id <owned-id>]
   sites-list, sites-status --project-id <id>
   sites-publish --project <dir> [--slug <user-chosen-subdomain>|--project-id <owned-id>] [--confirm-target <exact-hostname-or-id>] [--wait-seconds 60]
