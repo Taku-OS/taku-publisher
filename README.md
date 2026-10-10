@@ -128,11 +128,11 @@ optional Card-to-one-Skill workflow; ordinary Card, Skill and SubApp routes rema
 [Cursor installation and release gates](docs/cursor-release.md).
 
 For independent Publisher native updates, `npm run build:native` creates the
-Publisher-only Codex, Claude Code and Cursor candidate in
+Publisher-only Codex, Claude Code and Cursor bundles in
 `dist/native-publisher/`. `npm run smoke:native` verifies its provenance,
 archives and local Card-to-Skill workflow. This channel omits the Sites Skill
 and does not enable Sites GA. See the
-[0.3.30 native candidate and acceptance guide](docs/release-0.3.30-native.md).
+[0.3.30 native release and QA guide](docs/release-0.3.30-native.md).
 
 OpenCode can load the portable artifact from its global
 `~/.config/opencode/skills/taku-publisher` directory or a project's

@@ -1,6 +1,9 @@
-# Publisher 0.3.30 native channel candidate
+# Publisher 0.3.30 native release and QA
 
-This is local release preparation, not a published release. Source base is main
+This release updates the Publisher-only native channel independently of Sites.
+The authoritative release status and downloadable archives are on the
+[v0.3.30 GitHub release](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.3.30).
+Source base is main
 `defd24a649338e32c15ea89c19104aaea7f2eeb9`; production marketplace base is
 `e7ee4c7bef7625725ca8069340c7d235acad9436` (0.3.27). PRs 51–53 are excluded.
 
@@ -13,7 +16,7 @@ shared with the standard adapter build. No Sites Skill or new Sites GA code is
 included; existing runtime Sites commands still require the dedicated session
 and server-verified internal eligibility. The standard two-Skill adapters and
 Cursor/Agent Skills installer remain available through their existing commands.
-This candidate advances versions and packaging, without changing Publisher
+This release advances versions and packaging, without changing Publisher
 business logic or importing unmerged features.
 
 `release.json` records the source commit, source tree SHA-256, clean/dirty state,
@@ -69,7 +72,24 @@ in temporary directories against the actual marketplace 0.3.27 bundle; user
 host restart or real installation needs separate approval. Old Sites credentials
 are not a verified rollback path.
 
-## Kristen acceptance on approved production installation
+## Verification and QA follow-up
+
+The reviewed implementation passed 576 local regressions and clean-copy smoke.
+Codex and Claude's actual plugin managers verified isolated install, upgrade,
+rollback and restoration; Codex app-server loaded the installed Publisher Skill.
+Cursor 3.23.12's native loader verified install and update. The isolated Cursor
+3.24.9 workbench did not complete extension-host startup, including with fresh
+user-data and normal launch flags; its native rollback loading and UI remain
+unverified. This does not establish a Publisher plugin failure.
+
+Production browser sign-in succeeded, but the private draft request from the
+test account was rejected before upload with `creator_profile_required`.
+Production private draft/upload, Web review/status, session recovery, legal
+confirmation, paid generation and public Skill submission remain QA follow-ups.
+The release owner authorized formal native publication with these disclosed
+items assigned to QA; they are not claimed as passing production checks.
+
+## Kristen QA on approved production installation
 
 1. Confirm the exact installed `taku-publisher` version is 0.3.30, with only the
    Publisher Skill exposed by this native plugin. Start a new Agent session.
@@ -86,9 +106,10 @@ are not a verified rollback path.
    release in Web. Read `remote-status` afterward; do not resubmit because a
    local state still says awaiting confirmation.
 
-Production steps 2, 4 and 5 remain unverified in local preparation. Paid icon or
-Flowchart generation requires explicit approval before testing. Do not infer a
-production launch date from local checks.
+Use an existing Creator account for steps 2, 4 and 5. Confirm private draft/upload
+and Web review/status before any public business submission. Also verify native
+install/update/rollback in Cursor 3.24.9 and session recovery after expiry.
+Paid icon or Flowchart generation requires explicit approval before testing.
 
 ## Promotion and rollback
 
@@ -103,5 +124,6 @@ Rollback the native plugin to the retained 0.3.27 artifact after user approval,
 then start a fresh Agent session. This restores Publisher plugin bytes and does
 not establish Sites service/session compatibility.
 
-No push, PR, merge, release, deployment, paid call, production login, public
-publication or user App restart is authorized by this preparation itself.
+This release guide does not itself authorize paid calls, public Skill submission,
+new credential permissions or a user App restart. Native GitHub publication and
+business Skill publication are separate actions.
