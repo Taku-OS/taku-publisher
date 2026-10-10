@@ -108,7 +108,7 @@ async function uploadConfiguredSiteImage(api, image, checkpoint, saveCheckpoint)
 ```
 <!-- runnable:site-image-input:end -->
 
-每张图片先保存上传 requestId，再调用本例，成功后记录 input_id / expires_at；按用户槽位顺序传给下方报价函数。输入只存活到 receipt 的 expires_at，不是永久素材或 30 天生成结果。永久素材存储是另一个独立授权合同，不在本次图片交付范围内。实际字节、MIME、尺寸、归属、配额、operation 和 Site 状态由服务端核验；checkpoint 和客户端信息不能代替权限证明。上传失败或取消不能作为已取得输入，更不能继续付费提交。
+每张图片先保存上传 requestId，再调用本例，成功后记录 input_id / expires_at；按用户槽位顺序传给下方报价函数。输入只存活到 receipt 的 expires_at，不是永久素材或 30 天生成结果。永久素材走账户 owner_assets 的独立存储合同。实际字节、MIME、尺寸、归属、配额、operation 和 Site 状态由服务端核验；checkpoint 和客户端信息不能代替权限证明。上传失败或取消不能作为已取得输入，更不能继续付费提交。
 
 下面的函数可放进业务模块，传入真实 SDK。它读取当次目录、核对配置，再请求报价；它不会提交生成、选择替代模型或询问用户。
 
@@ -247,7 +247,7 @@ function createBriaReferenceIntent(model, inputIds, controls) {
   const methods = ['controlnet_canny', 'controlnet_depth', 'controlnet_recoloring', 'controlnet_color_grid'];
   const parameters = { num_images: 1 };
   const used = new Set();
-  controls.forEach((control, index) => {
+  Array.from(controls).forEach((control, index) => {
     if (!control || typeof control !== 'object' || Array.isArray(control) ||
         Object.keys(control).some(key => !['input', 'method', 'scale'].includes(key)) ||
         !Number.isInteger(control.input) || control.input < 1 || control.input > inputIds.length ||

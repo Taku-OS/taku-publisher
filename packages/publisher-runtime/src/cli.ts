@@ -2187,6 +2187,10 @@ Commands:
   sites-image-models --operation media.image.generate|media.image.edit [--query <text>] [--cursor <cursor>] [--limit 1..100] (authenticated metadata only)
   sites-validate --project <dir>, sites-build --project <dir> [--project-id <owned-id>]
   sites-list, sites-status --project-id <id>
+  sites-assets-policy, sites-assets-list [--limit 1..100] [--after <asset-id>]
+  sites-assets-resolve --asset-id <asset-id> (metadata only)
+  sites-assets-download --asset-id <asset-id> --output <new-local-file> (verified owner download; no overwrite)
+  sites-assets-delete --asset-id <asset-id> --confirm-asset-id <same-id>
   sites-publish --project <dir> [--slug <user-chosen-subdomain>|--project-id <owned-id>] [--confirm-target <exact-hostname-or-id>] [--wait-seconds 60]
   marketplace-search, marketplace-show, marketplace-open
   marketplace-install --host codex|claude-code|cursor|opencode|gemini-cli|agent-skills --item-id <id> [--confirm-item-id <same-id>]

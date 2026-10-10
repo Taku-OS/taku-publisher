@@ -23,7 +23,7 @@ The authority is `sites-contract --json`: its `contract_version`, `project_confi
 
 - Build with any toolchain you like (Vite, esbuild, and so on). The CLI packages the build output only.
 - **Worker:** one bundled ES module with a `default` export `{ fetch(request, env) }`, at most 5 MiB. It serves static files through `env.ASSETS.fetch(request)`. `ASSETS` is the only binding. There is no file system, no platform secret, no database handle, and no Taku credential.
-- **Assets:** at most 1000 files, 25 MiB each, 64 MiB per release in total. No symlinks, no secrets, and no credential-like files (the build rejects them).
+- **Code assets:** at most 1000 files, 25 MiB each, 64 MiB per release in total. Images/videos use the separate [material manifest](materials.md) and shared owner capacity, not this bundle. No symlinks, no secrets, and no credential-like files (the build rejects them).
 - **Migrations** are optional and only for generic SQL (see storage.md). Name them `NNNN_name.sql`. Set `storage.migrations: true` only when you actually ship them.
 - **Manifest:** `auth.mode` is `none`, `optional`, or `required`. With `none` the scope list must be empty. List only the scopes and `integrations[{ name, operations, scopes }]` the Site actually uses. Integration scopes must also appear in `auth.scopes`. Unknown keys, scopes, or operations are rejected.
 

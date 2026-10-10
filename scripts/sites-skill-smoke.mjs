@@ -211,6 +211,7 @@ try {
     for (const [ids, control] of [[[], [{ input: 1 }]], [[...referenceIds, ...referenceIds, `min_${'e'.repeat(32)}`], [{ input: 1 }]],
       [[referenceIds[0], referenceIds[0]], [{ input: 1 }, { input: 2 }]], [referenceIds, [{ input: 1 }]],
       [[referenceIds[0]], [{ input: 1, scale: null }]], [[referenceIds[0]], [{ input: 1, method: 'automatic' }]],
+      [[referenceIds[0]], [{ input: 1 }, ,]], [[referenceIds[0]], [, { input: 1 }]],
       [['https://provider.invalid/x.png'], [{ input: 1 }]]]) {
       assert.throws(() => sandbox.references(model, ids, control), /bria_reference_intent_invalid/);
     }

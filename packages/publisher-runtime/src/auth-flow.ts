@@ -46,12 +46,24 @@ async function withLock<T>(env: NodeJS.ProcessEnv, action: () => Promise<T>): Pr
   throw new PublisherError('Unable to acquire the login lock.', 'auth_flow_busy');
 }
 export async function checkAuthFlow(requestId?: string, env = process.env): Promise<JsonObject> {
-  const state = await readAuthFlow(env);
+  let state = await readAuthFlow(env);
   if (!state || (requestId && state.request_id !== requestId)) return jsonOutput('login_required', {}, { requiresAction: true, actionType: 'start_authorization' });
+  let interrupted = activeAuthStates.has(String(state.status))
+    && (!processAlive(Number(state.pid)) || Date.now() - Number(state.heartbeat_at) > 15_000);
+  if (interrupted) {
+    // The receiver can persist completion and exit after our first state read.
+    const latest = await readAuthFlow(env);
+    if (!latest || latest.request_id !== state.request_id) {
+      return jsonOutput('login_required', {}, { requiresAction: true, actionType: 'start_authorization' });
+    }
+    state = latest;
+    interrupted = activeAuthStates.has(String(state.status))
+      && (!processAlive(Number(state.pid)) || Date.now() - Number(state.heartbeat_at) > 15_000);
+  }
   const status = String(state.status);
   const base = { request_id: state.request_id, intent: state.intent, expires_at: state.expires_at };
   if (activeAuthStates.has(status)) {
-    if (!processAlive(Number(state.pid)) || Date.now() - Number(state.heartbeat_at) > 15_000) {
+    if (interrupted) {
       return jsonOutput('authorization_interrupted', base, { requiresAction: true, actionType: 'restart_authorization' });
     }
     return jsonOutput('awaiting_authorization', {

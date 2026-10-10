@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { validateWorkerUrl } from '../api.js';
 import { resolveAuth, readSession, publisherSessionPath, type ResolvedAuth, type RefreshTransport } from '../auth.js';
 import { readBoundedResponse, responseErrorDetails } from '../http-errors.js';
@@ -113,6 +114,46 @@ export class SitesHttpClient {
     return this.request('POST', path, body, idempotencyKey);
   }
 
+  async postEmpty(path: string): Promise<Record<string, unknown>> {
+    return this.request('POST', path);
+  }
+
+  async delete(path: string): Promise<Record<string, unknown>> {
+    return this.request('DELETE', path);
+  }
+
+  /** Fixed owner endpoint only; never follow a metadata/provider URL with auth. */
+  async getMaterialContent(assetId: string, retried = false): Promise<Response> {
+    if (typeof assetId !== 'string' || !/^ast_[a-f0-9]{32}$/.test(assetId)) {
+      throw new PublisherError('Use an exact asset ID.', 'sites_asset_arguments_invalid');
+    }
+    let response: Response;
+    try {
+      response = await this.fetcher(new URL(`/v1/sites/assets/${assetId}/content`, this.workerUrl), {
+        method: 'GET', headers: { Authorization: `Bearer ${this.publisherToken}`, Accept: 'application/octet-stream' },
+        redirect: 'error', signal: AbortSignal.timeout(180_000),
+      });
+    } catch {
+      throw new PublisherError('Could not reach Taku Sites. Retry the same download.', 'sites_network_unavailable');
+    }
+    if (response.ok) return response;
+    const { value, summary } = await readBoundedResponse(response);
+    if (response.status === 401 && !retried && this.renew) {
+      this.publisherToken = await this.renew(this.publisherToken);
+      if (!this.publisherToken.startsWith('taku_pub_')) throw new PublisherError('Publisher renewal failed.', 'sites_login_required');
+      return this.getMaterialContent(assetId, true);
+    }
+    const details = responseErrorDetails(response, value, summary);
+    throw new PublisherError(`Taku Sites returned ${details.server_error}.`, 'sites_api_error', details);
+  }
+
+  async putMaterialPart(path: string, bytes: Buffer): Promise<Record<string, unknown>> {
+    if (bytes.length < 1 || bytes.length > 8 * 1024 * 1024) {
+      throw new PublisherError('Invalid material part size.', 'sites_material_part_invalid');
+    }
+    return this.request('PUT', path, bytes, undefined, undefined, false, createHash('sha256').update(bytes).digest('hex'));
+  }
+
   async putObject(path: string, bytes: Buffer, uploadToken: string): Promise<Record<string, unknown>> {
     if (!uploadToken.startsWith('taku_su_')) {
       throw new PublisherError('A scoped upload credential is required.', 'sites_upload_credential_required');
@@ -121,8 +162,8 @@ export class SitesHttpClient {
   }
 
   private async request(
-    method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown,
-    idempotencyKey?: string, uploadToken?: string, retried = false,
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown,
+    idempotencyKey?: string, uploadToken?: string, retried = false, materialPartHash?: string,
   ): Promise<Record<string, unknown>> {
     if (!/^\/v1\/sites(?:\/|$)/.test(path)) {
       throw new PublisherError('Invalid Sites API path.', 'sites_invalid_api_path');
@@ -136,13 +177,14 @@ export class SitesHttpClient {
       Accept: 'application/json',
     };
     let payload: Buffer | undefined;
-    if (method === 'POST') {
+    if (method === 'POST' && body !== undefined) {
       headers['Content-Type'] = 'application/json';
       payload = Buffer.from(JSON.stringify(body ?? {}));
       if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
     } else if (method === 'PUT') {
       payload = body as Buffer;
       headers['Content-Length'] = String(payload.byteLength);
+      if (materialPartHash) headers['X-Taku-Asset-Part-Sha256'] = materialPartHash;
     }
     let response: Response;
     try {
@@ -157,14 +199,19 @@ export class SitesHttpClient {
     if (response.status === 401 && !retried && !uploadToken && this.renew) {
       this.publisherToken = await this.renew(this.publisherToken);
       if (!this.publisherToken.startsWith('taku_pub_')) throw new PublisherError('Publisher renewal failed.', 'sites_login_required');
-      return this.request(method, path, body, idempotencyKey, undefined, true);
+      return this.request(method, path, body, idempotencyKey, undefined, true, materialPartHash);
     }
     if (!response.ok) {
       const details = responseErrorDetails(response, value, summary);
       const code = details.server_error;
       const actionable = response.status === 401 ? ' Sign in again with sites-login.' : '';
-      const eligibility = response.status === 404 ? ' Check internal access eligibility and the CLI version.' : '';
-      throw new PublisherError(`Taku Sites returned ${code}.${actionable}${eligibility}`, 'sites_api_error', details);
+      const eligibility = response.status === 404 ? ' Check the target, account access and the CLI version.' : '';
+      const paywall = (response.status === 403 && code === 'SITE_LIMIT_REACHED') ||
+        (response.status === 409 && code === 'SITE_STORAGE_LIMIT_REACHED');
+      const guidance = paywall ? ' The same project and build are retained. Free capacity or review plans, then retry the same command; publication requires a valid confirmation.' : '';
+      throw new PublisherError(`Taku Sites returned ${code}.${actionable}${eligibility}${guidance}`, 'sites_api_error', {
+        ...details, ...(paywall ? { upgrade_url: 'https://taku.ai/pricing', project_preserved: true } : {}),
+      });
     }
     if (!isRecord(value)) throw new PublisherError('Taku Sites returned an invalid response.', 'sites_invalid_response');
     return value;

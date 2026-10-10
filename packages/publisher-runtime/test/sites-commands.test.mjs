@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { dispatch } from '../dist/cli.js';
 import { savePublisherSession } from '../dist/auth.js';
+import ownerAssetCatalog from './fixtures/owner-assets.json' with { type: 'json' };
 import { imageModelSizeCatalog } from './fixtures/image-model-size-catalog.mjs';
 import { imageModelInputCatalog, imageModelReferenceMaskCatalog } from './fixtures/image-model-input-catalog.mjs';
 
@@ -279,6 +281,46 @@ test('native Publisher model discovery preserves stable policy/status/request ID
   });
 });
 
+test('actual CLI Free second-Site preflight preserves the build and resumes to fresh confirmation after an upgrade, without cloud writes', async t => {
+  const root = await withSitesSession(t);
+  const project = path.join(root, 'draft');
+  await dispatch(args('sites-init', { project }));
+  const before = await dispatch(args('sites-validate', { project }));
+  let upgraded = false, policyAvailable = true, writes = 0;
+  const server = createServer((request, response) => {
+    if (request.method !== 'GET') writes++;
+    const value = request.url === '/v1/sites/cli-session' ? { userId: 'owner-fixture', productAccess: 'allowed' }
+      : request.url === '/v1/sites/publish-eligibility' ? { eligible: upgraded && policyAvailable,
+        max: upgraded ? 3 : 1, occupied: 1, available: upgraded ? 2 : 0, quotaConfigured: policyAvailable }
+      : request.url === '/v1/sites/slugs/chosen-site/availability' ? { slug: 'chosen-site', hostname: 'chosen-site.taku.site', available: true }
+      : null;
+    response.writeHead(value ? 200 : 404, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify(value ?? { error: 'unexpected_route' }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const flags = { project, slug: 'chosen-site', 'worker-url': `http://127.0.0.1:${server.address().port}`, 'allow-custom-worker-url': true };
+  await assert.rejects(dispatch(args('sites-publish', flags)), error => {
+    assert.equal(error.code, 'sites_not_eligible');
+    assert.equal(error.details.eligibility_reason, 'SITE_LIMIT_REACHED');
+    assert.equal(error.details.upgrade_url, 'https://taku.ai/pricing');
+    assert.equal(error.details.project_preserved, true);
+    assert.equal(error.details.http_status, undefined, 'a successful preflight is not an HTTP 403');
+    return true;
+  });
+  policyAvailable = false;
+  await assert.rejects(dispatch(args('sites-publish', flags)), error => {
+    assert.equal(error.details.upgrade_url, undefined, 'a policy outage is not a paid plan requirement');
+    return true;
+  });
+  policyAvailable = true; upgraded = true;
+  const resumed = await dispatch(args('sites-publish', flags));
+  assert.equal(resumed.status, 'needs_input');
+  assert.equal(resumed.confirm_target, 'chosen-site.taku.site');
+  assert.equal(writes, 0);
+  assert.equal((await dispatch(args('sites-validate', { project }))).content_digest, before.content_digest);
+});
+
 async function withSitesSession(t) {
   const root = await mkdtemp(path.join(tmpdir(), 'publisher-sites-command-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -309,6 +351,27 @@ test('Site template validates and builds locally; Publisher no longer offers a p
   await assert.rejects(dispatch(args('sites-preview', { project })), (error) => error.code === 'unknown_command');
 });
 
+test('local validate/build reports quota-managed material choices without cloud identity', async t => {
+  const root = await mkdtemp(path.join(tmpdir(), 'publisher-sites-material-summary-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await dispatch(args('sites-init', { project: root }));
+  const png = Buffer.from([137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,1,0,0,0,1]);
+  await writeFile(path.join(root, 'dist/assets/logo.png'), png);
+  await writeFile(path.join(root, 'taku.assets.json'), JSON.stringify({ schema: 'taku.sites.asset-manifest.v1', files: [{
+    logicalPath: '/media/logo.png', sourcePath: 'dist/assets/logo.png', contentType: 'image/png', size: png.length,
+    sha256: createHash('sha256').update(png).digest('hex'), retention: 'temporary', visibility: 'public',
+  }] }));
+  for (const command of ['sites-build', 'sites-validate']) {
+    const result = await dispatch(args(command, { project: root }));
+    assert.equal(result.project_id, null);
+    assert.equal(result.artifact_digest, null);
+    assert.equal(result.object_count, 2);
+    assert.equal(result.material_count, 1);
+    assert.equal(result.material_bytes, 24);
+    assert.deepEqual(result.material_retention, { permanent: 0, temporary: 1, temporary_ttl_seconds: 2592000 });
+  }
+});
+
 test('sites-contract passes the live server capability catalog through unchanged', async (t) => {
   await withSitesSession(t);
   const catalog = {
@@ -323,8 +386,10 @@ test('sites-contract passes the live server capability catalog through unchanged
   const seen = [];
   const server = createServer((request, response) => {
     seen.push({ method: request.method, url: request.url, authorization: request.headers.authorization });
-    response.writeHead(request.url === '/v1/sites/capabilities' ? 200 : 404, { 'Content-Type': 'application/json' });
-    response.end(JSON.stringify(request.url === '/v1/sites/capabilities' ? catalog : { error: 'Not Found' }));
+    const body = request.url === '/v1/sites/capabilities' ? catalog
+      : request.url === '/v1/sites/assets/capabilities' ? ownerAssetCatalog : null;
+    response.writeHead(body ? 200 : 404, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify(body ?? { error: 'Not Found' }));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
@@ -333,7 +398,46 @@ test('sites-contract passes the live server capability catalog through unchanged
   assert.equal(contract.status, 'sites_contract');
   assert.equal(contract.contract_version, 'taku.sites.cli.v1');
   assert.deepEqual(contract.capabilities, catalog);
-  assert.deepEqual(seen, [{ method: 'GET', url: '/v1/sites/capabilities', authorization: 'Bearer taku_pub_test_contract_session' }]);
+  assert.deepEqual(contract.owner_assets, ownerAssetCatalog);
+  assert.equal(contract.owner_assets.visitorSdk, false);
+  assert.equal(contract.owner_assets.policy.limitBytes, 100_000_000);
+  assert.deepEqual(contract.image_models, {
+    schema: 'taku.image-model-catalog.v1',
+    command: 'sites-image-models --operation <media.image.generate|media.image.edit> [--query <text>] [--cursor <cursor>] [--limit 1..100]',
+    operations: ['media.image.generate', 'media.image.edit'],
+    surface: 'site-published', discovery_scope: 'sites.read',
+    default_limit: 50, maximum_limit: 100, maximum_response_bytes: 524288, deadline_ms: 10000,
+    inference: false, runtime_permission_required: true,
+  });
+  assert.deepEqual(seen, ['/v1/sites/capabilities', '/v1/sites/assets/capabilities'].map(url =>
+    ({ method: 'GET', url, authorization: 'Bearer taku_pub_test_contract_session' })));
+});
+
+test('sites-contract rejects missing or forged owner capacity rather than exposing a local unlimited fallback', async t => {
+  await withSitesSession(t);
+  let ownerBody = null;
+  let ownerStatus = 200;
+  const server = createServer((request, response) => {
+    const owner = request.url === '/v1/sites/assets/capabilities';
+    response.writeHead(owner ? ownerStatus : 200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify(owner ? ownerBody : { version: 1, capabilities: [] }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const flags = { 'worker-url': `http://127.0.0.1:${server.address().port}`, 'allow-custom-worker-url': true };
+  for (const patch of [
+    { policy: { ...ownerAssetCatalog.policy, limitBytes: null } },
+    { visitorSdk: true },
+    { operations: ownerAssetCatalog.operations.map(item => ({ ...item, reason: { toString: 'provider_unavailable' } })) },
+    { ownerEmail: 'must-not-be-in-contract@example.invalid' },
+  ]) {
+    ownerBody = { ...ownerAssetCatalog, ...patch };
+    await assert.rejects(dispatch(args('sites-contract', flags)), { code: 'sites_owner_contract_invalid' });
+  }
+  ownerStatus = 503;
+  ownerBody = { error: 'SITE_STORAGE_POLICY_UNAVAILABLE' };
+  await assert.rejects(dispatch(args('sites-contract', flags)), error =>
+    error.code === 'sites_api_error' && error.details.server_error === 'SITE_STORAGE_POLICY_UNAVAILABLE');
 });
 
 test('sites-contract fails clearly when the catalog is unreachable or the user is signed out', async (t) => {
@@ -344,4 +448,63 @@ test('sites-contract fails clearly when the catalog is unreachable or the user i
   );
   await rm(root, { recursive: true, force: true });
   await assert.rejects(dispatch(args('sites-contract')), (error) => ['sites_login_required', 'sites_scope_required'].includes(error.code));
+});
+
+test('owner material CLI uses bounded authenticated library operations, exact delete confirmation and live permissions', async t => {
+  await withSitesSession(t);
+  const asset = { assetId: `ast_${'a'.repeat(32)}`, state: 'ready', retention: 'permanent', visibility: 'private',
+    contentType: 'image/png', byteLength: 24, sha256: 'b'.repeat(64), expiresAt: null,
+    createdAt: '2026-10-05T00:00:00.000Z', partBytes: 8388608, partCount: 1 };
+  let catalog = structuredClone(ownerAssetCatalog);
+  let item = asset;
+  const requests = [];
+  const server = createServer(async (request, response) => {
+    requests.push({ method: request.method, path: request.url, auth: request.headers.authorization });
+    let payload = request.url === '/v1/sites/assets/capabilities' ? catalog
+      : request.url === '/v1/sites/assets/policy' ? catalog.policy
+      : request.url.startsWith('/v1/sites/assets?') ? { assets: [item], next: null }
+      : request.url === `/v1/sites/assets/${asset.assetId}` ? { ...item, ...(request.method === 'DELETE' ? { state: 'deleted' } : {}) } : null;
+    if (request.method === 'DELETE') {
+      const bytes = [];
+      for await (const chunk of request) bytes.push(chunk);
+      assert.equal(Buffer.concat(bytes).length, 0);
+    }
+    response.writeHead(payload ? 200 : 404, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify(payload ?? { error: 'SITE_ASSET_NOT_FOUND' }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const flags = { 'worker-url': `http://127.0.0.1:${server.address().port}`, 'allow-custom-worker-url': true };
+  const policy = await dispatch(args('sites-assets-policy', flags));
+  assert.deepEqual(policy.policy, catalog.policy);
+  const list = await dispatch(args('sites-assets-list', { ...flags, limit: '1', after: `ast_${'0'.repeat(32)}` }));
+  assert.deepEqual(list.assets, [asset]);
+  assert.equal(requests.at(-1).path, `/v1/sites/assets?limit=1&after=ast_${'0'.repeat(32)}`);
+  const resolved = await dispatch(args('sites-assets-resolve', { ...flags, 'asset-id': asset.assetId }));
+  assert.deepEqual(resolved.asset, asset);
+  assert.equal(resolved.content_fetched, false);
+  assert.equal(resolved.download_command, `sites-assets-download --asset-id ${asset.assetId} --output <new-local-file>`);
+  const count = requests.length;
+  for (const patch of [{}, { 'confirm-asset-id': `ast_${'c'.repeat(32)}` }]) {
+    await assert.rejects(dispatch(args('sites-assets-delete', { ...flags, 'asset-id': asset.assetId, ...patch })),
+      { code: 'sites_asset_delete_confirmation_required' });
+  }
+  assert.equal(requests.length, count);
+  const deleted = await dispatch(args('sites-assets-delete', { ...flags, 'asset-id': asset.assetId, 'confirm-asset-id': asset.assetId }));
+  assert.equal(deleted.asset.state, 'deleted');
+  assert.equal(deleted.status, 'sites_asset_deleted');
+  assert.ok(requests.every(request => request.auth === 'Bearer taku_pub_test_contract_session'));
+  catalog.operations = catalog.operations.map(operation => ({ ...operation, authorized: false }));
+  const before = requests.filter(request => request.method === 'DELETE').length;
+  await assert.rejects(dispatch(args('sites-assets-delete', { ...flags, 'asset-id': asset.assetId, 'confirm-asset-id': asset.assetId })),
+    { code: 'sites_owner_operation_unavailable' });
+  assert.equal(requests.filter(request => request.method === 'DELETE').length, before);
+  catalog = structuredClone(ownerAssetCatalog);
+  item = { ...asset, objectKey: 'must-not-be-exposed' };
+  await assert.rejects(dispatch(args('sites-assets-resolve', { ...flags, 'asset-id': asset.assetId })),
+    { code: 'sites_owner_response_invalid' });
+  for (const [command, patch] of [['sites-assets-list', { limit: '101' }],
+    ['sites-assets-resolve', { 'asset-id': '../another-owner' }]]) {
+    await assert.rejects(dispatch(args(command, { ...flags, ...patch })), { code: 'sites_asset_arguments_invalid' });
+  }
 });

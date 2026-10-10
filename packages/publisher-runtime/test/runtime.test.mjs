@@ -254,6 +254,42 @@ test('cannot package a legacy draft with an unopened publish type', async (t) =>
   );
 });
 
+test('staging excludes private superpowers records without hiding ordinary source', async (t) => {
+  const root = await temporaryDirectory(t);
+  const source = path.join(root, 'sample-skill');
+  await fs.mkdir(source);
+  await fs.writeFile(path.join(source, 'SKILL.md'), '# Public skill\n');
+  const privatePath = ['/Users', 'private-cache-test', 'project'].join('/');
+  for (const directory of ['.superpowers', 'docs/.SuPeRpOwErS']) {
+    await fs.mkdir(path.join(source, directory), { recursive: true });
+    await fs.writeFile(path.join(source, directory, 'progress.md'), `${privatePath}\n`);
+  }
+  for (const directory of ['.hidden', '.superpowers-app']) {
+    await fs.mkdir(path.join(source, directory));
+    await fs.writeFile(path.join(source, directory, 'main.mjs'), 'export const visible = true;\n');
+  }
+  const selected = await initializeDraft({
+    workspace: root, source, unitType: 'skill', mode: 'create',
+    draftId: 'private-cache-staging',
+    env: { ...process.env, TAKU_PUBLISHER_HOME: path.join(root, 'publisher-home') },
+  });
+
+  const staged = await stageSelected(selected.directory, selected.state);
+  const manifest = JSON.parse(await fs.readFile(path.join(selected.directory, 'file-list.json'), 'utf8'));
+  assert.deepEqual(manifest.files.map((entry) => entry.path), [
+    '.hidden/main.mjs', '.superpowers-app/main.mjs', 'SKILL.md',
+  ]);
+  for (const directory of ['.superpowers', 'docs/.SuPeRpOwErS']) {
+    assert.ok(staged.excluded.some((entry) => entry.path === directory
+      && entry.reason === 'cache_or_build_directory'));
+    await assert.rejects(fs.stat(path.join(selected.directory, 'staging', directory)), { code: 'ENOENT' });
+  }
+  assert.equal(await fs.readFile(path.join(selected.directory, 'staging', '.superpowers-app', 'main.mjs'), 'utf8'),
+    'export const visible = true;\n');
+  const scanned = await scanStaging(selected.directory, selected.state);
+  assert.equal(scanned.report.summary.blocking, 0);
+});
+
 test('stages, scans, reviews, and packages deterministically in Node', async (t) => {
   const root = await temporaryDirectory(t);
   const source = path.join(root, 'sample-skill');

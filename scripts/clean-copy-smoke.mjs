@@ -4,25 +4,23 @@ import { copyFile, lstat, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { listRepositoryFiles, repositoryRoot } from './repository-files.mjs';
+import { cleanGitEnvironment, exportCleanSource, resolveCleanSourceCommit } from './clean-copy-source.mjs';
 
 const workingTree = process.argv.includes('--working-tree');
 if (process.argv.slice(2).some((arg) => arg !== '--working-tree')) throw new Error('Unknown smoke option.');
+const sourceCommit = resolveCleanSourceCommit(repositoryRoot);
 
 const temporaryRoot = await mkdtemp(
   path.join(os.tmpdir(), 'taku-passport-clean-'),
 );
 const sourceDirectory = path.join(temporaryRoot, 'source');
-const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
-  cwd: repositoryRoot,
-  encoding: 'utf8',
-}).trim();
 
 function run(command, args, cwd = repositoryRoot) {
   execFileSync(command, args, {
     cwd,
     stdio: 'inherit',
     env: {
-      ...process.env,
+      ...cleanGitEnvironment(),
       CI: 'true',
       TAKU_CONTRACT_SOURCE_COMMIT: sourceCommit,
       TAKU_CONTRACT_SOURCE_DIRTY: workingTree ? 'true' : 'false',
@@ -42,8 +40,7 @@ try {
     }
   } else {
     const archive = path.join(temporaryRoot, 'source.tar');
-    run('git', ['archive', '--format=tar', '--output', archive, 'HEAD']);
-    run('tar', ['-xf', archive, '-C', sourceDirectory]);
+    await exportCleanSource(repositoryRoot, sourceCommit, sourceDirectory, archive);
   }
   const checksum = () => JSON.parse(execFileSync(process.execPath, ['scripts/source-checksum.mjs'], {
     cwd: sourceDirectory, encoding: 'utf8',

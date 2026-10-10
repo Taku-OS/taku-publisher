@@ -134,6 +134,13 @@ archives and local Card-to-Skill workflow. This channel omits the Sites Skill
 and does not enable Sites GA. See the
 [0.3.30 native release and QA guide](docs/release-0.3.30-native.md).
 
+The complete Sites GA candidate is 0.4.0: both Skills, the quota-managed owner
+material contract, stable SQL action IDs and the verified image-model/budget
+SDK are packaged together for all three hosts. This local candidate is not a
+published release or evidence that an ordinary account is enabled. See the
+[full-GA rollout requirements](docs/release-0.4.0-sites-ga.md). The older
+0.3.31 image-only candidate remains a separate frozen source reference.
+
 OpenCode can load the portable artifact from its global
 `~/.config/opencode/skills/taku-publisher` directory or a project's
 `.opencode/skills/taku-publisher` directory. The public `--host agent-skills`

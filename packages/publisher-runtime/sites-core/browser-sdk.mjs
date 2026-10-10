@@ -999,6 +999,12 @@ function createTakuSitesClient(options = {}) {
       throw new Error("invalid_platform_path");
     }
     const headers = new Headers(init.headers);
+    if (url.pathname.startsWith("/__taku/storage/")) {
+      const requestId = headers.get("X-Taku-SQL-Request-Id") ?? crypto.randomUUID();
+      if (!/^[A-Za-z0-9._:~-]{16,128}$/.test(requestId))
+        throw new Error("invalid_database_request_id");
+      headers.set("X-Taku-SQL-Request-Id", requestId);
+    }
     if (init.method && init.method !== "GET")
       headers.set("X-Taku-CSRF", "1");
     if (init.body)
@@ -1456,21 +1462,23 @@ function createTakuSitesClient(options = {}) {
           });
         }
       },
-      query(statement, params = []) {
+      async query(statement, params = [], options2 = {}) {
         if (!statement.trim() || statement.length > 16384 || params.length > 128) {
           return Promise.reject(new Error("invalid_storage_query"));
         }
         return request("/__taku/storage/query", {
           method: "POST",
+          headers: storageRequestHeaders(options2),
           body: JSON.stringify({ statement, params })
         });
       },
-      batch(statements) {
+      async batch(statements, options2 = {}) {
         if (!Array.isArray(statements) || statements.length < 1 || statements.length > 20) {
           return Promise.reject(new Error("invalid_storage_batch"));
         }
         return request("/__taku/storage/batch", {
           method: "POST",
+          headers: storageRequestHeaders(options2),
           body: JSON.stringify({ statements })
         });
       }
@@ -1483,6 +1491,14 @@ function createTakuSitesClient(options = {}) {
   };
 }
 var taku = createTakuSitesClient();
+function storageRequestHeaders(options) {
+  if (options.requestId === undefined)
+    return {};
+  if (typeof options.requestId !== "string" || !/^[A-Za-z0-9._:~-]{16,128}$/.test(options.requestId)) {
+    throw new Error("invalid_database_request_id");
+  }
+  return { "X-Taku-SQL-Request-Id": options.requestId };
+}
 export {
   taku,
   createTakuSitesClient,

@@ -23,6 +23,7 @@ export type SiteArtifactObject = {
 export type BuiltSiteArtifact = {
   descriptor: Record<string, unknown> & { projectId: string; buildId: string; siteManifest: SiteManifest };
   objects: SiteArtifactObject[];
+  materials: SiteMaterialFile[];
   buildId: string;
   gitSha: string;
   contentDigest: string;
@@ -30,6 +31,19 @@ export type BuiltSiteArtifact = {
   artifactDigest: string;
   releaseId: string;
   totalBytes: number;
+};
+
+export type SiteMaterialFile = {
+  logicalPath: string;
+  sourcePath: string;
+  projectRoot: string;
+  absolutePath: string;
+  identity: { dev: number; ino: number; mtimeMs: number; ctimeMs: number };
+  contentType: string;
+  size: number;
+  sha256: string;
+  retention: 'temporary' | 'permanent';
+  visibility: 'public' | 'private';
 };
 
 export type ImageModelQuery = {
@@ -42,6 +56,10 @@ export type ImageModelQuery = {
 export type SitesCore = {
   SITE_CLI_CONTRACT_VERSION: string;
   ARTIFACT_LIMITS: Record<string, number>;
+  parseOwnerAssetCapabilities(value: unknown): Record<string, unknown> | null;
+  parseOwnerAssetPolicy(value: unknown): Record<string, unknown> | null;
+  parseOwnerAssetRecord(value: unknown): Record<string, unknown> | null;
+  parseOwnerAssetPage(value: unknown): { assets: Record<string, unknown>[]; next: string | null } | null;
   parseImageModelQuery(value: unknown): ImageModelQuery;
   parseImageModelCatalog(value: unknown, operation: ImageModelQuery['operation'], limit: number,
     feature?: 'size-constraints-v1' | 'size-constraints-v2' | 'input-contract-v1' | 'input-contract-v2' | 'parameter-enum-v1' | 'structured-parameters-v1' | 'aspect-ratio-v1' | 'generation-references-v1'): Record<string, unknown>;
@@ -51,6 +69,7 @@ export type SitesCore = {
   buildArtifact(root: string, options: { projectId: string; builtAt: string }): Promise<BuiltSiteArtifact>;
   validateArtifact(root: string, artifact: BuiltSiteArtifact): Promise<void>;
   readArtifactObject(object: SiteArtifactObject): Promise<Buffer>;
+  readMaterialPart(file: SiteMaterialFile, partNumber: number): Promise<Buffer>;
 };
 
 export type SitesCoreProvenance = {

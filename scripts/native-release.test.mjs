@@ -9,6 +9,7 @@ import { inventory } from './cursor-installer.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const native = path.join(root, 'dist/native-publisher');
 const readJson = async (file) => JSON.parse(await fs.readFile(file, 'utf8'));
+const candidateVersion = (await readJson(path.join(root, 'adapters/codex/taku-publisher/.codex-plugin/plugin.json'))).version;
 const run = (script, ...args) => execFileSync(process.execPath, [script, ...args], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 before(() => run('scripts/build-adapters.mjs'));
 
@@ -24,7 +25,7 @@ test('native Publisher profile is isolated and shares one host runtime', async (
     assert.deepEqual(await fs.readdir(path.join(plugin, 'skills')), ['taku-publisher']);
     const manifest = await readJson(path.join(plugin, manifestDir, 'plugin.json'));
     const skill = path.join(plugin, 'skills/taku-publisher');
-    assert.equal(manifest.version, '0.3.30');
+    assert.equal(manifest.version, candidateVersion);
     assert.deepEqual(manifest.skills, host === 'claude' ? ['./skills/taku-publisher'] : './skills/');
     for (const declared of [manifest.skills].flat()) await fs.access(path.join(plugin, declared));
     assert.doesNotMatch(manifest.description, /Sites/);
@@ -35,7 +36,7 @@ test('native Publisher profile is isolated and shares one host runtime', async (
     const files = (await inventory(skill)).filter(({ path: file }) => file !== 'host-adapter.json');
     if (common) assert.deepEqual(files, common);
     common = files;
-    assert.match(run(path.join(skill, 'scripts/taku-publisher.mjs'), '--version'), /^taku-publisher 0\.3\.30 \(standard\)/);
+    assert.equal(run(path.join(skill, 'scripts/taku-publisher.mjs'), '--version').trim(), `taku-publisher ${candidateVersion} (standard)`);
   }
   assert.deepEqual(await inventory(path.join(root, 'dist/plugins')), standard);
   await assert.rejects(fs.stat(path.join(native, 'skills/taku-sites')), { code: 'ENOENT' });
@@ -46,7 +47,7 @@ test('native marketplace carries complete verifiable host artifacts', async () =
   run('scripts/build-marketplace-release.mjs', '--publisher-only');
   const releaseRoot = path.join(native, 'marketplace-release');
   const release = await readJson(path.join(releaseRoot, 'release.json'));
-  assert.equal(release.version, '0.3.30');
+  assert.equal(release.version, candidateVersion);
   assert.equal(release.profile, 'publisher-only');
   assert.deepEqual(release.skills, ['taku-publisher']);
   assert.match(release.sourceTreeChecksum, /^[a-f0-9]{64}$/);

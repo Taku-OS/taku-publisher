@@ -15,6 +15,9 @@ assert.ok(stable, 'Standard build must have a stable semver version.');
 const nextPatch = `${stable[1]}.${stable[2]}.${Number(stable[3]) + 1}`;
 assert.equal(build.version, `${nextPatch}-stax-challenge.b${build.source.sourceTreeChecksum.slice(0, 12)}`);
 assert.match(build.source.sourceTreeChecksum, /^[a-f0-9]{64}$/);
+const sourceMetadata = JSON.parse(execFileSync(process.execPath, ['scripts/source-checksum.mjs'],
+  { cwd: root, encoding: 'utf8' }));
+assert.equal(build.source.sourceTreeChecksum, sourceMetadata.sourceTreeChecksum);
 for (const item of build.builds) {
   const skill = path.join(buildRoot, item.directory, 'plugins', build.name, 'skills', build.name);
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-challenge-plugin-'));
