@@ -1,7 +1,7 @@
 {
   "name": "taku-publisher",
-  "version": "0.3.30",
-  "description": "Generate Stax Cards, discover projects, and review and publish Skills with explicit Taku Web confirmation.",
+  "version": "0.4.0",
+  "description": "Build and publish Taku Sites, generate Stax Cards, convert Apps, and publish Skills from compatible Agent Skills hosts.",
   "author": {
     "name": "Taku",
     "url": "https://taku.ai/"
@@ -14,13 +14,14 @@
     "creator",
     "publisher",
     "subapp",
-    "skills"
+    "skills",
+    "sites"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Taku Publisher",
-    "shortDescription": "Create Cards and publish reviewed Skills to Taku.",
-    "longDescription": "Generate Stax Cards, discover projects, and review and publish Skills with explicit Taku Web confirmation.",
+    "shortDescription": "Build Sites and publish creator work to Taku.",
+    "longDescription": "Build and preview a Taku Site with the current Agent, then publish it through the bundled CLI after exact target confirmation. Also discover projects, convert SubApps, publish Skills, search community tools, and manage creator works.",
     "developerName": "Taku",
     "category": "Productivity",
     "websiteURL": "https://taku.ai/",
@@ -37,10 +38,13 @@
       "Marketplace Skill installation",
       "Security review",
       "Publishing",
+      "Taku Sites building and publishing",
       "Creator Center management"
     ],
     "defaultPrompt": [
-      "Generate a private Stax Card, list candidate Skills and let me choose one or skip; wait for my confirmation before uploading or publishing."
+      "List repositories owned by my Taku-connected GitHub account and let me choose one to import.",
+      "Find my recent AI coding projects and import one into Taku.",
+      "Build a Taku Site for my project and help me publish it."
     ]
   }
 }

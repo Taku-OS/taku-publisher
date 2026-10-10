@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taku.ai/schemas/subapp-migration.v2.schema.json",
+  "title": "Taku SubApp Migration Record v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "status", "createdAt", "source", "template", "analysis"],
+  "properties": {
+    "schemaVersion": { "const": "taku.subapp-migration.v2" },
+    "status": { "enum": ["workspace", "converted"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "url",
+        "repo",
+        "commit",
+        "ref",
+        "dirty",
+        "license",
+        "snapshotPath",
+        "snapshotDigest",
+        "snapshotPolicy",
+        "snapshotCompleteness",
+        "omissions",
+        "sourceManifestPath",
+        "sourceManifestDigest",
+        "sourceEvidencePolicyPath",
+        "sourceEvidencePolicyDigest",
+        "migrationImmutableDigest",
+        "provenanceDigest"
+      ],
+      "properties": {
+        "kind": { "enum": ["local", "github"] },
+        "url": { "type": "string", "minLength": 1 },
+        "repo": { "type": "string", "minLength": 1 },
+        "commit": { "type": ["string", "null"], "minLength": 1 },
+        "ref": { "type": ["string", "null"], "minLength": 1 },
+        "dirty": { "type": ["boolean", "null"] },
+        "license": { "type": "string", "minLength": 1 },
+        "snapshotPath": { "const": "upstream-source" },
+        "snapshotDigest": { "$ref": "#/$defs/sha256" },
+        "snapshotPolicy": { "const": "taku.upstream-source-snapshot.v1" },
+        "snapshotCompleteness": { "enum": ["complete", "partial"] },
+        "omissions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["relativePath", "size", "reason"],
+            "properties": {
+              "relativePath": { "$ref": "#/$defs/relativePath" },
+              "size": { "type": "integer", "minimum": 0 },
+              "reason": { "const": "oversized-documentation-media" }
+            }
+          }
+        },
+        "sourceManifestPath": { "const": ".taku/upstream-source-manifest.json" },
+        "sourceManifestDigest": { "$ref": "#/$defs/sha256" },
+        "sourceEvidencePolicyPath": { "const": ".taku/source-evidence-policy.json" },
+        "sourceEvidencePolicyDigest": { "$ref": "#/$defs/sha256" },
+        "migrationImmutableDigest": { "$ref": "#/$defs/sha256" },
+        "provenanceDigest": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "template": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "url",
+        "requestedRef",
+        "resolvedRef",
+        "commit",
+        "version",
+        "policyApplied",
+        "dirty",
+        "snapshotDigest"
+      ],
+      "properties": {
+        "kind": { "enum": ["local", "github"] },
+        "url": { "type": "string", "minLength": 1 },
+        "requestedRef": { "type": ["string", "null"], "minLength": 1 },
+        "resolvedRef": { "type": ["string", "null"], "minLength": 1 },
+        "commit": { "type": ["string", "null"], "minLength": 1 },
+        "version": { "type": ["string", "null"], "minLength": 1 },
+        "policyApplied": { "const": true },
+        "dirty": { "type": ["boolean", "null"] },
+        "snapshotDigest": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["appType", "strategy", "score", "recommendation", "risks", "riskResolutions"],
+      "properties": {
+        "appType": { "$ref": "#/$defs/projectType" },
+        "strategy": { "type": "string", "minLength": 1 },
+        "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "recommendation": { "enum": ["convertible", "manual-review", "not-recommended"] },
+        "risks": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "riskResolutions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["risk", "status", "evidence"],
+            "properties": {
+              "risk": { "type": "string", "minLength": 1 },
+              "status": { "const": "resolved" },
+              "evidence": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000]+$"
+    },
+    "projectType": {
+      "enum": [
+        "nextjs",
+        "vite-react",
+        "fastapi-next",
+        "streamlit",
+        "gradio",
+        "workflow-skill",
+        "browser-extension",
+        "external-connector",
+        "python-cli",
+        "unknown"
+      ]
+    }
+  }
+}

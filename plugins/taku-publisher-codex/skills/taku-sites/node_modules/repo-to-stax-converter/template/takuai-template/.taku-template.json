@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "exclude": [
+    ".agents",
+    ".claude",
+    ".github",
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "CLAUDE.md",
+    "RELEASING.md",
+    "scripts/check-agent-payload.js",
+    "scripts/check-agent-payload.test.js",
+    "scripts/check-template-release-channel.js",
+    "scripts/template-artifact-policy.test.js",
+    "scripts/template-release-contract.test.js",
+    "scripts/test-launcher-contract.test.js",
+    "src/lib/test-runner-alias-fixture.ts",
+    "src/lib/test-runner-alias.test.ts",
+    "src/lib/test-runner-server-only-cjs-fixture.ts",
+    "src/lib/test-runner-server-only-cjs.test.ts",
+    "src/lib/test-runner-server-only.test.ts",
+    "src/lib/test-runner-top-level-await-fixture.ts",
+    "src/lib/test-runner-top-level-await.test.ts",
+    "src/lib/test-runner-top-level-await-types.ts",
+    "skills.md"
+  ],
+  "overlayDirectory": ".taku-template/payload",
+  "cleanup": [
+    ".taku-template",
+    ".husky/_",
+    "next-env.d.ts",
+    "tsconfig.tsbuildinfo"
+  ],
+  "packageJson": {
+    "removeScripts": ["release:check"]
+  }
+}

@@ -14,6 +14,7 @@ const EXCLUDED_DIR_NAMES = new Set([
   '.git',
   '.github',
   '.next',
+  '.superpowers',
   '.temp',
   '.turbo',
   '.venv',
