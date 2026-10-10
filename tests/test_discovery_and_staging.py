@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from taku_publisher.discovery import discover_units, inspect_selected_unit
+from taku_publisher.scanner import scan_staging
 from taku_publisher.util import PublisherError, set_tree_writable
 from taku_publisher.workspace import initialize_draft, stage_selected
 
@@ -70,6 +71,34 @@ class DiscoveryAndStagingTests(unittest.TestCase):
         (skill / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
         with self.assertRaisesRegex(PublisherError, "itemId"):
             initialize_draft(workspace=workspace, source=skill, unit_type="skill", mode="update")
+
+    def test_staging_excludes_private_superpowers_records_without_hiding_source(self) -> None:
+        workspace = self.root / "workspace"
+        skill = workspace / "skill"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text("# Public skill\n", encoding="utf-8")
+        private_path = "/".join(("/Users", "private-cache-test", "project"))
+        for name in (".superpowers", "docs/.SuPeRpOwErS"):
+            directory = skill / name
+            directory.mkdir(parents=True)
+            (directory / "progress.md").write_text(f"{private_path}\n", encoding="utf-8")
+        for name in (".hidden", ".superpowers-app"):
+            directory = skill / name
+            directory.mkdir()
+            (directory / "main.py").write_text("visible = True\n", encoding="utf-8")
+        directory, state = initialize_draft(
+            workspace=workspace, source=skill, unit_type="skill", mode="create",
+            draft_id="private_cache_staging",
+        )
+
+        result = stage_selected(directory, state)
+        paths = {entry["path"] for entry in json.loads((directory / "file-list.json").read_text())["files"]}
+        self.assertEqual({"SKILL.md", ".hidden/main.py", ".superpowers-app/main.py"}, paths)
+        for name in (".superpowers", "docs/.SuPeRpOwErS"):
+            self.assertIn({"path": name, "reason": "cache_or_build_directory"}, result["excluded"])
+            self.assertFalse((directory / "staging" / name).exists())
+        self.assertEqual("visible = True\n", (directory / "staging/.superpowers-app/main.py").read_text())
+        self.assertEqual(0, scan_staging(directory, state)["report"]["summary"]["blocking"])
 
     def test_staging_excludes_secrets_build_output_and_symlinks(self) -> None:
         workspace = self.root / "workspace"

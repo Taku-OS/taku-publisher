@@ -35,6 +35,8 @@
     "build:runtime": "npm run build:converter && npm run build:subapp-contract && npm run build:core && npm run build --workspace @taku/publisher-runtime",
     "checksum:source": "node scripts/source-checksum.mjs",
     "sync:sites-core": "node scripts/sync-sites-core.mjs",
+    "test:sites-images": "npm run build:runtime && node --test packages/publisher-runtime/test/sites-image-executions.test.mjs packages/publisher-runtime/test/sites-image-models.test.mjs packages/publisher-runtime/test/sites-image-model-aspect-ratio.test.mjs packages/publisher-runtime/test/sites-image-model-generation-references.test.mjs packages/publisher-runtime/test/sites-image-model-integer-values.test.mjs packages/publisher-runtime/test/sites-image-model-structured-parameters.test.mjs packages/publisher-runtime/test/sites-commands.test.mjs packages/publisher-runtime/test/sites-core.test.mjs",
+    "test:sites-ga": "npm run build:runtime && node --test packages/publisher-runtime/test/sites-commands.test.mjs packages/publisher-runtime/test/sites-core.test.mjs packages/publisher-runtime/test/sites-publish.test.mjs packages/publisher-runtime/test/sites-assets-download.test.mjs packages/publisher-runtime/test/sites-sql-sdk.test.mjs packages/publisher-runtime/test/auth-flow-race.test.mjs",
     "doctor": "node packages/publisher-cli/bin/taku-creator.mjs doctor --json",
     "pack:contract": "node scripts/package-contract.mjs",
     "pack:runtime": "node scripts/package-publisher-runtime.mjs",
@@ -49,6 +51,9 @@
     "smoke:core": "npm run build:core && node scripts/passport-core-install-smoke.mjs",
     "smoke:plugin": "npm run build:adapters && node scripts/no-python-plugin-smoke.mjs codex && node scripts/no-python-plugin-smoke.mjs claude && node scripts/no-python-plugin-smoke.mjs cursor && node scripts/sites-skill-smoke.mjs",
     "test:installer": "node --test scripts/cursor-installer.test.mjs",
+    "test:sites-core-source": "node --test scripts/sync-sites-core.test.mjs",
+    "test:sites-sql-sdk": "node --test packages/publisher-runtime/test/sites-sql-sdk.test.mjs",
+    "test:clean-source": "node --test scripts/clean-copy-source.test.mjs",
     "test": "npm run test:node && npm run test:python && npm run test:installer && npm run test:source && npm run test:native",
     "test:converter": "npm test --workspace repo-to-stax-converter",
     "test:node": "npm run test:converter && npm run build:runtime && node --test creator/scripts/*.test.mjs packages/capability-contract/test/*.test.mjs packages/subapp-contract/test/*.test.mjs packages/creator-core/test/*.test.mjs packages/passport-core/test/*.test.mjs packages/publisher-runtime/test/*.test.mjs",
@@ -56,7 +61,7 @@
     "build:native": "node scripts/build-adapters.mjs --publisher-only && node scripts/build-marketplace-release.mjs --publisher-only",
     "smoke:native": "node scripts/native-release-smoke.mjs && node scripts/publisher-acceptance-smoke.mjs",
     "test:native": "node --test scripts/native-release.test.mjs",
-    "test:source": "node --test scripts/repository-files.test.mjs"
+    "test:source": "node --test scripts/repository-files.test.mjs scripts/clean-copy-source.test.mjs"
   },
   "dependencies": {
     "qrcode-generator": "2.0.4"

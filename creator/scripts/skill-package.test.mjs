@@ -105,3 +105,42 @@ test('excludes private runtime state under .temp from a Community Skill package'
   assert.ok(pkg.files.includes('SKILL.md'));
   assert.equal(pkg.files.some((file) => file.startsWith('.temp/')), false);
 });
+
+test('excludes superpowers records from an inline package while retaining hidden source', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-skill-package-cache-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.writeFile(path.join(root, 'SKILL.md'), '# Public skill\n');
+  const privatePath = ['/Users', 'private-cache-test', 'project'].join('/');
+  for (const directory of ['.superpowers', 'docs/.SuPeRpOwErS']) {
+    await fs.mkdir(path.join(root, directory), { recursive: true });
+    await fs.writeFile(path.join(root, directory, 'progress.md'), `${privatePath}\n`);
+  }
+  for (const directory of ['.hidden', '.superpowers-app']) {
+    await fs.mkdir(path.join(root, directory));
+    await fs.writeFile(path.join(root, directory, 'main.mjs'), 'export const visible = true;\n');
+  }
+  const item = { id: 'cache-safe-skill', name: 'cache-safe-skill', type: 'skill' };
+  const inventory = { items: [{ id: item.id, localPath: root }] };
+
+  const preflight = await preflightInlineSkillPackage(item, inventory);
+  const pkg = await createInlineSkillPackage(item, inventory);
+
+  assert.equal(preflight.ok, true);
+  assert.deepEqual([...pkg.files].sort(), [
+    '.hidden/main.mjs', '.superpowers-app/main.mjs', 'SKILL.md', 'taku.stax.json',
+  ]);
+  assert.equal(Buffer.from(pkg.data, 'base64').includes(Buffer.from(privatePath)), false);
+});
+
+test('inline packaging still rejects credentials in a cache-lookalike source directory', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-skill-package-unsafe-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.writeFile(path.join(root, 'SKILL.md'), '# Public skill\n');
+  await fs.mkdir(path.join(root, '.superpowers-app'));
+  const fakeToken = ['sk-', 'proj-', '1234567890abcdefghijklmnop'].join('');
+  await fs.writeFile(path.join(root, '.superpowers-app', 'main.mjs'), `const api_key = '${fakeToken}';\n`);
+  const item = { id: 'unsafe-source-skill', name: 'unsafe-source-skill', type: 'skill' };
+  const inventory = { items: [{ id: item.id, localPath: root }] };
+
+  await assert.rejects(createInlineSkillPackage(item, inventory), /\.superpowers-app\/main\.mjs may contain private data/);
+});

@@ -1,0 +1,140 @@
+{
+  "schema": "taku.sites.owner-assets-capabilities.v1",
+  "actor": "authenticated_owner",
+  "visitorSdk": false,
+  "policy": {
+    "schema": "taku.sites.asset-storage.v1",
+    "limitBytes": 100000000,
+    "usedBytes": 90,
+    "reservedBytes": 10,
+    "availableBytes": 99999900,
+    "overLimit": false,
+    "canUploadPermanent": true,
+    "temporaryTtlSeconds": 2592000,
+    "maxImageBytes": 26214400,
+    "maxVideoBytes": 536870912
+  },
+  "local": {
+    "manifestFile": "taku.assets.json",
+    "artifactSchema": "taku.sites.artifact.v2",
+    "assetManifestSchema": "taku.sites.asset-manifest.v1",
+    "temporaryTtlSeconds": 2592000,
+    "multipartBytes": 8388608,
+    "filesPerRelease": 1000,
+    "contentTypes": [
+      "image/png",
+      "image/jpeg",
+      "image/webp",
+      "image/avif",
+      "image/gif",
+      "video/mp4",
+      "video/webm"
+    ],
+    "retention": [
+      "temporary",
+      "permanent"
+    ],
+    "visibility": [
+      "public",
+      "private"
+    ],
+    "logicalContentPrefix": "/__taku/assets/by-path",
+    "preview": "local_files_no_cloud_allocation",
+    "capacityUnit": "account_shared_bytes",
+    "uploadPartPath": "/v1/sites/{projectId}/artifact-uploads/{uploadId}/assets/{ordinal}/parts/{partNumber}",
+    "uploadCompletePath": "/v1/sites/{projectId}/artifact-uploads/{uploadId}/assets/{ordinal}/complete"
+  },
+  "operations": [
+    {
+      "id": "assets.policy",
+      "declared": true,
+      "authorized": true,
+      "available": true,
+      "reason": null,
+      "scopes": [
+        "sites.read"
+      ],
+      "method": "GET",
+      "path": "/v1/sites/assets/policy",
+      "input": "none",
+      "output": "OwnerAssetStoragePolicyV1"
+    },
+    {
+      "id": "assets.list",
+      "declared": true,
+      "authorized": true,
+      "available": true,
+      "reason": null,
+      "scopes": [
+        "sites.read"
+      ],
+      "method": "GET",
+      "path": "/v1/sites/assets",
+      "input": "cursor_and_limit",
+      "output": "OwnerAssetPageV1"
+    },
+    {
+      "id": "assets.upload",
+      "declared": true,
+      "authorized": true,
+      "available": true,
+      "reason": null,
+      "scopes": [
+        "sites.publish"
+      ],
+      "method": "POST",
+      "path": "/v1/sites/{projectId}/artifact-uploads/{uploadId}/assets/{ordinal}",
+      "input": "confirmed_manifest_no_body",
+      "output": "AssetRecordV1"
+    },
+    {
+      "id": "assets.promote",
+      "declared": true,
+      "authorized": true,
+      "available": true,
+      "reason": null,
+      "scopes": [
+        "sites.publish"
+      ],
+      "method": "POST",
+      "path": "/v1/sites/{projectId}/artifact-uploads/{uploadId}/assets/{ordinal}/promote",
+      "input": "owned_source_asset_id",
+      "output": "AssetRecordV1"
+    },
+    {
+      "id": "assets.delete",
+      "declared": true,
+      "authorized": true,
+      "available": true,
+      "reason": null,
+      "scopes": [
+        "sites.publish"
+      ],
+      "method": "DELETE",
+      "path": "/v1/sites/assets/{assetId}",
+      "input": "none",
+      "output": "AssetRecordV1"
+    },
+    {
+      "id": "assets.resolve",
+      "declared": true,
+      "authorized": true,
+      "available": true,
+      "reason": null,
+      "scopes": [
+        "sites.read"
+      ],
+      "method": "GET",
+      "path": "/v1/sites/assets/{assetId}",
+      "input": "none",
+      "output": "AssetRecordV1"
+    }
+  ],
+  "errors": [
+    {
+      "status": 409,
+      "code": "SITE_STORAGE_LIMIT_REACHED",
+      "action": "delete_unreferenced_or_upgrade"
+    }
+  ]
+}
