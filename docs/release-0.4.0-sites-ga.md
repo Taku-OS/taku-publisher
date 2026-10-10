@@ -1,6 +1,10 @@
-# 0.4.0 complete Sites GA candidate (TAKU-527)
+# 0.4.0 Sites CLI formal release status (TAKU-527)
 
-Status: local candidate only. No tag, release, Marketplace update, npm publication or production deployment is performed by this change. Parent review and the existing Git/CI rollout decide publication. Do not announce ordinary-account GA until the server, migrations, current policy and required distribution are verified.
+Status as of 2026-10-11: [v0.4.0](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.4.0) is formally published, non-draft and non-prerelease. Its immutable source is `b4d7f9ef21310bbab770ce79f39aff9640f0730f`, merged to source main by [PR #56](https://github.com/Taku-OS/taku-publisher/pull/56). Both `taku-publisher` and `taku-sites` are distributed through the versioned installer and all three GitHub Marketplace host layouts, merged by [PR #57](https://github.com/Taku-OS/taku-publisher/pull/57) at `bb73f1e2ddc170873baf8970df13be143d15c742`. No npm registry or official Cursor store publication is claimed.
+
+Authenticated ordinary accounts can use the released CLI; production Workers remains authoritative for current eligibility, ownership, quotas, capacity and the Free first-Site entitlement. An installed package, local state or email domain does not grant access. Site creation and publishing remain Agent-only, with local preview followed by the user's exact slug confirmation.
+
+This is not an announcement that the entire GA delivery is complete. Desktop 3.1.122 still awaits formal client distribution: its [publish-beta run](https://github.com/Taku-OS/taku/actions/runs/38069317317) failed on Apple's required-agreement 403. There is no macOS release artifact, the paired Beta publication was skipped, and no stable promotion was completed. A CLI release or successful server deployment does not waive Desktop signing, notarization or stable release gates.
 
 ## Source and compatibility
 
@@ -9,22 +13,26 @@ Status: local candidate only. No tag, release, Marketplace update, npm publicati
 - Generate the complete CLI/browser SDK using the existing sync from Platform `92e630ab536e9b4d60548ad9b19c8856e9533c26`, based on released main `27852d4d969894330a59c2b129a656a522d792a7`. Its entire source tree equals audited immutable `0300ad873a7194f51755dbf4b3cd5ef65c7a6aba`; provenance records the actual new commit, not the earlier image-only entrypoint.
 - Preserve all already integrated/verified models, legacy fixed-v1 quotes/receipts, original storage APIs and SQL action IDs. No model, provider secret, client authority, capability permission or pricing policy is added. A v1 quote's `credits` is a fixed price; v2 `maximumCredits` is a user-approved ceiling, not a final charge. Only a settled receipt's `chargedCredits` is the actual debit, never more than the agreed maximum.
 
-## Required server rollout
+## Production rollout and server authority
 
-Workers owns ordinary-account eligibility, membership quotas and Free first-Site entitlement. Expand its approved schema and confirm the durable usage-admission, monthly quota/freeze/restore, capacity and owner-asset contracts before enabling the current production policy through reviewed Git/CI. Do not repeat already-applied image migrations.
+The production rollout handoff records Workers `0da2c2c79097c3e91e3a3624ac343a3c8d27ecaf` ([PR #288](https://github.com/Taku-OS/taku-workers/pull/288)) and Platform `56a889632901790052ec32c9f3aa53f58cb10f31` ([PR #34](https://github.com/Taku-OS/taku-sites-platform/pull/34)), with their existing Cloudflare Builds successful. The immutable Template pin is 0.3.6 ([Template PR #9](https://github.com/Taku-OS/takuai-template-main/pull/9)). The exact [taku.site apex](https://taku.site/) product entry returned HTTP 200 after the Git-managed ingress change ([Landing PR #198](https://github.com/Taku-OS/taku-landing-page/pull/198)); this is separate from wildcard Site hosting.
+
+Workers owns ordinary-account eligibility, membership quotas and Free first-Site entitlement. The current production policy and approved schema have been rolled out through the existing Git/CI path; clients still read authoritative live capability and entitlement responses rather than assuming every account or operation is available. Do not repeat already-applied image migrations or infer eligibility from a successful package installation.
 
 Platform uses signed `database-admissions` admit/settle/status and Provisioner `immutable-v5-database-fence`, per-job/attempt database policy and migration begin/finish. Unknown SQL side effects hold admission; completed duplicates never replay SQL. A new SDK or claim protocol does not upgrade every legacy runtime. Retain the original reconciliation, legacy artifact binding and immutable-runtime rollback paths.
 
 Owner operations require the separate live `owner_assets` contract, not visitor scopes. Media uploads bind the confirmed artifact-v2 manifest and use bounded 8 MiB parts; capacity is shared by the owner's account, not reset monthly. Personal/shared SQL quotas remain per Site/month. Existing 20 ms CPU/8 subrequest limits are unchanged. User-controlled identifiers and local checkpoints never authorize billing or ownership.
 
-## Distribution candidate
+## Published distribution
 
-Version **0.4.0** is a new numeric minor candidate, with equal Codex/Claude Code/Cursor manifests. Recheck tag/release occupancy immediately before the parent-authorized release. Publish both `taku-publisher` and `taku-sites`, not merely the independent Publisher-only native profile.
+Version **0.4.0** is the published standard release, with equal Codex/Claude Code/Cursor manifests and both Skills, not merely the independent Publisher-only native profile. Use the fixed [installer tarball](https://github.com/Taku-OS/taku-publisher/releases/download/v0.4.0/taku-publisher-0.4.0.tgz), [Cursor Marketplace ZIP](https://github.com/Taku-OS/taku-publisher/releases/download/v0.4.0/taku-publisher-cursor-marketplace-0.4.0.zip), [checksums](https://github.com/Taku-OS/taku-publisher/releases/download/v0.4.0/cursor-0.4.0-checksums.json) and [release metadata](https://github.com/Taku-OS/taku-publisher/releases/download/v0.4.0/release.json). The tarball and its `taku-publisher.tgz` alias have SHA-256 `8cf8fcfea95129671908dc2a9509f8be43a1eecea708028abe014fa3d21cc150`; the Cursor ZIP has SHA-256 `7af2f719f8def7ed4de7368781ef4d74743c62b1693d3ec34980a00fbc581cb8`. All immutable assets continue to identify source `b4d7f9ef21310bbab770ce79f39aff9640f0730f`, not this later docs-only commit.
+
+See [direct installation instructions](cursor-release.md). The three-host [GitHub Marketplace](https://github.com/Taku-OS/taku-publisher/tree/bb73f1e2ddc170873baf8970df13be143d15c742) is published. Build commands below describe maintainer tooling, not an end-user prerequisite or permission to replace released files:
 
 - `npm run pack:installer`: builds both portable Skills, all three standard host adapters, the versioned installer tarball/identical alias and Cursor-importable marketplace ZIP. Local `npm pack` is not npm registry publication.
 - `npm run build:marketplace`: prepares the existing standard combined three-host GitHub layout. It does not push the Marketplace branch.
 - Preserve `npm run build:native`, `smoke:native` and the existing native workflow; their Publisher-only output is not the complete GA release.
-- Verify reviewed source commit/clean state, generated SDK hashes, package inventory and download hashes before distributing. Official store listing is separate; do not imply it exists. Retain trusted prior assets and source refs; the known defective v0.3.28 Sites path is not a verified rollback.
+- Published source, package inventory and download hashes remain pinned. Official store listing is separate; do not imply it exists. Retain trusted prior assets and source refs; the known defective v0.3.28 Sites path is not a verified rollback. Do not overwrite v0.3.30 native assets or retarget the existing GitHub `releases/latest` pointer (still v0.3.29 at this check); use explicit v0.4.0 URLs for the Sites installer.
 
 ## Local verification scope
 
