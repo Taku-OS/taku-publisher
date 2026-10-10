@@ -1,7 +1,7 @@
 {
   "name": "taku-publisher",
-  "version": "0.3.27",
-  "description": "Generate Stax Cards, convert Apps, and publish Skills from Codex, Claude Code, Cursor, OpenCode, and compatible Agent Skills hosts.",
+  "version": "0.3.30",
+  "description": "Generate Stax Cards, discover projects, and review and publish Skills with explicit Taku Web confirmation.",
   "author": {
     "name": "Taku",
     "url": "https://taku.ai/"
@@ -10,5 +10,6 @@
   "repository": "https://github.com/Taku-OS/taku-publisher",
   "skills": [
     "./skills/taku-publisher"
-  ]
+  ],
+  "keywords": []
 }
