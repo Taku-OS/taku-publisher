@@ -1,7 +1,7 @@
 {
   "version": "0.3.30",
   "channel": "standard",
-  "sourceCommit": "4d1c879e0bc42c5f111ce42ddac30de502e0cb20",
+  "sourceCommit": "1dd49b5beea1e7bd9f31eef5e352d3df99e43151",
   "sourceDirty": false,
   "plugins": [
     {
@@ -2630,7 +2630,7 @@
       "archive": {
         "name": "taku-publisher-codex-0.3.30-native.zip",
         "size": 21261946,
-        "sha256": "ec6d5dc9b674195652fa0e0e5b85684648ade35f8e9995749a7ee706eea6fa9a"
+        "sha256": "56b7d7d10ae33b56d19690797d318a0d2f4201337015ae9270d61b30a4814cba"
       }
     },
     {
@@ -5259,7 +5259,7 @@
       "archive": {
         "name": "taku-publisher-claude-0.3.30-native.zip",
         "size": 21261873,
-        "sha256": "a3ba3f7245a8ae9e8fc4b36903a6021d958f533e54090c7df26fad5c322afe35"
+        "sha256": "931f7c363a45556bf5d0674f5b584ef551479b3574a221779127f9ebceac8594"
       }
     },
     {
@@ -7888,7 +7888,7 @@
       "archive": {
         "name": "taku-publisher-cursor-0.3.30-native.zip",
         "size": 21260381,
-        "sha256": "3ecf1a00e3fea75aa9c80773c764b06d904962f2cae66a1d278101129dabdd48"
+        "sha256": "60f7012c20d8cc01a37d0ef739f2a050a35c41ee92004347d7338bd1e8ba4cd4"
       }
     }
   ],
@@ -7896,5 +7896,5 @@
   "skills": [
     "taku-publisher"
   ],
-  "sourceTreeChecksum": "12de29d75a36968656d366b1b1ab196362f35c5a9d07640130453716a3846cba"
+  "sourceTreeChecksum": "c7d67b0d81516e211560e0a253a2b943432a16418d127941ddc76029f6d4ce7e"
 }
