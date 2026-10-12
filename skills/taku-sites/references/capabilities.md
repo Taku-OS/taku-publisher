@@ -18,8 +18,8 @@ The live `capabilities` array from `sites-contract --json` decides what a Site m
 | Usage summary | `taku.usage.getSummary()` | none | none |
 | Airbnb | `taku.integration.call('airbnb', op, input)`; ops `autocomplete`, `search`, `detail`, `price` | integration `airbnb` + `integration.airbnb.read` | Taku credits per call |
 | SerpAPI | `taku.integration.call('serpapi', 'search', { q, engine? })` | integration `serpapi` + `integration.serpapi.read` | Taku credits per call |
-| Image edit | `taku.media.createInput` → `uploadInput` → `editImage` → `getJob` → `getAsset` | integration `media` op `image_edit` + `media.image.edit`; auth `required` | Taku credits, reserved then settled |
-| Image generate | `taku.media.generateImage(prompt, { aspectRatio?, requestId? })` → `getJob` → `getAsset` | integration `media` op `image_generate` + `media.image.generate`; auth `required` | Taku credits, reserved then settled |
+| Image edit | `createInput` → `uploadInput` → `taku.media.quoteImageRequest('media.image.edit', request, { requestId })` → confirmed `submitImageRequest` → original execution/outputs/link | integration `media` op `image_edit` + `media.image.edit`; auth `required` | Actual model quote; reserve on submit, then settle |
+| Image generate | `taku.media.quoteImageRequest('media.image.generate', request, { requestId })` → confirmed `submitImageRequest` → original execution/outputs/link | integration `media` op `image_generate` + `media.image.generate`; auth `required` | Actual model quote; reserve on submit, then settle |
 | Video generate | `taku.media.generateVideo(prompt, { aspectRatio?: "16:9" \| "9:16", durationSeconds?: 4 \| 6 \| 8, requestId? })` → `getJob` → `getAsset` | integration `media` op `video_generate` + `media.video.generate`; auth `required` | Taku credits, reserved then settled |
 
 Check the exported `taku-sites-sdk.mjs` for exact method names and signatures. Do not call a method or operation that it or the catalog does not list.
@@ -34,7 +34,15 @@ Check the exported `taku-sites-sdk.mjs` for exact method names and signatures. D
 - Airbnb: `autocomplete { query }` → `search { placeId, checkinDate?, checkoutDate?, adults? }` → `detail`/`price { listingId, checkinDate, checkoutDate, adults }`. Dates are `YYYY-MM-DD`; `adults` is an integer. Responses keep the provider's nested structure (for example `data.sectionContainer[*].section`). Parse it defensively. HTTP 200 does not mean every field is present. Price lines can be under `structuredDisplayPrice.explanationData.priceDetails[*].items[*]`.
 - Show real errors. Never make up destinations, listings, prices, search results, or images.
 
-## Media image edit
+## Image selection and v2
+
+Read [image-models.md](image-models.md) before building a new image app. `sites-image-models --operation media.image.generate --json` (or `media.image.edit`) reads the authenticated catalog without generation. A general capability marked ready does not make every catalog model ready: inspect the exact operation, model ID, parameter version and `site-published` availability (Desktop previews use `site-preview`). Preserve the user's chosen default in application configuration; never choose a provider endpoint or add fields to the Site manifest. The catalog's priceVersion is not a credits amount.
+
+Use the exported browser SDK for quote/submit/find/get/cancel/outputs/indexed links, with original IDs and current visitor authorization. Ask economy/quality once only when no preference was given; unavailable models and changed parameters require explicit handling, never silent legacy fallback. The new quote API does not authorize every future visitor's charge. Model readiness, release installation and real billing need live evidence; stub tests do not prove them.
+
+## Legacy v1 image edit
+
+The following keeps existing clients compatible. Do not use it to discard a new model selection or append model/provider fields to the strict v1 payload.
 
 ```js
 const permit = await taku.media.createInput(file.type);   // image/png | image/jpeg | image/webp, ≤ 20 MiB
@@ -44,11 +52,14 @@ while (!job.terminal) {
   await new Promise(r => setTimeout(r, job.poll_after_ms ?? 2000));
   job = await taku.media.getJob(job.job_id);
 }
-if (job.status === 'completed' && job.asset_content) show(await taku.media.getAsset(job.job_id));
+if (job.status === 'completed' && job.asset_content) {
+  const asset = await taku.media.getAssetLink(job.job_id);
+  // Assign asset.url to img.src; retain job_id to renew an expired link.
+}
 ```
 
 Reuse the same `requestId` when retrying so the visitor is not charged twice. Put a limit on polling. Results are kept for about 30 days. Uploaded inputs are temporary and are not result assets.
 
-## Media image / video generate
+## Legacy image / existing video generate
 
-`generateImage` and `generateVideo` return the same job shape as `editImage`; poll `getJob` and read `getAsset` the same way. Video jobs can take several minutes, so show progress and let the visitor leave and come back (keep the `job_id`). Declare only the media operations the Site uses: the session must be granted every scope declared on the `media` integration.
+`generateImage` and `generateVideo` return the same job shape as `editImage`; poll `getJob` and read `getAssetLink` the same way. Assign the returned URL directly to `img`/`video`; do not buffer the video in your Worker or persist the temporary URL. Links last at most 5 minutes; results retain their original 30-day expiry. Renew with the same `job_id`, never by generating again. Only `media_asset_legacy_use_get_asset` permits the old bounded Blob reader. Video jobs can take several minutes, so show progress and let the visitor leave and come back (keep the `job_id`). Declare only the media operations the Site uses: the session must be granted every scope declared on the `media` integration.

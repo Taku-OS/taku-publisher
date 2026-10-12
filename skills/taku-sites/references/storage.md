@@ -43,3 +43,15 @@ Only for real Airbnb listing snapshots: `{ listingId (numeric string), title, im
 ## Generic SQL
 
 `taku.storage.query(sql, params)` and `taku.storage.batch([{ statement, params }])`, up to 20 statements. Always bind parameters. The browser builds these queries, so `WHERE user_id = ?` does **not** isolate users. Use `storage.personal` for per-user data. Migrations support simple `CREATE TABLE` / `CREATE INDEX` and literal seed inserts. `CHECK`, `ALTER`, `DROP`, and triggers are not supported. If you get `MIGRATION_UNSUPPORTED`, simplify the schema.
+
+For an uncertain logical SQL action, persist its ID before the request and retain it when checking/retrying the same action:
+
+```js
+const options = { requestId: savedActionId }; // 16–128 ASCII letters/digits/._:~-
+await taku.storage.query('INSERT INTO notes(body) VALUES (?)', [body], options);
+// batch(statements, options) uses one action ID for the batch.
+```
+
+The SDK does not automatically retry SQL. The server binds each statement to the verified project/session, operation, action ID and request digest; IDs are not authorization. A pending/unknown execution returns `site_database_usage_pending` (429), a completed duplicate returns `database_request_already_completed` (409), and an altered payload returns `database_request_payload_conflict` (409). Never replace the ID to bypass these results or assume a timeout means no write occurred. Completed duplicates do not replay results. Keep the local action pending and report the safe server error when its outcome is unknown.
+
+Rows read/written are metered per Site and calendar month from provider counters, not guessed from result length. `site_database_quota_exhausted` (429) and `site_frozen` (423) are normal server refusals; do not switch scopes or fabricate success. Capacity is separate from monthly usage: freeing storage or a new month does not by itself reconcile an unknown SQL hold. Legacy Site/runtime upgrades use the existing controlled reconciliation and migration fence; a newer SDK does not prove an old runtime was upgraded.

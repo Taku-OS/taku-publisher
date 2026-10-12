@@ -29,7 +29,8 @@ if (!option('--platform') && !process.env.TAKU_SITES_PLATFORM_DIR) {
   throw new Error('Pass --platform <taku-sites-platform checkout> or set TAKU_SITES_PLATFORM_DIR.');
 }
 
-const git = (...parameters) => execFileSync('git', ['-C', platform, ...parameters], { encoding: 'utf8' }).trim();
+// Replacement refs must not substitute different source bytes for the recorded commit.
+const git = (...parameters) => execFileSync('git', ['--no-replace-objects', '-C', platform, ...parameters], { encoding: 'utf8' }).trim();
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const commit = git('rev-parse', '--verify', `${ref}^{commit}`);
 const dirty = Boolean(git('status', '--porcelain', '--untracked-files=no'));
@@ -39,6 +40,25 @@ const output = path.join(scratch, 'out');
 await fs.mkdir(output);
 git('worktree', 'add', '--detach', snapshot, commit);
 try {
+  // A clean checkout can still apply smudge/encoding transformations. Verify
+  // actual source bytes against Git's raw objects before invoking the builder.
+  const objectFormat = git('rev-parse', '--show-object-format');
+  if (!['sha1', 'sha256'].includes(objectFormat)) throw new Error('Unsupported Git object format.');
+  for (const record of git('ls-tree', '-r', '-z', '--full-tree', commit).split('\0').filter(Boolean)) {
+    const separator = record.indexOf('\t');
+    const [mode, type, objectId] = record.slice(0, separator).split(' ');
+    const relative = record.slice(separator + 1);
+    if (type !== 'blob') throw new Error(`Unsupported committed source entry: ${relative}`);
+    const filename = path.join(snapshot, relative);
+    const stat = await fs.lstat(filename);
+    const bytes = mode === '120000' && stat.isSymbolicLink()
+      ? await fs.readlink(filename, { encoding: 'buffer' })
+      : mode !== '120000' && stat.isFile() ? await fs.readFile(filename) : null;
+    const actual = bytes && createHash(objectFormat).update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+    if (actual !== objectId) {
+      throw new Error(`Committed source byte mismatch: ${relative}. Disable checkout content transformations before synchronization.`);
+    }
+  }
   // Reuse the checkout's installed dependencies; sources come only from the snapshot.
   for (const relative of ['node_modules', 'packages/site-cli-core/node_modules', 'packages/contracts/node_modules', 'packages/sdk/node_modules']) {
     const source = path.join(platform, relative);

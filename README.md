@@ -103,29 +103,48 @@ claude plugin install taku-publisher@taku
 ```
 
 Start a new Codex task or Claude Code session after installation so it picks up
-the Taku Publisher Skill. Version 0.3.28 ships the `taku-sites` Skill in the
-standalone installer next to `taku-publisher`. The host agent builds and tests
+the Taku Publisher Skill. The formally released [v0.4.0 installer](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.4.0)
+ships the `taku-sites` Skill next to `taku-publisher`. The host agent builds and tests
 the Site itself; the bundled CLI signs in, reads the live Sites capability
 catalog, validates, checks the exact subdomain, and publishes after
-confirmation. Sites is limited to server-verified @taku.ai accounts during
-internal testing. It retains the authorization-host override, Challenge
+confirmation. Authenticated ordinary accounts are supported; production
+Workers decides current eligibility, ownership, capacity and the Free
+first-Site entitlement. An email domain or installed Skill version is not
+proof of permission. It retains the authorization-host override, Challenge
 guidance, Flowchart, OpenCode, Stax Challenge, and SubApp support from earlier
 releases:
 
 ```sh
-npm run pack:installer
-node dist/installers/cursor/bin/taku-publisher.mjs install --host cursor
-node dist/installers/cursor/bin/taku-publisher.mjs install --host agent-skills
+npx --yes --package https://github.com/Taku-OS/taku-publisher/releases/download/v0.4.0/taku-publisher-0.4.0.tgz taku-publisher install --host cursor --update
+npx --yes --package https://github.com/Taku-OS/taku-publisher/releases/download/v0.4.0/taku-publisher-0.4.0.tgz taku-publisher install --host agent-skills --update
 ```
 
 Start a new Cursor Agent chat and invoke `/taku-publisher` or `/taku-sites`. The generic target
 installs to `~/.agents/skills/taku-publisher` and `~/.agents/skills/taku-sites`, which OpenCode loads by default;
-start a new host session after installation. GitHub production distribution
-uses the `marketplace` branch and `v0.3.28` release assets, not
+start a new host session after installation. Both Skills are also published for
+Codex, Claude Code and Cursor on the [GitHub `marketplace` branch](https://github.com/Taku-OS/taku-publisher/tree/marketplace).
+GitHub production distribution uses that branch and versioned release assets, not
 the npm registry or the official Cursor store. `npm run build:marketplace`
 generates the combined three-host GitHub bundle. Stax Challenge is an explicit,
 optional Card-to-one-Skill workflow; ordinary Card, Skill and SubApp routes remain available. See
 [Cursor installation and release gates](docs/cursor-release.md).
+
+For independent Publisher native updates, `npm run build:native` creates the
+Publisher-only Codex, Claude Code and Cursor bundles in
+`dist/native-publisher/`. `npm run smoke:native` verifies its provenance,
+archives and local Card-to-Skill workflow. This channel omits the Sites Skill
+and does not enable Sites GA. See the
+[0.3.30 native release and QA guide](docs/release-0.3.30-native.md).
+
+The formally distributed Sites CLI release is 0.4.0 (non-draft, non-prerelease): both Skills, the quota-managed owner
+material contract, stable SQL action IDs and the verified image-model/budget
+SDK are packaged together for all three hosts. Its immutable assets remain
+pinned to source `b4d7f9ef21310bbab770ce79f39aff9640f0730f`; this documentation
+update does not replace them or the v0.3.30 native channel. This is not a claim
+that the entire GA delivery is complete: Desktop 3.1.122's formal CI is blocked
+by an Apple agreement 403, with no macOS release artifact or stable promotion.
+See the [release status and remaining boundary](docs/release-0.4.0-sites-ga.md). The older
+0.3.31 image-only candidate remains a separate frozen source reference.
 
 OpenCode can load the portable artifact from its global
 `~/.config/opencode/skills/taku-publisher` directory or a project's

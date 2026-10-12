@@ -8,7 +8,16 @@ import { execFileSync } from 'node:child_process';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const buildRoot = path.join(root, 'dist/challenge-test');
 const build = JSON.parse(await fs.readFile(path.join(buildRoot, 'build.json'), 'utf8'));
-assert.match(build.version, /^0\.3\.29-stax-challenge\.b[a-f0-9]{12}$/);
+const production = JSON.parse(await fs.readFile(path.join(root,
+  'dist/skills/taku-publisher/publisher-version.json'), 'utf8')).version;
+const stable = /^(\d+)\.(\d+)\.(\d+)$/.exec(production);
+assert.ok(stable, 'Standard build must have a stable semver version.');
+const nextPatch = `${stable[1]}.${stable[2]}.${Number(stable[3]) + 1}`;
+assert.equal(build.version, `${nextPatch}-stax-challenge.b${build.source.sourceTreeChecksum.slice(0, 12)}`);
+assert.match(build.source.sourceTreeChecksum, /^[a-f0-9]{64}$/);
+const sourceMetadata = JSON.parse(execFileSync(process.execPath, ['scripts/source-checksum.mjs'],
+  { cwd: root, encoding: 'utf8' }));
+assert.equal(build.source.sourceTreeChecksum, sourceMetadata.sourceTreeChecksum);
 for (const item of build.builds) {
   const skill = path.join(buildRoot, item.directory, 'plugins', build.name, 'skills', build.name);
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-challenge-plugin-'));
@@ -38,8 +47,11 @@ for (const item of build.builds) {
     assert.match(creatorConfig, /DEFAULT_WORKER_URL = 'https:\/\/worker\.taku\.ai'/);
     assert.match(runtimeConstants, /DEFAULT_WORKER_URL = 'https:\/\/worker\.taku\.ai'/);
     const provenance = JSON.parse(await fs.readFile(path.join(buildRoot, item.directory, 'provenance.json'), 'utf8'));
-    assert.equal(provenance.baseProductionVersion, '0.3.28');
-    assert.equal(provenance.testBaseVersion, '0.3.29');
+    assert.equal(provenance.baseProductionVersion, production);
+    assert.equal(provenance.testBaseVersion, nextPatch);
+    assert.equal(provenance.version, build.version);
+    assert.equal(provenance.sourceCommit, build.sourceCommit);
+    assert.deepEqual(provenance.source, build.source);
     assert.deepEqual(provenance.endpoints, {
       siteUrl: 'http://localhost:3001', workerUrl: 'https://worker.taku.ai',
     });

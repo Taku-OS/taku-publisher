@@ -1,39 +1,51 @@
-# Cursor and Agent Skills installer 0.3.29
+# Cursor and Agent Skills installer 0.4.0: formal Sites CLI release
 
-Version 0.3.29 is a release candidate until its uploaded installer passes
-production checks. Use the pinned files below only when the GitHub release
-is published. Version 0.3.28 has a known Sites publish-path defect and is not
-a verified Sites rollback.
+Version [0.4.0](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.4.0) is formally published for TAKU-527, non-draft and non-prerelease, from immutable source `b4d7f9ef21310bbab770ce79f39aff9640f0730f`.
+The source layers, production policy and remaining Desktop distribution
+boundary are documented in [the release status](release-0.4.0-sites-ga.md).
+Local module tests and packaging alone do not prove production eligibility,
+live model readiness or billing; the installed CLI reads current server policy.
+The pinned download instructions below are available now. Preserve
+v0.3.30 Publisher-only native assets, the existing GitHub `latest` pointer and all existing
+Marketplace paths. The frozen 0.3.31 image-only candidate is historical,
+not this complete version. Version 0.3.28 has a known publish-path defect and
+is not a verified Sites rollback.
 
 This release installs two Skills from one package: `taku-publisher` and
 `taku-sites`. Taku Sites lets the host agent build and test a Site with its own
 tools, then use the bundled CLI to sign in, read the live capability catalog,
 validate, and publish to an exact, user-confirmed `*.taku.site` subdomain.
-Sites is limited to server-verified @taku.ai accounts during internal testing.
+Authenticated ordinary accounts are supported. Sites access, ownership and
+capacity, including the Free first-Site entitlement, are decided by current
+production Workers policy; the installed Skill version and email domain do
+not prove eligibility.
 Pass `--skill taku-publisher` or `--skill taku-sites` to install only one.
 The production plugin is still named
 `taku-publisher`, without a test-version suffix. Distribution is through the
-GitHub `marketplace` branch and the `v0.3.29` release assets. It is not
-published to npm or listed in the official Cursor Marketplace.
+separate, pinned `v0.4.0` release assets. Both Skills are also published through
+the existing Codex/Claude Code/Cursor GitHub
+[`marketplace` layout](https://github.com/Taku-OS/taku-publisher/tree/bb73f1e2ddc170873baf8970df13be143d15c742).
+Local packaging itself does not publish that branch.
+It is not published to npm or listed in the official Cursor Marketplace.
 
-Install or update to the latest release directly from GitHub (Node.js 20+):
+Install only Sites from the published pinned asset (Node.js 20+):
 
 ```sh
-npx --yes --package https://github.com/Taku-OS/taku-publisher/releases/latest/download/taku-publisher.tgz taku-publisher install --host cursor --update
-npx --yes --package https://github.com/Taku-OS/taku-publisher/releases/latest/download/taku-publisher.tgz taku-publisher install --host agent-skills --update
+npx --yes --package https://github.com/Taku-OS/taku-publisher/releases/download/v0.4.0/taku-publisher-0.4.0.tgz taku-publisher install --host cursor --skill taku-sites --update
+npx --yes --package https://github.com/Taku-OS/taku-publisher/releases/download/v0.4.0/taku-publisher-0.4.0.tgz taku-publisher install --host agent-skills --skill taku-sites --update
 ```
 
-The stable `taku-publisher.tgz` asset is byte-for-byte identical to the
-versioned installer in that release. Use the versioned asset below when an
-installation must be pinned for reproducibility or rollback.
+Do not use `releases/latest` or replace v0.3.30 native assets. The published
+`taku-publisher.tgz` alias is byte-for-byte identical to the versioned installer.
+Prefer the versioned URL so a later release cannot silently change the selected package.
 
-Download `taku-publisher-0.3.29.tgz` from the trusted
-[GitHub release](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.3.29),
+Download [taku-publisher-0.4.0.tgz](https://github.com/Taku-OS/taku-publisher/releases/download/v0.4.0/taku-publisher-0.4.0.tgz)
+from the published [v0.4.0 release](https://github.com/Taku-OS/taku-publisher/releases/tag/v0.4.0),
 then run from the download directory (Node.js 20+):
 
 ```sh
-npx --yes --package ./taku-publisher-0.3.29.tgz taku-publisher install --host cursor
-npx --yes --package ./taku-publisher-0.3.29.tgz taku-publisher install --host agent-skills
+npx --yes --package ./taku-publisher-0.4.0.tgz taku-publisher install --host cursor --skill taku-sites
+npx --yes --package ./taku-publisher-0.4.0.tgz taku-publisher install --host agent-skills --skill taku-sites
 ```
 
 The `agent-skills` target installs to `~/.agents/skills/taku-publisher` and
@@ -44,6 +56,13 @@ querying prompts or messages. Quit and restart the host after installation so
 it loads the new Skill.
 
 ## Build and install locally
+
+The commands below are optional maintainer/local-development instructions;
+end users can install the published archive directly without building it.
+Final release artifacts remain pinned to `b4d7f9ef21310bbab770ce79f39aff9640f0730f`;
+do not rebuild or replace them from this docs-only update. The existing 0.3.30
+Publisher-only native profile is a separate distribution; its packaging layout,
+published assets and the existing GitHub `latest` pointer are not replaced by the Sites installer.
 
 Requires Node.js 20+ (npm is only needed to build or use a tarball).
 Exact local Cursor and OpenCode token reading additionally uses the optional
@@ -58,8 +77,9 @@ node dist/installers/cursor/bin/taku-publisher.mjs install --host cursor
 node dist/installers/cursor/bin/taku-publisher.mjs install --host agent-skills
 ```
 
-The last command installs the complete Skill into the current user's
-`.cursor/skills/taku-publisher`. To keep testing project-local:
+The Cursor command installs both Skills into the current user's
+`.cursor/skills/`; the `agent-skills` command installs both under `.agents/skills/`.
+To keep testing project-local:
 
 ```sh
 node dist/installers/cursor/bin/taku-publisher.mjs install --host cursor --scope project --project /absolute/path/to/project
@@ -74,11 +94,11 @@ For a previously manually copied, unmanaged Skill, explicit `--backup-existing`
 moves the entire old directory to a recoverable backup before installing.
 It does not bypass protections for edited managed installs.
 
-The local npm tarball is `dist/releases/taku-publisher-0.3.29.tgz`:
+The local installer tarball is `dist/releases/taku-publisher-0.4.0.tgz`:
 
 ```sh
-npx --yes --package ./dist/releases/taku-publisher-0.3.29.tgz taku-publisher install --host cursor
-npx --yes --package ./dist/releases/taku-publisher-0.3.29.tgz taku-publisher install --host agent-skills
+npx --yes --package ./dist/releases/taku-publisher-0.4.0.tgz taku-publisher install --host cursor --skill taku-sites
+npx --yes --package ./dist/releases/taku-publisher-0.4.0.tgz taku-publisher install --host agent-skills --skill taku-sites
 ```
 
 This tarball command uses a local file, not a released npm package. A public
@@ -94,14 +114,20 @@ its root `.cursor-plugin/marketplace.json`. The ZIP in `dist/releases` has the
 same structure. `npm run build:marketplace` also creates the combined
 three-host distribution at `dist/marketplace-release`, preserving the existing
 Codex/Claude production paths and adding `plugins/taku-publisher-cursor`.
-The GitHub `marketplace` branch exposes all three marketplace manifests at
+The published GitHub `marketplace` branch exposes all three marketplace manifests at
 their required root paths. Select that branch for GitHub import; source-only
 `main` does not expose the Cursor marketplace manifest at its root.
 
 Official store submission is separate from both GitHub and npm distribution.
 Use the current Cursor submission checklist before submitting.
 
-## Minimal acceptance test
+Desktop 3.1.122 is not a completed stable client release: its
+[formal CI](https://github.com/Taku-OS/taku/actions/runs/38069317317) failed on an
+Apple required-agreement 403, produced no macOS release artifact and did not
+complete paired Beta publication or stable promotion. The CLI/Skill release
+does not establish that the entire GA delivery is complete.
+
+## Post-release QA (not a local GA development gate)
 
 Open the chosen project in Cursor, start a new Agent chat, and use
 `/taku-publisher`. Confirm the executed Skill path, not just the project title.

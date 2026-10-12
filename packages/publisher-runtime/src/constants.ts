@@ -25,7 +25,7 @@ export const MAX_DISCOVERY_DEPTH = 6;
 
 export const EXCLUDED_DIR_NAMES = new Set([
   '.aws', '.azure', '.cache', '.git', '.gnupg', '.idea', '.next', '.nuxt',
-  '.parcel-cache', '.pytest_cache', '.ssh', '.svelte-kit', '.terraform',
+  '.parcel-cache', '.pytest_cache', '.ssh', '.superpowers', '.svelte-kit', '.terraform',
   '.turbo', '.venv', '.vscode', '__pycache__', 'build', 'coverage', 'dist',
   'logs', 'node_modules', 'out', 'target', 'temp', 'tmp', 'venv',
 ]);

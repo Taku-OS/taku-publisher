@@ -37,6 +37,7 @@ EXCLUDED_DIR_NAMES = {
     ".parcel-cache",
     ".pytest_cache",
     ".ssh",
+    ".superpowers",
     ".svelte-kit",
     ".terraform",
     ".tmp",
