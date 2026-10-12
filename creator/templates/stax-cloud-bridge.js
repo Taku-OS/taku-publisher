@@ -81,6 +81,10 @@
     const message=event.data;
     if(!message||typeof message.type!=='string'||!message.type.startsWith(MESSAGE_PREFIX))return;
     if(message.type===MESSAGE_PREFIX+'init')initialize(message);
+    if(message.type===MESSAGE_PREFIX+'advance-intro'&&initialized){
+      if(document.getElementById('revealov')?.classList.contains('on'))document.getElementById('cslide')?.click();
+      else if(!document.getElementById('scanov')?.classList.contains('off')&&!document.getElementById('scanov')?.classList.contains('authmode'))window.__TAKU_STAX_JUMP_INTRO__?.();
+    }
     if(message.type===MESSAGE_PREFIX+'published')finishPublish(message);
     if(message.type===MESSAGE_PREFIX+'publish-error')failPublish(message);
     if(message.type===MESSAGE_PREFIX+'settings-saved'){
