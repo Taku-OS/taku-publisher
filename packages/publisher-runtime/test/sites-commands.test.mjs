@@ -450,6 +450,26 @@ test('sites-contract fails clearly when the catalog is unreachable or the user i
   await assert.rejects(dispatch(args('sites-contract')), (error) => ['sites_login_required', 'sites_scope_required'].includes(error.code));
 });
 
+test('sites-status distinguishes failed updates from an active old release and rejects another target', async t => {
+  await withSitesSession(t);
+  let boundProject = 'prj_test';
+  const server = createServer((request, response) => {
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify(request.url === '/v1/sites/cli-session' ? { userId: 'fixture' }
+      : request.url === '/v1/sites/prj_test' ? { projectId: 'prj_test', status: 'active', currentReleaseId: 'rel_old' }
+      : { publishRequestId: 'req_test', projectId: boundProject, status: 'failed', releaseId: 'rel_new' }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const flags = { 'project-id': 'prj_test', 'publish-request-id': 'req_test',
+    'worker-url': `http://127.0.0.1:${server.address().port}`, 'allow-custom-worker-url': true };
+  const result = await dispatch(args('sites-status', flags));
+  assert.equal(result.site.currentReleaseId, 'rel_old');
+  assert.deepEqual(result.publication, { publish_request_id: 'req_test', status: 'failed', release_id: 'rel_new' });
+  boundProject = 'prj_other';
+  await assert.rejects(dispatch(args('sites-status', flags)), { code: 'sites_target_changed' });
+});
+
 test('owner material CLI uses bounded authenticated library operations, exact delete confirmation and live permissions', async t => {
   await withSitesSession(t);
   const asset = { assetId: `ast_${'a'.repeat(32)}`, state: 'ready', retention: 'permanent', visibility: 'private',

@@ -2186,7 +2186,7 @@ Commands:
   sites-sdk-export --output <project>/dist/assets/taku-sites-sdk.mjs
   sites-image-models --operation media.image.generate|media.image.edit [--query <text>] [--cursor <cursor>] [--limit 1..100] (authenticated metadata only)
   sites-validate --project <dir>, sites-build --project <dir> [--project-id <owned-id>]
-  sites-list, sites-status --project-id <id>
+  sites-list, sites-status --project-id <id> [--publish-request-id <id>]
   sites-assets-policy, sites-assets-list [--limit 1..100] [--after <asset-id>]
   sites-assets-resolve --asset-id <asset-id> (metadata only)
   sites-assets-download --asset-id <asset-id> --output <new-local-file> (verified owner download; no overwrite)

@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { mkdtemp, readFile, readdir, rm, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { dispatch } from '../dist/cli.js';
 import { savePublisherSession } from '../dist/auth.js';
 import { loadSitesCore } from '../dist/sites/core.js';
@@ -207,7 +210,7 @@ for (const scenario of ['legacy', 'permanent', 'temporary', 'reuse', 'mismatch']
   }
 });
 
-async function recoveryFixture(t, { existing = false, lostCreateResponse = false, interruption = 'upload', retention } = {}) {
+async function recoveryFixture(t, { existing = false, lostCreateResponse = false, interruption = 'upload', retention, pendingPublication = false } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'publisher-sites-recovery-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const previousHome = process.env.TAKU_PUBLISHER_HOME;
@@ -285,8 +288,8 @@ async function recoveryFixture(t, { existing = false, lostCreateResponse = false
       return send(202, { projectId, hostname, slug: 'recovery-site', status: 'provisioning' });
     }
     if (method === 'GET' && pathname === `/v1/sites/${projectId}`) return send(state.created ? 200 : 404, {
-      projectId, hostname, status: state.active ? 'active' : 'provisioning',
-      currentReleaseId: state.active ? state.artifact.releaseId : null,
+      projectId, hostname, status: state.active || pendingPublication ? 'active' : 'provisioning',
+      currentReleaseId: state.active ? state.artifact.releaseId : pendingPublication ? 'rel_old' : null,
     });
     if (method === 'POST' && pathname === `/v1/sites/${projectId}/artifact-uploads`) {
       const descriptorKey = JSON.stringify(sortJson(body.descriptor));
@@ -358,8 +361,12 @@ async function recoveryFixture(t, { existing = false, lostCreateResponse = false
         partBytes: 8 * 1024 * 1024, partCount: 1 });
     }
     if (method === 'POST' && pathname.endsWith('/finalize')) {
-      state.active = true;
+      state.active = !pendingPublication;
       upload.status = 'ready';
+      if (pendingPublication) {
+        state.record.status = 'deploying';
+        state.record.releaseId = state.artifact.releaseId;
+      }
       return send(200, { uploadId: upload.uploadId, status: 'ready' });
     }
     return send(404, { error: 'UNEXPECTED_RECOVERY_ROUTE' });
@@ -374,8 +381,43 @@ async function recoveryFixture(t, { existing = false, lostCreateResponse = false
     return readFile(path.join(root, 'sites/checkpoints', files[0]), 'utf8');
   };
   await assert.rejects(publish({ 'confirm-target': existing ? projectId : hostname }), { code: 'sites_api_error' });
-  return { project, projectId, hostname, publish, checkpointText, state, requests, confirmations };
+  return { project, projectId, hostname, publish, checkpointText, state, requests, confirmations, flags };
 }
+
+for (const outcome of ['failed', 'active']) test(`publish next_command follows the same update from deploying to ${outcome}`, async t => {
+  const { project, projectId, publish, state, requests, confirmations, flags } = await recoveryFixture(t, {
+    existing: true, pendingPublication: true,
+  });
+  const pending = await publish({});
+  assert.equal(pending.status, 'sites_publishing');
+  assert.equal(pending.ready, false);
+  assert.equal(pending.publish_request_id, state.record.publishRequestId);
+  assert.equal(pending.next_command, `sites-status --project-id ${projectId} --publish-request-id ${pending.publish_request_id}`);
+
+  const cli = fileURLToPath(new URL('../dist/bin/taku-publisher.js', import.meta.url));
+  const check = async () => JSON.parse((await promisify(execFile)(process.execPath, [cli,
+    ...pending.next_command.split(' '), '--worker-url', flags['worker-url'], '--json',
+  ], { env: { ...process.env, TAKU_PUBLISHER_HOME: path.dirname(project) }, encoding: 'utf8' })).stdout);
+  const writesBefore = requests.filter(request => request.method !== 'GET').length;
+  const deploying = await check();
+  assert.equal(deploying.status, 'sites_status');
+  assert.equal(deploying.site.status, 'active');
+  assert.equal(deploying.site.currentReleaseId, 'rel_old');
+  assert.notEqual(state.artifact.releaseId, 'rel_old');
+  assert.deepEqual(deploying.publication, {
+    publish_request_id: pending.publish_request_id, status: 'deploying', release_id: state.artifact.releaseId,
+  });
+
+  state.record.status = outcome;
+  state.active = outcome === 'active';
+  const terminal = await check();
+  assert.equal(terminal.site.currentReleaseId, outcome === 'active' ? state.artifact.releaseId : 'rel_old');
+  assert.deepEqual(terminal.publication, {
+    publish_request_id: pending.publish_request_id, status: outcome, release_id: state.artifact.releaseId,
+  });
+  assert.equal(requests.filter(request => request.method !== 'GET').length, writesBefore);
+  assert.equal(confirmations.length, 1, 'status checks must not create another publication');
+});
 
 for (const lostCreateResponse of [false, true]) test(`reset retains allocated Free first Site when create response ${lostCreateResponse ? 'is lost' : 'arrives'}`, async t => {
   const fixture = await recoveryFixture(t, { lostCreateResponse });
