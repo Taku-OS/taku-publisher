@@ -1,0 +1,492 @@
+/* Stax Studio v9.2: Cook, reveal, publish, and share surfaces.
+   Load after the runtime's inline styles. The card and its business logic stay intact. */
+
+@font-face {
+  font-family: "Hanken Grotesk";
+  src: url("/studio/fonts/hanken-grotesk-v92.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+#scanov,
+#revealov,
+#shareov,
+#modal {
+  --flow-canvas: #e3e3e3;
+  --flow-ink: #181818;
+  --flow-muted: rgba(0, 0, 0, .48);
+  --flow-line: rgba(0, 0, 0, .09);
+  --flow-shadow: 0 20px 42px -18px rgba(0, 0, 0, .2), 0 2px 8px rgba(0, 0, 0, .05);
+  color: var(--flow-ink);
+  font-family: "DM Sans", system-ui, sans-serif;
+}
+
+#scanov,
+#revealov,
+#shareov {
+  background: var(--flow-canvas);
+}
+
+#scanov .btn2,
+#revealov .btn2,
+#shareov .btn2,
+#modal .btn2 {
+  border: 1px solid var(--flow-line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--flow-ink);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -.01em;
+  padding: 10px 16px;
+  backdrop-filter: none;
+  transition: background .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+
+#scanov .btn2:hover,
+#revealov .btn2:hover,
+#shareov .btn2:hover,
+#modal .btn2:hover {
+  background: #f4f4f4;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .07);
+}
+
+#scanov .btn2.pri,
+#revealov .btn2.pri,
+#shareov .btn2.pri,
+#modal .btn2.pri {
+  border-color: var(--flow-ink);
+  background: var(--flow-ink);
+  color: #fff;
+  font-weight: 500;
+}
+
+#scanov .btn2.pri:hover,
+#revealov .btn2.pri:hover,
+#shareov .btn2.pri:hover,
+#modal .btn2.pri:hover { background: #353535; }
+
+#scanov .btn2:focus-visible,
+#revealov .btn2:focus-visible,
+#shareov .btn2:focus-visible,
+#modal .btn2:focus-visible {
+  outline: 2px solid #ff5a1f;
+  outline-offset: 3px;
+}
+
+/* Cook keeps the runtime scan and authentication state machine. */
+#scanov { padding: 50px 24px 46px; overflow-y: auto; }
+#scanov .scanlogo { width: auto; max-width: 120px; height: 24px; margin: 0 0 28px; object-fit: contain; }
+#scanov .v92-cook-device {
+  display: flex;
+  gap: 22px;
+  width: min(670px, 100%);
+  min-height: 340px;
+  padding: 8px;
+  border: 1px solid rgba(0, 0, 0, .04);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: var(--flow-shadow);
+}
+#scanov .v92-cook-screen {
+  position: relative;
+  width: 320px;
+  min-height: 320px;
+  flex: none;
+  overflow: hidden;
+  border-radius: 9px;
+  background: #ece5cf;
+  transition: background-color .6s ease;
+}
+#scanov .v92-cook-screen .v92-halftone {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transition: opacity .6s ease;
+}
+#scanov .v92-cook-screen img {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  width: 278px;
+  height: 278px;
+  transform: translateX(-50%);
+  object-fit: contain;
+  filter: drop-shadow(0 8px 12px rgba(0, 0, 0, .13));
+  opacity: 0;
+  transition: opacity .6s ease;
+  animation: v92-cook-float 3.5s ease-in-out infinite;
+}
+#scanov .v92-cook-screen.is-landed .v92-halftone { opacity: 0; }
+#scanov .v92-cook-screen.is-landed img { opacity: 1; }
+#scanov .v92-cook-screen.is-landed .v92-screen-status::before { animation: none; }
+@keyframes v92-cook-float {
+  0%, 100% { transform: translate(-50%, 0); }
+  50% { transform: translate(-50%, -5px); }
+}
+#scanov .v92-screen-status {
+  position: absolute;
+  z-index: 1;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(0, 0, 0, .7);
+  font-size: 12px;
+}
+#scanov .v92-screen-status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff5a1f;
+  animation: v92-pulse 1s ease-in-out infinite;
+}
+@keyframes v92-pulse { 50% { opacity: .3; } }
+#scanov .v92-screen-code {
+  position: absolute;
+  z-index: 1;
+  top: 9px;
+  right: 8px;
+  width: 94px;
+  height: 28px;
+}
+#scanov #vox { display: none; }
+#scanov .scanbox {
+  display: flex;
+  flex-direction: column;
+  width: auto;
+  min-width: 0;
+  flex: 1;
+  padding: 14px 16px 12px 0;
+}
+#scanov .scantitle {
+  margin: 0 0 18px;
+  color: var(--flow-ink);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -.02em;
+  text-align: left;
+}
+#scanov .scantitle::before {
+  content: "STAX · COOK";
+  display: block;
+  margin: 0 0 8px;
+  color: var(--flow-muted);
+  font-family: "DM Sans", sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .04em;
+}
+#scanov #scanlines { display: none; }
+#scanov .v92-scan-rows {
+  position: relative;
+  height: 202px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+#scanov .v92-scan-rows::-webkit-scrollbar { display: none; }
+#scanov .v92-srow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 29px;
+  color: rgba(0, 0, 0, .33);
+  font-family: "DM Sans", sans-serif;
+  font-size: 13px;
+  letter-spacing: -.01em;
+  transition: color .2s ease;
+}
+#scanov .v92-srow .v92-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .1);
+  transition: background .2s ease;
+}
+#scanov .v92-srow span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#scanov .v92-srow b {
+  flex: none;
+  color: var(--flow-ink);
+  font-family: "DM Sans", sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: -.01em;
+  opacity: 0;
+}
+#scanov .v92-srow.done { color: rgba(0, 0, 0, .6); }
+#scanov .v92-srow.done .v92-dot { background: var(--flow-ink); }
+#scanov .v92-srow.done b { opacity: 1; }
+#scanov .v92-srow.now { color: rgba(0, 0, 0, .76); }
+#scanov .v92-srow.now .v92-dot { background: #ff9a78; animation: v92-pulse .8s ease-in-out infinite; }
+#scanov .v92-cook-progress { display: flex; align-items: center; gap: 12px; margin-top: auto; }
+#scanov .scanbar { height: 4px; flex: 1; margin-top: 0; background: rgba(0, 0, 0, .07); }
+#scanov .scanbar i { background: var(--flow-ink); }
+#scanov .v92-progress-label { width: 44px; flex: none; color: var(--flow-muted); font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; }
+#scanov .scanskip { display: none; position: static; margin-top: 20px; color: var(--flow-muted); font-family: "DM Sans", sans-serif; font-size: 12px; letter-spacing: 0; }
+#scanov.authmode .scanskip { display: block; }
+#scanov .v92-scan-hint { margin-top: 20px; color: var(--flow-muted); font-size: 12px; }
+#scanov.authmode .v92-scan-hint { display: none; }
+#scanov .v92-kbd { display: inline-flex; align-items: center; height: 18px; margin: 0 2px; padding: 0 5px; border-radius: 4px; background: rgba(0, 0, 0, .06); box-shadow: inset 0 -1px rgba(0, 0, 0, .08); color: rgba(0, 0, 0, .58); }
+#scanov .v92-scan-skip { position: absolute; top: 20px; right: 24px; border: 0; background: transparent; color: var(--flow-muted); font-size: 12px; cursor: pointer; }
+#scanov .v92-scan-skip:hover { color: var(--flow-ink); }
+#scanov.authmode .v92-scan-skip { display: none; }
+#scanov.authmode .v92-cook-device { min-height: 0; background: transparent; border: 0; box-shadow: none; width: auto; padding: 0; }
+#scanov.authmode .v92-cook-screen { width: 180px; min-height: 180px; opacity: .8; }
+#scanov.authmode .v92-cook-screen img { width: 165px; height: 165px; }
+#scanov.authmode .scanbox { display: none; }
+#scanov.authmode .authgate { margin-top: 20px; }
+#scanov .authlabel { color: #2a8638; font-family: "Hanken Grotesk", sans-serif; font-size: 11px; letter-spacing: .04em; }
+#scanov .authgate h2 { background: none; color: var(--flow-ink); font-size: 32px; font-weight: 500; }
+#scanov .authcopy { color: var(--flow-muted); font-size: 14px; }
+#scanov .authcard { border-color: var(--flow-line); background: #fff; }
+#scanov .authcard b { color: var(--flow-muted); font-family: "DM Sans", sans-serif; letter-spacing: .04em; }
+#scanov .authcard span, #scanov .authcard.wait span, #scanov .authcard.later span { color: var(--flow-ink); font-weight: 500; }
+#scanov .authcard i, #scanov .authnote { color: var(--flow-muted); font-family: "DM Sans", sans-serif; letter-spacing: 0; }
+
+/* Reveal uses the runtime's real block previews and timer. */
+#revealov { --intro-ease: cubic-bezier(.2, .7, .3, 1); overflow-y: auto; }
+#revealov .revglow { display: none; }
+#revealov .cslide {
+  width: min(720px, 94vw);
+  min-height: 0;
+  margin: auto 0;
+  padding: 0 0 166px;
+  animation: v92-rise .4s var(--intro-ease) both;
+}
+@keyframes v92-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes v92-intro-stamp { from { opacity: 0; transform: scale(.9) translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes v92-intro-float { 0%, 100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-6px); } }
+@keyframes v92-intro-dot { to { opacity: 1; } }
+#revealov .ceye { margin-bottom: 18px; color: var(--flow-muted); font-family: "Hanken Grotesk", sans-serif; font-size: 13px; letter-spacing: -.01em; }
+#revealov .ctitle,
+#revealov .ctitle[style] {
+  margin: 0 0 19px;
+  background: none;
+  color: var(--flow-ink);
+  font-size: 32px !important;
+  font-weight: 500;
+  line-height: 1.08;
+  letter-spacing: -.025em;
+}
+#revealov .ctitle em { color: var(--flow-ink); font-family: "Space Grotesk", sans-serif; font-style: normal; font-weight: 500; }
+#revealov .cslide > .ctitle {
+  margin: 0 0 22px;
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -.02em;
+}
+#revealov .v92-archetype-card {
+  display: flex;
+  flex-direction: column;
+  width: min(372px, 90vw);
+  padding: 8px;
+  border: 0;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 8px 10px -6px rgba(0, 0, 0, .08), 0 20px 25px -5px rgba(0, 0, 0, .04), 0 0 0 1px rgba(0, 0, 0, .04);
+  color: #1b1b1b;
+  font-family: "Hanken Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  text-align: left;
+  animation: v92-intro-stamp .55s var(--intro-ease) both;
+}
+#revealov .v92-archetype-screen {
+  position: relative;
+  flex: none;
+  height: 312px;
+  overflow: hidden;
+  border-radius: 8px;
+  background-image: radial-gradient(circle, rgba(0, 0, 0, .06) 0 .8px, transparent 1.1px);
+  background-size: 4.5px 4.5px;
+  box-shadow: inset 0 .5px 1px rgba(0, 0, 0, .14);
+}
+#revealov .v92-archetype-screen .cfig { position: absolute; left: 50%; bottom: 10px; width: min(268px, 70vw); height: auto; max-width: none; transform: translateX(-50%); filter: drop-shadow(0 8px 10px rgba(0, 0, 0, .14)); animation: v92-intro-float 3.4s ease-in-out infinite; }
+#revealov .v92-archetype-label { position: absolute; left: 12px; top: 11px; color: rgba(0, 0, 0, .64); font: 400 11px/1.15 "Space Grotesk", system-ui, sans-serif; letter-spacing: .03em; text-transform: uppercase; }
+#revealov .v92-archetype-code { position: absolute; right: 12px; top: 9px; color: rgba(0, 0, 0, .92); font: 900 22px/.9 "Doto", ui-monospace, monospace; font-variation-settings: "ROND" 100, "wght" 900; letter-spacing: -.02em; }
+#revealov .v92-archetype-status { position: absolute; left: 12px; bottom: 10px; display: flex; align-items: center; gap: 6px; color: rgba(0, 0, 0, .8); font-size: 12px; }
+#revealov .v92-archetype-led { width: 6px; height: 6px; flex: none; border-radius: 50%; background: #ff5a1f; }
+#revealov .v92-archetype-body { padding: 14px 12px 10px; }
+#revealov .v92-archetype-card .ctitle { margin: 0; font-family: "Space Grotesk", system-ui, sans-serif; font-size: 32px !important; font-weight: 400; line-height: 1.05; letter-spacing: -.02em; text-transform: none; }
+#revealov .v92-archetype-card .ctag { margin: 6px 0 0; max-width: none; color: rgba(0, 0, 0, .64); font-family: "Hanken Grotesk", sans-serif; font-size: 15px; letter-spacing: -.01em; line-height: normal; text-align: left; }
+#revealov .v92-archetype-axes { display: flex; flex-direction: column; gap: 9px; margin-top: 16px; }
+#revealov .v92-archetype-axis { display: flex; align-items: center; gap: 10px; }
+#revealov .v92-axis-letter { width: 12px; flex: none; color: rgba(0, 0, 0, .24); font: 900 16px/.9 "Doto", ui-monospace, monospace; font-variation-settings: "ROND" 100, "wght" 900; letter-spacing: -.02em; text-align: center; }
+#revealov .v92-axis-letter.is-active { color: #1b1b1b; }
+#revealov .v92-axis-dots { display: flex; flex: 1; justify-content: space-between; }
+#revealov .v92-axis-dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(0, 0, 0, .06); opacity: 0; animation: v92-intro-dot .3s var(--intro-ease) forwards; }
+#revealov .v92-axis-dots i.on { background: #1b1b1b; }
+#revealov .cblock { max-width: 100%; margin: 2px 0 10px; text-align: left; animation: v92-intro-stamp .5s var(--intro-ease) both; }
+#revealov .cblock .guidestage { padding: 12px; border-radius: 12px; background: #fff; box-shadow: var(--flow-shadow); }
+#revealov .cmeaning { font-family: "Hanken Grotesk", sans-serif; max-width: 440px; margin-top: 10px; color: var(--flow-muted); font-size: 15px; line-height: 1.5; }
+#revealov .csource { max-width: 440px; margin-top: 10px; color: var(--flow-muted); font-family: "Hanken Grotesk", sans-serif; font-size: 11px; letter-spacing: .01em; }
+#revealov .ccount { display: none; }
+#revealov .cfooter { position: fixed; bottom: 13px; gap: 13px; }
+#revealov .cdots { max-width: min(560px, 80vw); gap: 6px; }
+#revealov .cdots i { width: 6px; height: 6px; border-radius: 50%; background: rgba(0, 0, 0, .16); transition: background .3s ease; }
+#revealov .cdots i.done { background: rgba(0, 0, 0, .36); }
+#revealov .cdots i.here { background: var(--flow-ink); }
+#revealov .v92-next { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 160px; height: 40px; padding: 0 16px; border: 0; border-radius: 8px; background: #181818; color: #fff; font: 400 13px/1 "Hanken Grotesk", sans-serif; letter-spacing: -.01em; }
+#revealov .v92-next:hover { background: #333; box-shadow: none; }
+#revealov .v92-next:active { background: #444; }
+#revealov .v92-next svg { display: block; width: 14px; height: 14px; flex: none; }
+#revealov .v92-hint { color: var(--flow-muted); font-family: "Hanken Grotesk", sans-serif; font-size: 12px; }
+#revealov #cskip { position: fixed; top: 20px; right: 24px; z-index: 5; display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: rgba(0, 0, 0, .8); font: 400 12px/1 "Hanken Grotesk", sans-serif; letter-spacing: -.01em; text-transform: none; box-shadow: none; }
+#revealov #cskip:hover { background: transparent; color: var(--flow-ink); box-shadow: none; }
+
+/* Publish retains the original mode switch, Community picker, and export buttons. */
+#modal {
+  --flow-ink: #1b1b1b;
+  background: rgba(0, 0, 0, .24);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  font-family: "Hanken Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+#modal .msheet {
+  position: relative;
+  width: auto;
+  max-width: calc(100vw - 32px);
+  max-height: 94vh;
+  padding: 20px 24px 24px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--flow-canvas);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, .12), 0 0 0 1px rgba(0, 0, 0, .06);
+  text-align: left;
+  animation: v92-rise .3s cubic-bezier(.2, .7, .3, 1);
+}
+#modal .mtop { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+#modal .mtop h2 { margin: 0; background: none; color: var(--flow-ink); font-family: "Space Grotesk", system-ui, sans-serif; font-size: 28px; font-weight: 400; letter-spacing: -.02em; text-align: left; }
+#modal .mactions { display: flex; align-items: center; gap: 12px; }
+#modal .pvmode { gap: 2px; margin: 0; border: 0; border-radius: 8px; background: rgba(0, 0, 0, .08); padding: 2px; }
+#modal .pm { height: 28px; border-radius: 6px; padding: 0 12px; background: none; color: rgba(0, 0, 0, .64); font-family: "Hanken Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 400; letter-spacing: normal; text-transform: none; white-space: nowrap; }
+#modal .pm.on { background: var(--flow-ink); color: #fff; font-weight: 400; }
+#modal .pvwrap { max-width: 100%; }
+#modal .pvglow, #modal .spk { display: none; }
+#modal .pvbox { max-width: 100%; animation: v92-rise .4s cubic-bezier(.2, .7, .3, 1); }
+#modal .mclose { position: static; width: 32px; height: 32px; flex: none; display: grid; place-items: center; padding: 0; border: 0; border-radius: 6px; background: none; color: rgba(0, 0, 0, .80); font-family: "Hanken Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 16px; font-weight: 400; letter-spacing: normal; cursor: pointer; }
+#modal .mclose:hover { background: rgba(0, 0, 0, .06); color: rgba(0, 0, 0, .80); }
+#modal .mclose svg { display: block; width: 16px; height: 16px; }
+#modal .pm:focus-visible,
+#modal .mclose:focus-visible { outline: 2px solid var(--flow-ink); outline-offset: 2px; }
+#modal .communitypick { max-width: 100%; margin-top: 18px; border-color: var(--flow-line); border-radius: 10px; background: #fff; }
+#modal .communitypickhead b { color: var(--flow-ink); font-family: "Hanken Grotesk", sans-serif; font-size: 11px; letter-spacing: .02em; }
+#modal .communitypickhead span { color: var(--flow-muted); }
+#modal .communitypickcount { border-radius: 5px; background: #f0f0f0; color: var(--flow-ink) !important; font-family: "DM Sans", sans-serif !important; }
+#modal .communitytool { border-color: var(--flow-line); background: #fafafa; }
+#modal .communitytool:has(input:checked) { border-color: #181818; background: #f2f2f2; }
+#modal .communitytool input { accent-color: #181818; }
+#modal .communitytoolcopy strong { color: var(--flow-ink); }
+#modal .communitytoolcopy small { color: var(--flow-muted); }
+#modal .mrow { margin-top: 20px; gap: 8px; }
+#modal .mrow .btn2 {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, .08);
+  color: var(--flow-ink);
+  font-family: "Hanken Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: -.01em;
+  text-transform: none;
+  white-space: nowrap;
+  box-shadow: none;
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+#modal .mrow .btn2:hover { background: rgba(0, 0, 0, .16); box-shadow: none; }
+#modal .mrow .btn2.pri { background: #ff5a1f; color: var(--flow-ink); font-weight: 400; }
+#modal .mrow .btn2.pri:hover { background: #e94e17; }
+#modal .mrow .btn2.pri:active { background: #d64b19; }
+#modal .mrow .btn2 svg { display: block; width: 16px; height: 16px; flex: none; }
+#modal .mrow .btn2:focus-visible { outline: 2px solid var(--flow-ink); outline-offset: 2px; }
+
+/* Action feedback must stay above the modal's backdrop. */
+#toast {
+  z-index: 800;
+  max-width: calc(100vw - 32px);
+  font-family: "Hanken Grotesk", "DM Sans", sans-serif;
+  letter-spacing: 0;
+  text-align: center;
+}
+#modal .mrow .btn2[aria-disabled="true"] { opacity: .48; cursor: not-allowed; }
+#modal .local-publish-note {
+  margin: 10px 0 0;
+  color: var(--flow-muted);
+  font: 400 12px/1.4 "Hanken Grotesk", sans-serif;
+  text-align: center;
+}
+
+/* Published share page still displays the cloned live card and current URL. */
+#shareov { align-items: stretch; }
+#shareov .shglow { display: none; }
+#shareov .shhud { min-height: 64px; gap: 8px; padding: 12px 24px; background: linear-gradient(180deg, var(--flow-canvas) 74%, rgba(227, 227, 227, 0)); }
+#shareov .shlogo { width: auto; height: 22px; margin-right: 9px; object-fit: contain; }
+#shareov .shurlchip { max-width: min(330px, 36vw); margin-left: 0; padding: 8px 10px; border-color: var(--flow-line); border-radius: 6px; background: #fff; color: var(--flow-ink); font-family: "DM Sans", sans-serif; font-size: 12px; letter-spacing: -.01em; }
+#shareov .shurlchip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#shareov .shurlchip:hover { border-color: rgba(0, 0, 0, .25); color: var(--flow-ink); }
+#shareov .shlive { margin: 0; padding: 7px 9px; border: 0; background: transparent; color: var(--flow-muted); font-family: "DM Sans", sans-serif; font-size: 12px; font-weight: 400; letter-spacing: 0; }
+#shareov .shlive i { width: 6px; height: 6px; background: #44b755; box-shadow: none; }
+#shareov .shwrap { padding: 28px 20px 44px; }
+#shareov .shcard { animation: v92-share-float 7s ease-in-out infinite; }
+@keyframes v92-share-float { 50% { transform: translateY(-6px); } }
+#shareov .statstrip { gap: 8px; flex-wrap: wrap; justify-content: center; }
+#shareov .statstrip .st { border: 0; border-radius: 6px; background: rgba(0, 0, 0, .07); color: var(--flow-muted); font-family: "DM Sans", sans-serif; font-size: 12px; letter-spacing: 0; }
+#shareov .statstrip .st b { color: var(--flow-ink); font-weight: 500; }
+
+@media (max-width: 700px) {
+  #scanov { justify-content: flex-start; padding-top: 76px; }
+  #scanov .v92-cook-device { flex-direction: column; flex-shrink: 0; gap: 8px; width: min(360px, 100%); min-height: 0; }
+  #scanov .v92-cook-screen { width: 100%; min-height: 0; aspect-ratio: 1; }
+  #scanov .scanbox { flex: none; padding: 13px 13px 14px; }
+  #scanov .v92-scan-rows { height: 202px; }
+  #scanov .v92-cook-progress { margin-top: 18px; }
+  #scanov .scantitle { font-size: 23px; }
+  #scanov.authmode .v92-cook-device { display: none; }
+  #scanov.authmode .authgate { margin-top: 0; }
+  #scanov .authgrid { grid-template-columns: 1fr; }
+  #scanov .authcard { min-height: 0; }
+  #revealov .cslide { padding-top: 0; }
+  #modal .msheet { padding: 20px 16px; }
+  #modal .mtop { flex-wrap: wrap; }
+  #modal .mactions { margin-left: auto; }
+  #shareov .shhud { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 12px 16px; }
+  #shareov .shlogo { justify-self: start; }
+  #shareov .shurlchip, #shareov #shcopy, #shareov #shshare { justify-self: end; }
+  #shareov #shedit, #shareov #shcta { grid-column: 1 / -1; justify-self: stretch; }
+  #shareov .shhud > span[style] { display: none; }
+  #shareov .shurlchip { max-width: calc(100vw - 136px); }
+}
+
+@media (max-height: 700px) {
+  #revealov { justify-content: flex-start; }
+  #revealov .cslide { margin: 0; padding-top: 28px; padding-bottom: 140px; transform: none; }
+  #revealov .v92-archetype-screen { height: 220px; }
+  #revealov .v92-archetype-screen .cfig { width: 210px; }
+  #revealov .cfooter { bottom: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #scanov .v92-cook-screen img,
+  #scanov .v92-screen-status::before,
+  #revealov .cslide,
+  #revealov .cblock,
+  #revealov .v92-archetype-card,
+  #revealov .v92-archetype-screen .cfig,
+  #revealov .v92-axis-dots i,
+  #shareov .shcard { animation: none; }
+  #revealov .v92-axis-dots i { opacity: 1; }
+}

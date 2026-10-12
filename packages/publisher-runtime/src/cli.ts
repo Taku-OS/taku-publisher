@@ -1348,6 +1348,9 @@ async function remoteCreate(
 }
 
 async function runCreatorCommand(command: string, creatorArgs: string[]): Promise<JsonObject> {
+  if (creatorHasLocalStudioPreview(creatorArgs) && !['draft', 'editor'].includes(command)) {
+    throw new PublisherError('Local Studio preview supports creator-draft and creator-editor only.', 'creator_local_preview_command_invalid');
+  }
   const script = locateCreatorScript();
   const { localEditor, cloudStudio, requiresAuth } = creatorCommandMode(command, creatorArgs);
   const configuredCreatorWorkerUrl = creatorConfiguredWorkerUrl(creatorArgs);
@@ -1450,6 +1453,15 @@ async function runCreatorCommand(command: string, creatorArgs: string[]): Promis
       process.stderr.write(`${JSON.stringify({ status: 'studio_ready' })}\n`);
     }
   }
+  if (creatorHasLocalStudioPreview(creatorArgs) && payload.ok === true) {
+    const editorUrl = creatorLocalStudioPreviewEditorUrl(payload, creatorArgs);
+    if (!editorUrl) throw new PublisherError('Local Studio returned an invalid preview URL.', 'creator_local_preview_url_invalid');
+    payload.editorUrl = editorUrl;
+    payload.editor_open_required = true;
+    payload.next_action = 'open_editor_url';
+    payload.localStudioPreview = true;
+    payload.canPublish = false;
+  }
   payload._process_exit_code = result.code;
   return payload;
 }
@@ -1495,12 +1507,36 @@ function creatorAuthorizationRetryInvocation(
 
 export function creatorCommandMode(command: string, creatorArgs: string[]) {
   const localEditor = creatorArgs.includes('--local-editor');
-  const cloudStudio = !localEditor && (
+  const cloudStudio = !localEditor && !creatorHasLocalStudioPreview(creatorArgs) && (
     command === 'editor'
     || (command === 'draft' && creatorArgs.includes('--editor'))
   );
   const requiresAuth = command === 'publish' || cloudStudio;
   return { localEditor, cloudStudio, requiresAuth };
+}
+
+function creatorHasLocalStudioPreview(creatorArgs: string[]): boolean {
+  return creatorArgs.some((arg) => arg === '--local-studio-preview' || arg.startsWith('--local-studio-preview='));
+}
+
+export function creatorLocalStudioPreviewEditorUrl(payload: JsonObject, creatorArgs: string[]): string {
+  try {
+    const editorUrl = new URL(String(payload.editorUrl ?? ''));
+    const argument = creatorArgument(creatorArgs, 'local-studio-preview');
+    const configured = argument && !argument.startsWith('--') ? argument : 'http://127.0.0.1:3003';
+    const configuredUrl = new URL(configured);
+    if (configuredUrl.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(configuredUrl.hostname)
+      || configuredUrl.username || configuredUrl.password || configuredUrl.search || configuredUrl.hash
+      || !['/', '/studio-preview'].includes(configuredUrl.pathname)) return '';
+    const origin = configuredUrl.origin;
+    if (editorUrl.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(editorUrl.hostname)
+      || editorUrl.username || editorUrl.password || editorUrl.hash || editorUrl.origin !== origin
+      || editorUrl.pathname !== '/studio-preview' || editorUrl.searchParams.get('mode') !== 'publisher'
+      || !editorUrl.searchParams.get('session')) return '';
+    return editorUrl.toString();
+  } catch {
+    return '';
+  }
 }
 
 export function creatorAuthorizationRequired(
@@ -2207,6 +2243,7 @@ Commands:
   subapp-register-plan --package-root <release-dir> --metadata <json> --mode <create|update> [--app-id <required-for-update>]
   subapp-register --package-root <same-release-dir> --metadata <same-json> --mode <same-mode> --confirm-registration <token> [--app-id <same-update-id>] [--upload-timeout <seconds>]
   creator-doctor, creator-scan, creator-draft, creator-editor, creator-publish [--no-open-browser]
+  creator-draft, creator-editor --local-studio-preview <http-loopback-origin>
   creator-draft --json --editor --challenge-handoff
   creator-challenge-select --draft <card-draft> --candidate-id <id>
   creator-challenge-status, creator-challenge-skip --draft <card-draft>

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import test from 'node:test';
-import { createStudioDraftPayload, saveDraftToTakuStudio } from './publish-flow.mjs';
+import { mergeRegeneratedStudioDraftContent, createStudioDraftPayload, saveDraftToTakuStudio } from './publish-flow.mjs';
 import { buildStaxStudioUrl } from './stax-url.mjs';
 
 test('Studio draft payload removes installable package bytes', () => {
@@ -409,4 +409,188 @@ test('a legal gate at profile lookup keeps the draft and stops before Studio upl
   assert.equal(result.review_url, 'http://127.0.0.1:3000/legal/accept');
   assert.deepEqual(draft, before);
   assert.deepEqual(calls, ['GET /stax/profile']);
+});
+
+test('regeneration keeps the published card identity, layout, and unlocked blocks while refreshing scan data', () => {
+  const currentDraft = {
+    status: 'published',
+    revision: 8,
+    lastPublishedRevision: 8,
+    content: {
+      schemaVersion: 'taku.stax.studio-draft.v1',
+      card: {
+        displayName: 'Ada',
+        primaryAi: 'claude-code',
+        qrTarget: 'stax',
+        githubUrl: 'https://github.com/ada',
+      },
+      sections: [],
+      studioLayout: {
+        schemaVersion: 'taku.stax.studio-layout.v1',
+        blocks: [
+          { key: 'hero', cx: 0, cy: 0, cw: 4, ch: 2 },
+          { key: 'seal', cx: 4, cy: 0, cw: 2, ch: 2 },
+        ],
+      },
+      studioRenderer: {
+        schemaVersion: 'taku.stax.studio-renderer.v1',
+        renderer: 'publisher-stax-app',
+        model: {
+          handle: '@ada',
+          cardHandle: '@ada',
+          serial: 'Nº 000005',
+          cardSerial: 'Nº 000005',
+          selectedKeys: ['hero', 'seal'],
+          team: 'CLAUDE',
+          teamIcon: 'claude-code',
+          teamOptions: [{ id: 'claude-code', selected: true }],
+          qrTarget: 'stax',
+          qrOptions: [{ id: 'stax', url: 'https://preview.example/stax/ada' }],
+          publishedStax: {
+            published: true,
+            staxCardPageUrl: 'https://preview.example/stax/ada',
+          },
+          blocks: [
+            { key: 'hero', status: 'supported', value: { title: 'Old persona' } },
+            { key: 'seal', status: 'supported', value: { serial: 'Nº 000005' } },
+            { key: 'team', status: 'supported', value: { team: 'CLAUDE' } },
+            { key: 'social', status: 'supported', value: { github: 'ada' } },
+          ],
+        },
+      },
+    },
+  };
+  const incoming = {
+    schemaVersion: 'taku.stax.studio-draft.v1',
+    card: { displayName: 'Ada refreshed' },
+    sections: [{ type: 'installed-tools', items: [{ name: 'New Tool' }] }],
+    studioLayout: {
+      schemaVersion: 'taku.stax.studio-layout.v1',
+      blocks: [{ key: 'hero', cx: 2, cy: 2, cw: 4, ch: 2 }],
+    },
+    studioRenderer: {
+      schemaVersion: 'taku.stax.studio-renderer.v1',
+      renderer: 'publisher-stax-app',
+      model: {
+        handle: '@ada',
+        cardHandle: 'SYNCING TAKU',
+        serial: 'UNMINTED',
+        cardSerial: 'UNMINTED',
+        selectedKeys: ['hero'],
+        blocks: [
+          { key: 'hero', status: 'supported', value: { title: 'New persona' } },
+          { key: 'seal', status: 'unsupported', display: 'LOCKED' },
+          { key: 'team', status: 'supported', value: { team: 'CODEX' } },
+          { key: 'social', status: 'unsupported', display: 'LOCKED' },
+        ],
+      },
+    },
+  };
+
+  const merged = mergeRegeneratedStudioDraftContent(incoming, currentDraft);
+  assert.equal(merged.card.displayName, 'Ada refreshed');
+  assert.equal(merged.card.primaryAi, 'claude-code');
+  assert.equal(merged.card.qrTarget, 'stax');
+  assert.equal(merged.card.githubUrl, 'https://github.com/ada');
+  assert.deepEqual(merged.sections, incoming.sections);
+  assert.deepEqual(merged.studioLayout, currentDraft.content.studioLayout);
+  assert.equal(merged.studioRenderer.model.cardHandle, '@ada');
+  assert.equal(merged.studioRenderer.model.cardSerial, 'Nº 000005');
+  assert.deepEqual(merged.studioRenderer.model.selectedKeys, ['hero', 'seal']);
+  assert.deepEqual(
+    merged.studioRenderer.model.blocks.find((block) => block.key === 'hero').value,
+    { title: 'New persona' },
+  );
+  assert.deepEqual(
+    merged.studioRenderer.model.blocks.find((block) => block.key === 'seal').value,
+    { serial: 'Nº 000005' },
+  );
+  assert.deepEqual(
+    merged.studioRenderer.model.blocks.find((block) => block.key === 'team').value,
+    { team: 'CLAUDE' },
+  );
+  assert.deepEqual(
+    merged.studioRenderer.model.blocks.find((block) => block.key === 'social').value,
+    { github: 'ada' },
+  );
+});
+
+test('editor regeneration fills an old layout and saves matching renderer selection', () => {
+  const positions = {
+    hero: [2, 1, 4, 2], type: [6, 1, 2, 2], seal: [0, 0, 2, 2],
+    pie: [0, 2, 2, 2], modelcost: [2, 3, 2, 2], heat: [6, 3, 2, 2],
+    team: [2, 0, 2, 1], bars90: [4, 0, 2, 1], basic: [6, 0, 1, 1],
+    ctxring: [7, 0, 1, 1], trend: [0, 4, 1, 1],
+  };
+  const oldLayout = {
+    schemaVersion: 'taku.stax.studio-layout.v1',
+    blocks: Object.entries(positions).map(([key, [cx, cy, cw, ch]]) => ({ key, cx, cy, cw, ch })),
+  };
+  const incomingModel = {
+    selectedKeys: [...Object.keys(positions), 'clock', 'tools'],
+    blocks: [...Object.keys(positions), 'clock', 'tools'].map((key) => ({ key, status: 'supported' })),
+  };
+  incomingModel.blocks.push({ key: 'social', status: 'unsupported' });
+  const currentDraft = { content: { studioLayout: oldLayout } };
+  const incoming = { studioRenderer: { model: incomingModel } };
+  const merged = mergeRegeneratedStudioDraftContent(incoming, currentDraft, { fillLayout: true });
+  const cells = new Set();
+  for (const block of merged.studioLayout.blocks) {
+    assert.ok(block.cx >= 0 && block.cy >= 0 && block.cx + block.cw <= 8 && block.cy + block.ch <= 5);
+    for (let x = block.cx; x < block.cx + block.cw; x += 1) {
+      for (let y = block.cy; y < block.cy + block.ch; y += 1) {
+        const cell = `${x},${y}`;
+        assert.equal(cells.has(cell), false);
+        cells.add(cell);
+      }
+    }
+  }
+  assert.equal(cells.size, 40);
+  assert.equal(merged.studioLayout.blocks.length, 13);
+  assert.deepEqual(merged.studioRenderer.model.studioLayout, merged.studioLayout);
+  assert.deepEqual(merged.studioRenderer.model.selectedKeys, merged.studioLayout.blocks.map((block) => block.key));
+  assert.ok(merged.studioRenderer.model.selectedKeys.includes('clock'));
+  assert.ok(merged.studioRenderer.model.selectedKeys.includes('tools'));
+  assert.ok(!merged.studioRenderer.model.selectedKeys.includes('social'));
+  const cost = merged.studioLayout.blocks.find((block) => block.key === 'modelcost');
+  assert.deepEqual([cost.cw, cost.ch], [1, 1]);
+  assert.equal(oldLayout.blocks.find((block) => block.key === 'modelcost').cw, 2);
+});
+
+test('editor regeneration preserves an explicitly cleared card', () => {
+  const emptyLayout = { schemaVersion: 'taku.stax.studio-layout.v1', blocks: [] };
+  const incoming = {
+    studioRenderer: {
+      model: { selectedKeys: ['hero'], blocks: [{ key: 'hero', status: 'supported' }] },
+    },
+  };
+  const merged = mergeRegeneratedStudioDraftContent(incoming, { content: { studioLayout: emptyLayout } }, { fillLayout: true });
+  assert.deepEqual(merged.studioLayout, emptyLayout);
+  assert.deepEqual(merged.studioRenderer.model.studioLayout, emptyLayout);
+  assert.deepEqual(merged.studioRenderer.model.selectedKeys, []);
+});
+
+test('ordinary publication retains an empty layout and available saved components without filling', () => {
+  const emptyLayout = { schemaVersion: 'taku.stax.studio-layout.v1', blocks: [] };
+  const incoming = { studioRenderer: { model: { selectedKeys: ['hero'], blocks: [{ key: 'hero', status: 'supported' }] } } };
+  const current = { content: { studioLayout: emptyLayout, studioRenderer: { model: { selectedKeys: ['hero'] } } } };
+  const merged = mergeRegeneratedStudioDraftContent(incoming, current);
+  assert.deepEqual(merged.studioRenderer.model.selectedKeys, []);
+  assert.deepEqual(merged.studioRenderer.model.studioLayout, emptyLayout);
+  const layout = { ...emptyLayout, blocks: [{ key: 'seal', cx: 0, cy: 0, cw: 2, ch: 2 }] };
+  current.content.studioLayout = layout;
+  current.content.studioRenderer.model.blocks = [{ key: 'seal', status: 'supported', value: { serial: 'Nº 000005' } }];
+  const preserved = mergeRegeneratedStudioDraftContent(incoming, current);
+  assert.deepEqual(preserved.studioLayout, layout);
+  assert.deepEqual(preserved.studioRenderer.model.selectedKeys, ['seal']);
+  assert.equal(preserved.studioRenderer.model.blocks.find(block => block.key === 'seal').value.serial, 'Nº 000005');
+});
+
+test('regeneration keeps a published handle when the fresh scan has no trusted profile', () => {
+  const current = { status: 'published', content: { studioRenderer: { model: { handle: '@real-builder', cardHandle: '@real-builder', cardSerial: 'Nº 000005' } } } };
+  const incoming = { studioRenderer: { model: { handle: '@builder', cardHandle: 'SIGNED IN DRAFT', cardSerial: 'UNMINTED' } } };
+  const merged = mergeRegeneratedStudioDraftContent(incoming, current);
+  assert.equal(merged.studioRenderer.model.handle, '@real-builder');
+  assert.equal(merged.studioRenderer.model.cardHandle, '@real-builder');
+  assert.equal(merged.studioRenderer.model.cardSerial, 'Nº 000005');
 });

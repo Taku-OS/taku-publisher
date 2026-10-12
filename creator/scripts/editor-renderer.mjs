@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { resolveStudioAssets } from './studio-assets.mjs';
 
 import {
   PERSONA_CATALOG,
@@ -56,10 +57,10 @@ const STAX_BLOCK_SIZES = {
   basic: [1, 1],
   seal: [2, 2],
   qr: [1, 1],
-  social: [1, 1],
+  social: [2, 1],
   bars90: [2, 1],
   pie: [2, 2],
-  modelcost: [2, 2],
+  modelcost: [1, 1],
   cgauge: [2, 2],
   rings: [2, 2],
   ctxring: [1, 1],
@@ -124,12 +125,129 @@ const STAX_BLOCK_LABELS = {
 const STAX_DEFAULT_BLOCKS = ['hero', 'social', 'team', 'type', 'basic', 'seal', 'bars90', 'pie', 'modelcost', 'cgauge', 'ctxring', 'clock', 'heat', 'trend', 'tools'];
 const STAX_INLINE_BLOCK_KEYS = new Set(['badges', 'qr']);
 const STAX_APP_TEMPLATE_URL = new URL('../templates/stax-app.html', import.meta.url);
+const STAX_STUDIO_GRID_COLUMNS = 8;
+const STAX_STUDIO_GRID_ROWS = 5;
+const STAX_STUDIO_BLOCK_SIZES = STAX_BLOCK_SIZES;
 const COMMUNITY_RANK_LOCK_LABEL = 'GROW ON TAKU';
 const COMMUNITY_RANK_LOCK_REASON = 'Publish a tool or gain subscribers on Taku to unlock community rank.';
 const QUOTA_LOCK_LABEL = 'CONNECT TAKU';
 const QUOTA_LOCK_REASON = 'Connect Taku to show monthly quota usage and reset date.';
 const TRUSTED_TAKU_BLOCK_KEYS = new Set(['tier1', 'aura', 'water', 'cgauge', 'dial', 'tier4']);
 const TAKU_AUTH_BLOCK_KEYS = new Set(['tier1', 'aura', 'basic', 'seal', 'cgauge', 'water', 'tally', 'dial', 'tier4']);
+function defaultStaxStudioLayout(keys = [], preferredBlocks = []) {
+  const normalizedKeys = keys.map((key) => ['aura', 'tier4'].includes(key) ? 'tier1' : key);
+  const unique = [...new Set(normalizedKeys)].filter((key) => STAX_STUDIO_BLOCK_SIZES[key]);
+  const preferred = new Map(preferredBlocks.map((block) => [block.key, block]));
+  const validAnchor = (key, block) => {
+    const [cw, ch] = STAX_STUDIO_BLOCK_SIZES[key];
+    return block && Number.isInteger(block.cx) && Number.isInteger(block.cy)
+      && block.cx >= 0 && block.cy >= 0
+      && block.cx + cw <= STAX_STUDIO_GRID_COLUMNS && block.cy + ch <= STAX_STUDIO_GRID_ROWS;
+  };
+  const signatureAnchors = [['hero', 2, 1], ['type', 6, 1]]
+    .filter(([key]) => unique.includes(key))
+    .map(([key, cx, cy]) => {
+      const saved = preferred.get(key);
+      return validAnchor(key, saved) ? [key, saved.cx, saved.cy] : [key, cx, cy];
+    });
+  if (signatureAnchors.length === 2) {
+    const [hero, type] = signatureAnchors;
+    if (hero[1] < type[1] + 2 && hero[1] + 4 > type[1]
+      && hero[2] < type[2] + 2 && hero[2] + 2 > type[2]) signatureAnchors.pop();
+  }
+  const signatureKeys = new Set(signatureAnchors.map(([key]) => key));
+  const capacity = STAX_STUDIO_GRID_COLUMNS * STAX_STUDIO_GRID_ROWS;
+  const fitted = [];
+  let fittedArea = 0;
+  for (const key of [
+    ...signatureAnchors.map(([name]) => name),
+    ...unique.filter((key) => !signatureKeys.has(key)),
+  ]) {
+    const [cw, ch] = STAX_STUDIO_BLOCK_SIZES[key];
+    const area = cw * ch;
+    if (fittedArea + area > capacity) continue;
+    fitted.push(key);
+    fittedArea += area;
+  }
+  const tieOrder = new Map(fitted.map((key, index) => [key, index]));
+  const ordered = fitted.filter((key) => !signatureKeys.has(key)).sort((a, b) => {
+    const [aw, ah] = STAX_STUDIO_BLOCK_SIZES[a];
+    const [bw, bh] = STAX_STUDIO_BLOCK_SIZES[b];
+    return bw * bh - aw * ah || tieOrder.get(a) - tieOrder.get(b);
+  });
+  const occupied = new Set();
+  const layout = [];
+  const cells = (cw, ch, cx, cy) => {
+    const result = [];
+    for (let x = 0; x < cw; x += 1) {
+      for (let y = 0; y < ch; y += 1) result.push(`${cx + x},${cy + y}`);
+    }
+    return result;
+  };
+  for (const [key, cx, cy] of signatureAnchors) {
+    const [cw, ch] = STAX_STUDIO_BLOCK_SIZES[key];
+    const covered = cells(cw, ch, cx, cy);
+    if (cx + cw > STAX_STUDIO_GRID_COLUMNS || cy + ch > STAX_STUDIO_GRID_ROWS
+      || covered.some((cell) => occupied.has(cell))) return [];
+    covered.forEach((cell) => occupied.add(cell));
+    layout.push({ key, cx, cy, cw, ch });
+  }
+  let attempts = 0;
+  const search = (index) => {
+    if (index >= ordered.length) return true;
+    if (attempts++ > 50000) return false;
+    const key = ordered[index];
+    const [cw, ch] = STAX_STUDIO_BLOCK_SIZES[key];
+    const spots = [];
+    for (let cy = 0; cy <= STAX_STUDIO_GRID_ROWS - ch; cy += 1) {
+      for (let cx = 0; cx <= STAX_STUDIO_GRID_COLUMNS - cw; cx += 1) {
+        const covered = cells(cw, ch, cx, cy);
+        if (covered.every((cell) => !occupied.has(cell))) {
+          spots.push({ cx, cy, covered, align: (cx % Math.min(cw, 2)) + (cy % Math.min(ch, 2)) });
+        }
+      }
+    }
+    const saved = preferred.get(key);
+    const preference = (spot) => saved && spot.cx === saved.cx && spot.cy === saved.cy ? 0 : 1;
+    spots.sort((a, b) => preference(a) - preference(b) || a.align - b.align || a.cy - b.cy || a.cx - b.cx);
+    for (const spot of spots) {
+      spot.covered.forEach((cell) => occupied.add(cell));
+      layout.push({ key, cx: spot.cx, cy: spot.cy, cw, ch });
+      if (search(index + 1)) return true;
+      layout.pop();
+      spot.covered.forEach((cell) => occupied.delete(cell));
+    }
+    return false;
+  };
+  return search(0) ? layout : [];
+}
+
+export function fillStaxStudioLayout(model = {}, savedLayout = null) {
+  // An explicitly cleared card stays empty. Regenerating a nonempty card
+  // keeps its components and fills remaining space with available scan data.
+  if (Array.isArray(savedLayout?.blocks) && savedLayout.blocks.length === 0) return savedLayout;
+  const available = new Set((Array.isArray(model.blocks) ? model.blocks : [])
+    .filter((block) => block.supported !== false && block.available !== false
+      && ['supported', 'partial', 'available', 'ready'].includes(String(block.status).toLowerCase()))
+    .map((block) => block.key));
+  const savedBlocks = Array.isArray(savedLayout?.blocks) ? savedLayout.blocks : [];
+  const excludedAdditions = new Set(['aura', 'tier4', 'badges', 'qr', 'bracket', 'knock']);
+  const additions = [...new Set([
+    'clock', 'tools',
+    ...(Array.isArray(model.selectedKeys) ? model.selectedKeys : []),
+    ...available,
+  ])].filter((key) => !excludedAdditions.has(key));
+  const keys = [...new Set([...savedBlocks.map((block) => block.key), ...additions])]
+    .filter((key) => available.has(key) && STAX_STUDIO_BLOCK_SIZES[key]);
+  const preferredBlocks = savedBlocks.filter((block) => keys.includes(block.key));
+  const blocks = defaultStaxStudioLayout(keys, preferredBlocks);
+  if (!blocks.length) return savedLayout || model.studioLayout;
+  return {
+    ...savedLayout,
+    schemaVersion: 'taku.stax.studio-layout.v1',
+    blocks,
+  };
+}
 const STAX_FONT_ASSETS = Object.freeze([
   { family: 'Space Grotesk', style: 'normal', weight: '500 700', file: 'space-grotesk-latin.woff2' },
   { family: 'Instrument Serif', style: 'normal', weight: 400, file: 'instrument-serif-latin.woff2' },
@@ -3062,6 +3180,7 @@ export function buildStaxAppModel(draft = {}, options = {}) {
       ? draft.staxCardSnapshot
       : recordValue(snapshot.staxCardSnapshot),
   );
+  const initialLayout = fillStaxStudioLayout({ blocks: publicBlocks, selectedKeys: [...selectedKeys, ...fallbackKeys] });
   const layoutBlocks = Array.isArray(snapshotLayout.blocks)
     ? snapshotLayout.blocks
         .map((entry) => {
@@ -3077,7 +3196,7 @@ export function buildStaxAppModel(draft = {}, options = {}) {
           };
         })
         .filter(Boolean)
-    : [];
+    : initialLayout?.blocks || [];
   return {
     displayName,
     handle: publicHandle,
@@ -3157,7 +3276,7 @@ export function buildStaxAppModel(draft = {}, options = {}) {
       ['STAMPING DRAFT ...', `${supportedCount + partialCount} READY`],
     ],
     blocks: publicBlocks,
-    selectedKeys: [...selectedKeys, ...fallbackKeys].slice(0, 14),
+    selectedKeys: layoutBlocks.map(block => block.key),
     canPublish: Boolean(options.editor?.enabled),
     communityTools: collectCommunityToolCandidates(draft),
     publishedStax,
@@ -3198,7 +3317,7 @@ export function renderStaxAppPreview(draft, options = {}) {
       ].join('\n'),
     );
   }
-  return template;
+  return resolveStudioAssets(template, { external: options.externalStudioAssets });
 }
 
 export function createStaxStudioRendererPayload(draft = {}, options = {}) {
@@ -3220,8 +3339,9 @@ export function createStaxStudioRendererPayload(draft = {}, options = {}) {
   };
 }
 
-export function renderStaxStudioRuntime() {
+export function renderStaxStudioRuntime(options = {}) {
   const html = renderStaxAppPreview({}, {
+    externalStudioAssets: options.externalStudioAssets,
     editor: {
       enabled: true,
       publish: {
@@ -3230,534 +3350,18 @@ export function renderStaxStudioRuntime() {
       },
     },
   });
-  const cloudStyle = [
-    '<style id="taku-cloud-studio-style">',
-    'html,body{background:#09090d}',
-    'body{visibility:hidden}',
-    'body.taku-cloud-ready{visibility:visible}',
-    '</style>',
-  ].join('');
-  const cloudBridge = `<script id="taku-cloud-studio-bridge">
-(function(){
-  const MESSAGE_PREFIX='taku:stax-studio:';
-  let initialized=false;
-  let publishing=false;
-  function currentLayout(){
-    return {
-      schemaVersion:'taku.stax.studio-layout.v1',
-      blocks:Array.isArray(placedP)?placedP.map((item)=>({key:item.key,cx:item.cx,cy:item.cy,cw:item.cw,ch:item.ch})):[],
-    };
-  }
-  function post(type,payload){
-    if(window.parent===window)return;
-    window.parent.postMessage({type:MESSAGE_PREFIX+type,...(payload||{})},'*');
-  }
-  window.__TAKU_STAX_POST__=post;
-  function clearBoard(){
-    if(!Array.isArray(placedP))return;
-    placedP.splice(0).forEach((item)=>item.el&&item.el.remove());
-    if(typeof chipRefs==='object'&&chipRefs){Object.values(chipRefs).forEach((chip)=>chip&&chip.classList&&chip.classList.remove('on'));}
-    if(typeof counts==='function')counts();
-  }
-  function applyLayout(layout){
-    const blocks=layout&&Array.isArray(layout.blocks)?layout.blocks:[];
-    if(!blocks.length)return;
-    clearBoard();
-    blocks.forEach((item)=>{
-      if(!item||typeof item.key!=='string'||typeof place!=='function')return;
-      const placed=place(item.key,Number(item.cx)||0,Number(item.cy)||0);
-      if(placed&&typeof chipRefs==='object'&&chipRefs[placed.key])chipRefs[placed.key].classList.add('on');
-    });
-  }
-  function initialize(message){
-    const model=message&&message.model&&typeof message.model==='object'?message.model:null;
-    if(!model||typeof window.__TAKU_STAX_BOOTSTRAP__!=='function')return;
-    window.__TAKU_STAX_DATA__={...model,readonly:false,publishedStax:{...(model.publishedStax||{})}};
-    window.__TAKU_STAX_BOOTSTRAP__();
-    applyLayout(message.layout||model.studioLayout);
-    document.body.classList.add('taku-cloud-ready');
-    initialized=true;
-    post('ready',{layout:currentLayout()});
-  }
-  function finishPublish(message){
-    const publication=message&&message.publication&&typeof message.publication==='object'?message.publication:null;
-    if(!publication||typeof setStaxPublication!=='function')return;
-    setStaxPublication(publication);
-    publishing=false;
-    const button=document.getElementById('mpost');
-    if(button){button.disabled=false;button.textContent='POSTED ✓';}
-    document.getElementById('modal')?.classList.remove('on');
-    if(typeof confetti==='function')confetti();
-    if(typeof openShare==='function')openShare('owner');
-    if(message.message&&typeof toast==='function')toast(String(message.message));
-  }
-  function failPublish(message){
-    publishing=false;
-    const button=document.getElementById('mpost');
-    if(button){button.disabled=false;button.textContent='TRY AGAIN';}
-    if(message&&message.message&&typeof toast==='function')toast(String(message.message));
-  }
-  window.addEventListener('message',(event)=>{
-    const message=event.data;
-    if(!message||typeof message.type!=='string'||!message.type.startsWith(MESSAGE_PREFIX))return;
-    if(message.type===MESSAGE_PREFIX+'init')initialize(message);
-    if(message.type===MESSAGE_PREFIX+'published')finishPublish(message);
-    if(message.type===MESSAGE_PREFIX+'publish-error')failPublish(message);
-    if(message.type===MESSAGE_PREFIX+'settings-saved'){
-      if(typeof window.__TAKU_GITHUB_SAVE_SUCCESS__==='function')window.__TAKU_GITHUB_SAVE_SUCCESS__(message);
-      setTimeout(()=>post('layout-change',{layout:currentLayout()}),0);
-    }
-    if(message.type===MESSAGE_PREFIX+'settings-error'&&typeof window.__TAKU_GITHUB_SAVE_ERROR__==='function')window.__TAKU_GITHUB_SAVE_ERROR__(message);
-    if(message.type===MESSAGE_PREFIX+'status'&&message.message&&typeof toast==='function')toast(String(message.message));
-  });
-  document.addEventListener('click',(event)=>{
-    const target=event.target instanceof Element?event.target.closest('#mpost'):null;
-    if(!target||!initialized)return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    if(publishing)return;
-    publishing=true;
-    target.disabled=true;
-    target.textContent='PUBLISHING...';
-    post('publish',{layout:currentLayout()});
-  },true);
-  const reportLayout=()=>{if(initialized)post('layout-change',{layout:currentLayout()});};
-  document.addEventListener('pointerup',(event)=>{
-    if(event.target instanceof Element&&event.target.closest('#mpost'))return;
-    setTimeout(reportLayout,0);
-  },true);
-  document.addEventListener('click',(event)=>{
-    if(event.target instanceof Element&&event.target.closest('#ball,#bclear,.dock'))setTimeout(reportLayout,0);
-  });
-  post('booted');
-})();
-</script>`;
+  const cloudStyle = '<style id="taku-cloud-studio-style">'
+    + readFileSync(new URL('../templates/stax-cloud.css', import.meta.url), 'utf8') + '</style>';
+  const cloudBridge = '<script id="taku-cloud-studio-bridge">'
+    + readFileSync(new URL('../templates/stax-cloud-bridge.js', import.meta.url), 'utf8') + '</script>';
   return html
-    .replace('</head>', cloudStyle + '</head>')
-    .replace('</body>', cloudBridge + '</body>');
+    .replace('<!-- __TAKU_STUDIO_CLOUD_STYLE__ -->', cloudStyle)
+    .replace('<!-- __TAKU_STUDIO_CLOUD_BRIDGE__ -->', cloudBridge);
 }
 
 function renderStaxAppBootstrapScript(model) {
-  return [
-    'window.__TAKU_STAX_DATA__ = ' + jsonForScript(model) + ';',
-    'window.__TAKU_STAX_BOOTSTRAP__ = function(){',
-    '  const data = window.__TAKU_STAX_DATA__ || {};',
-    '  const blocks = Array.isArray(data.blocks) ? data.blocks : [];',
-    '  const fallbackLogo = ART.logo_mark || FALLBACK_LOGO;',
-    '  ART.logo_mark = fallbackLogo;',
-    '  if (data.art && data.artDataUrl) ART[data.art] = data.artDataUrl;',
-    '  document.querySelectorAll(".scanlogo,.shlogo,[data-logo],#lockup").forEach((img) => {',
-    '    if (!img) return;',
-    '    if (typeof setLogo === "function") setLogo(img);',
-    '    else img.src = fallbackLogo;',
-    '  });',
-    '  const byKey = new Map(blocks.map((block) => [block.key, block]));',
-    '  const supportedKeys = blocks.filter((block) => block && block.status !== "unsupported").map((block) => block.key);',
-    '  const selected = [...new Set((Array.isArray(data.selectedKeys) && data.selectedKeys.length ? data.selectedKeys : supportedKeys).map((key) => key === "aura" || key === "tier4" ? "tier1" : key))].filter((key) => byKey.get(key)?.status !== "unsupported" && SIZES[key]);',
-    '  const locks = {};',
-    '  blocks.forEach((block) => {',
-    '    if (!block || block.status !== "unsupported" || !SIZES[block.key] || block.key === "aura" || block.key === "tier4") return;',
-    '    locks[block.key] = {',
-    '      label: String(block.lockLabel || "LOCKED").toUpperCase(),',
-    '      message: String(block.lockReason || block.reason || "Not available yet."),',
-    '      kind: String(block.unlockKind || "unavailable"),',
-    '    };',
-    '  });',
-    '  const value = (key) => byKey.get(key)?.value || {};',
-    '  const text = (input, fallback) => String(input || fallback || "").trim();',
-    '  const teamValue = value("team");',
-    '  const qrValue = value("qr");',
-    '  const socialValue = value("social");',
-    '  const clockValue = value("clock");',
-    '  const basicValue = value("basic");',
-    '  const heroValue = value("hero");',
-    '  const typeValue = value("type");',
-    '  const badgesValue = value("badges");',
-    '  const bars90Value = value("bars90");',
-    '  const pieValue = value("pie");',
-    '  const modelcostValue = value("modelcost");',
-    '  const cgaugeValue = value("cgauge");',
-    '  const ringsValue = value("rings");',
-    '  const ctxringValue = value("ctxring");',
-    '  const heatValue = value("heat");',
-    '  const dotsValue = value("dots");',
-    '  const waterValue = value("water");',
-    '  const vsavgValue = value("vsavg");',
-    '  const trendValue = value("trend");',
-    '  const tallyValue = value("tally");',
-    '  const dialValue = value("dial");',
-    '  const waveValue = value("wave");',
-    '  const peaksValue = value("peaks");',
-    '  const ratioValue = value("ratio");',
-    '  const toolsValue = value("tools");',
-    '  const stadiumValue = value("stadium");',
-    '  const knockValue = value("knock");',
-    '  const bracketValue = value("bracket");',
-    '  const nodeValue = value("node");',
-    '  const splitringValue = value("splitring");',
-    '  const tier1Value = value("tier1");',
-    '  const sealValue = value("seal");',
-    '  const persona = {',
-    '    ...MASON,',
-    '    n1: text(data.title, "AI"),',
-    '    n2: text(data.subtitle, "Builder"),',
-    '    handle: text(data.cardHandle, text(data.handle, "@builder")),',
-    '    family: text(data.family, "BUILDERS").toUpperCase(),',
-    '    fam: text(data.familyColor, "#F0641E"),',
-    '    signature: text(heroValue.signature, data.heroDefinition || ""),',
-    '    heroBadge: text(heroValue.heroBadge, data.heroBadge || ""),',
-    '    heroTags: Array.isArray(heroValue.heroTags) && heroValue.heroTags.length ? heroValue.heroTags : (Array.isArray(data.heroTags) ? data.heroTags : []),',
-    '    heroBadgeColor: text(heroValue.heroBadgeColor, data.heroBadgeColor || "#C9F24C"),',
-    '    art: text(data.art, "inv"),',
-    '    team: [text(data.team || teamValue.team, "CODEX").toUpperCase(), text(data.teamIcon || teamValue.teamIcon, "codex")],',
-    '    type: text(typeValue.type || heroValue.type, data.code || "AI"),',
-    '    seal: { serial: text(sealValue.serial, data.cardSerial || data.serial || "UNMINTED") },',
-    '    qr: { target: text(qrValue.target, data.qrTarget || "stax"), url: text(qrValue.url, ""), username: text(qrValue.username, ""), size: Math.max(0, Math.floor(Number(qrValue.size) || 0)), matrix: text(qrValue.matrix, ""), errorCorrectionLevel: text(qrValue.errorCorrectionLevel, "M") },',
-    '    staxUrl: text(data.staxCardPageUrl, ""),',
-    '    social: { x: text(socialValue.x, ""), github: text(socialValue.github, "") },',
-    '    axes: Array.isArray(typeValue.axes) && typeValue.axes.length ? typeValue.axes : (Array.isArray(data.axes) && data.axes.length ? data.axes : MASON.axes),',
-    '    basicVal: text(basicValue.basicVal, data.basicValue || data.tokenLabel || "0"),',
-    '    band: Array.isArray(clockValue.band) ? clockValue.band : MASON.band,',
-    '    hourBuckets: Array.isArray(clockValue.hourBuckets) ? clockValue.hourBuckets.slice(0, 24) : [],',
-    '    peakH: Number.isFinite(Number(clockValue.peakH)) ? Number(clockValue.peakH) : MASON.peakH,',
-    '    bird: text(clockValue.bird, data.rhythm || MASON.bird),',
-    '    peakLabel: text(clockValue.peakLabel, Number.isFinite(Number(clockValue.peakH)) ? "PEAK " + String(Number(clockValue.peakH)).padStart(2, "0") + ":00" : MASON.peakLabel),',
-    '    badges: Array.isArray(badgesValue.badges) && badgesValue.badges.length ? badgesValue.badges : (Array.isArray(data.badges) ? data.badges : MASON.badges),',
-    '    bars90: {',
-    '      tokens90d: Array.isArray(bars90Value.tokens90d) ? bars90Value.tokens90d : [],',
-    '      visualBuckets: Array.isArray(bars90Value.visualBuckets) ? bars90Value.visualBuckets : [],',
-    '      tokens90dTotal: text(bars90Value.tokens90dTotal, data.tokenLabel || "0"),',
-    '      dayCount: Number.isFinite(Number(bars90Value.dayCount)) ? Number(bars90Value.dayCount) : 0,',
-    '      observedBucketCount: Number.isFinite(Number(bars90Value.observedBucketCount)) ? Number(bars90Value.observedBucketCount) : 0,',
-    '      isPartialSample: Boolean(bars90Value.isPartialSample),',
-    '      periodLabel: text(bars90Value.periodLabel, data.usageLabel || "This Month"),',
-    '    },',
-    '    pie: {',
-    '      modelMix: Array.isArray(pieValue.modelMix) ? pieValue.modelMix : [],',
-    '      periodLabel: text(bars90Value.dayCount ? bars90Value.dayCount + " DAYS" : "", data.usageLabel || bars90Value.periodLabel || "LOCAL"),',
-    '    },',
-    '    modelcost: {',
-    '      models: Array.isArray(modelcostValue.models) ? modelcostValue.models.slice(0, 3).map((model) => ({ modelId: text(model?.modelId, ""), name: text(model?.name, model?.modelId || "MODEL"), provider: text(model?.provider, ""), pricingModel: text(model?.pricingModel, ""), priceSource: text(model?.priceSource, ""), totalUsd: Math.max(0, Number(model?.totalUsd) || 0) })) : [],',
-    '      totalUsd: Math.max(0, Number(modelcostValue.totalUsd) || 0),',
-    '      coverageRatio: Math.max(0, Math.min(1, Number(modelcostValue.coverageRatio) || 0)),',
-    '      partial: Boolean(modelcostValue.partial),',
-    '      unpricedModelCount: Math.max(0, Math.floor(Number(modelcostValue.unpricedModelCount) || 0)),',
-    '      unpricedTokenCount: Math.max(0, Math.floor(Number(modelcostValue.unpricedTokenCount) || 0)),',
-    '      periodId: text(modelcostValue.periodId, data.usagePeriodId || "thisMonth"),',
-    '      periodLabel: text(modelcostValue.periodLabel, data.usageLabel || "This Month"),',
-    '      priceTableUpdatedAt: text(modelcostValue.priceTableUpdatedAt, ""),',
-    '    },',
-    '    cgauge: {',
-    '      usedPercent: Number.isFinite(Number(cgaugeValue.usedPercent)) ? Number(cgaugeValue.usedPercent) : null,',
-    '      usedCredits: Number.isFinite(Number(cgaugeValue.usedCredits)) ? Number(cgaugeValue.usedCredits) : null,',
-    '      totalCredits: Number.isFinite(Number(cgaugeValue.totalCredits)) ? Number(cgaugeValue.totalCredits) : null,',
-    '      remainingCredits: Number.isFinite(Number(cgaugeValue.remainingCredits)) ? Number(cgaugeValue.remainingCredits) : null,',
-    '      resetAt: text(cgaugeValue.resetAt, ""),',
-    '      periodStart: text(cgaugeValue.periodStart, ""),',
-    '      periodEnd: text(cgaugeValue.periodEnd, ""),',
-    '      periodId: text(cgaugeValue.periodId, data.usagePeriodId || "thisMonth"),',
-    '      planName: text(cgaugeValue.planName, ""),',
-    '    },',
-    '    rings: {',
-    '      metrics: Array.isArray(ringsValue.metrics) ? ringsValue.metrics.slice(0, 3) : [],',
-    '      streakToday: Number.isFinite(Number(ringsValue.streakToday)) ? Number(ringsValue.streakToday) : 0,',
-    '      streakLabel: text(ringsValue.streakLabel, "LOCAL BUILD-DAY STREAK"),',
-    '      periodLabel: text(ringsValue.periodLabel, data.usageLabel || "LOCAL PERIOD"),',
-    '      sourceLabel: text(ringsValue.sourceLabel, "LOCAL LOGS"),',
-    '      coverage: ringsValue.coverage && typeof ringsValue.coverage === "object" ? ringsValue.coverage : {},',
-    '      estimated: Boolean(byKey.get("rings")?.estimated),',
-    '    },',
-    '    ctxring: {',
-    '      ctxAvg: Number.isFinite(Number(ctxringValue.ctxAvg)) ? Number(ctxringValue.ctxAvg) : null,',
-    '      avgInputTokens: Number(ctxringValue.avgInputTokens) || 0,',
-    '      requestCount: Number(ctxringValue.requestCount) || 0,',
-    '      display: text(ctxringValue.display, ""),',
-    '    },',
-    '    heat: {',
-    '      days: Array.isArray(heatValue.days) ? heatValue.days.map((day) => ({ date: text(day?.date, ""), observed: day?.observed !== false, builds: Number(day?.builds) || 0 })) : [],',
-    '      buildsDaily: Array.isArray(heatValue.buildsDaily) ? heatValue.buildsDaily : [],',
-    '      observedDayCount: Number(heatValue.observedDayCount) || 0,',
-    '      activeDayCount: Number(heatValue.activeDayCount) || 0,',
-    '      currentStreak: Number(heatValue.currentStreak) || 0,',
-    '      bestStreak: Number(heatValue.bestStreak) || 0,',
-    '      coverage: heatValue.coverage && typeof heatValue.coverage === "object" ? heatValue.coverage : {},',
-    '    },',
-    '    dots: {',
-    '      apiCalls90d: Number.isFinite(Number(dotsValue.apiCalls90d)) ? Number(dotsValue.apiCalls90d) : null,',
-    '      toolCallCount: Number(dotsValue.toolCallCount) || 0,',
-    '      display: text(dotsValue.display, "0"),',
-    '      periodLabel: text(dotsValue.periodLabel, data.usageLabel || "LOCAL SCAN"),',
-    '      dailyToolCalls: Array.isArray(dotsValue.dailyToolCalls) ? dotsValue.dailyToolCalls.slice(-15).map((day) => ({ date: text(day?.date, ""), count: Number(day?.count) || 0 })) : [],',
-    '    },',
-    '    water: {',
-    '      topPercent: Number(waterValue.topPercent) || 0,',
-    '      metric: text(waterValue.metric, ""),',
-    '      cohortSize: Number(waterValue.cohortSize) || 0,',
-    '      minimumCohortSize: Number(waterValue.minimumCohortSize) || 0,',
-    '      environment: text(waterValue.environment, "unknown").toLowerCase(),',
-    '      publicRankReady: Boolean(waterValue.publicRankReady),',
-    '      testOnly: Boolean(waterValue.testOnly),',
-    '    },',
-    '    vsavg: {',
-    '      creatorTokens: Number(vsavgValue.creatorTokens) || 0,',
-    '      communityMedian: Number(vsavgValue.communityMedian) || 0,',
-    '      deltaPercent: Number(vsavgValue.deltaPercent) || 0,',
-    '      display: text(vsavgValue.display, "—"),',
-    '      baseline: text(vsavgValue.baseline, "median"),',
-    '      periodLabel: text(vsavgValue.periodLabel, data.usageLabel || "This Month"),',
-    '    },',
-    '    trend: {',
-    '      delta: Number(trendValue.delta) || 0,',
-    '      display: text(trendValue.display, ""),',
-    '      currentBuilds: Number(trendValue.currentBuilds) || 0,',
-    '      previousBuilds: Number(trendValue.previousBuilds) || 0,',
-    '      comparison: text(trendValue.comparison, ""),',
-    '      currentPeriodLabel: text(trendValue.currentPeriodLabel, ""),',
-    '      previousPeriodLabel: text(trendValue.previousPeriodLabel, ""),',
-    '    },',
-    '    tally: {',
-    '      shipped: Math.max(0, Math.floor(Number(tallyValue.shipped) || 0)),',
-    '    },',
-    '    dial: {',
-    '      score: dialValue.score !== undefined && dialValue.score !== null && dialValue.score !== "" && Number.isFinite(Number(dialValue.score)) ? Math.max(0, Math.min(100, Math.round(Number(dialValue.score)))) : null,',
-    '      maxScore: Math.max(1, Math.round(Number(dialValue.maxScore) || 100)),',
-    '      version: text(dialValue.version, ""),',
-    '      breakdown: dialValue.breakdown && typeof dialValue.breakdown === "object" ? dialValue.breakdown : {},',
-    '    },',
-    '    wave: {',
-    '      waves: Array.isArray(waveValue.waves) ? waveValue.waves.slice(-5).map((wave) => ({ id: text(wave?.id, ""), label: text(wave?.label, ""), buildSessionCount: Math.max(0, Math.floor(Number(wave?.buildSessionCount) || 0)), activeDayCount: Math.max(0, Math.floor(Number(wave?.activeDayCount) || 0)) })) : [],',
-    '      totalBuildSessions: Math.max(0, Math.floor(Number(waveValue.totalBuildSessions) || 0)),',
-    '      observedDayCount: Math.max(0, Math.floor(Number(waveValue.observedDayCount) || 0)),',
-    '      periodId: text(waveValue.periodId, "last30Days"),',
-    '    },',
-    '    peaks: {',
-    '      bestDay: text(peaksValue.bestDay, ""),',
-    '      date: text(peaksValue.date, ""),',
-    '      metric: text(peaksValue.metric, "tokens"),',
-    '      observedDayCount: Math.max(0, Math.floor(Number(peaksValue.observedDayCount) || 0)),',
-    '      peakShape: Array.isArray(peaksValue.peakShape) ? peaksValue.peakShape.slice(-30).map((value) => Math.max(0, Number(value) || 0)) : [],',
-    '      peakDates: Array.isArray(peaksValue.peakDates) ? peaksValue.peakDates.slice(-30).map((date) => text(date, "")) : [],',
-    '    },',
-    '    ratio: {',
-    '      tokensIn: text(ratioValue.tokensIn, "0"),',
-    '      tokensOut: text(ratioValue.tokensOut, "0"),',
-    '      tokensInValue: Math.max(0, Number(ratioValue.tokensInValue) || 0),',
-    '      tokensOutValue: Math.max(0, Number(ratioValue.tokensOutValue) || 0),',
-    '      inShare: Math.max(0, Math.min(1, Number(ratioValue.inShare) || 0)),',
-    '      periodId: text(ratioValue.periodId, data.usagePeriodId || "thisMonth"),',
-    '      periodLabel: text(ratioValue.periodLabel, data.usageLabel || "This Month"),',
-    '    },',
-    '    tools: {',
-    '      tools: Array.isArray(toolsValue.tools) ? toolsValue.tools.slice(0, 3) : [],',
-    '    },',
-    '    stadium: {',
-    '      tokensAllTime: text(stadiumValue.tokensAllTime, ""),',
-    '      tokensTotal: text(stadiumValue.tokensTotal || stadiumValue.tokensAllTime, data.tokenLabel || "0"),',
-    '      allTimeTokens: Math.max(0, Number(stadiumValue.allTimeTokens) || 0),',
-    '      totalTokens: Math.max(0, Number(stadiumValue.totalTokens) || 0),',
-    '      periodId: text(stadiumValue.periodId, data.usagePeriodId || "thisMonth"),',
-    '      periodLabel: text(stadiumValue.periodLabel, data.usageLabel || "This Month"),',
-    '    },',
-    '    knock: {',
-    '      label: text(knockValue.label, "EVENTS"),',
-    '      value: text(knockValue.value, "0"),',
-    '    },',
-    '    bracket: {',
-    '      label: text(bracketValue.label, bracketValue.estimated ? "API EQUIV." : "TOKENS"),',
-    '      value: text(bracketValue.value, "0"),',
-    '      estimated: Boolean(bracketValue.estimated || byKey.get("bracket")?.estimated),',
-    '      periodId: text(bracketValue.periodId, data.usagePeriodId || "thisMonth"),',
-    '      periodLabel: text(bracketValue.periodLabel, data.usageLabel || "This Month"),',
-    '    },',
-    '    node: {',
-    '      integrations: (Array.isArray(nodeValue.integrations) ? nodeValue.integrations : (Array.isArray(nodeValue.categories) ? nodeValue.categories.map((category, index) => ({ name: category?.label, color: ["#C9F24C", "#2BD4C0", "#7C6CF6", "#FFC93D", "#F0641E"][index % 5] })) : [])).slice(0, 5).map((integration, index) => ({ name: text(integration?.name, "TOOL").toUpperCase(), color: text(integration?.color, ["#C9F24C", "#2BD4C0", "#7C6CF6", "#FFC93D", "#F0641E"][index % 5]) })),',
-    '    },',
-    '    splitring: {',
-    '      chatShare: Math.max(0, Math.min(1, Number(splitringValue.chatShare) || 0)),',
-    '      buildShare: Math.max(0, Math.min(1, Number(splitringValue.buildShare) || 0)),',
-    '      sessionCount: Math.max(0, Math.floor(Number(splitringValue.sessionCount) || 0)),',
-    '      chatSessionCount: Math.max(0, Math.floor(Number(splitringValue.chatSessionCount) || 0)),',
-    '      buildSessionCount: Math.max(0, Math.floor(Number(splitringValue.buildSessionCount) || 0)),',
-    '      periodId: text(splitringValue.periodId, data.usagePeriodId || "thisMonth"),',
-    '      periodLabel: text(splitringValue.periodLabel, data.usageLabel || "This Month"),',
-    '      estimated: Boolean(byKey.get("splitring")?.estimated),',
-    '    },',
-    '    tier1: {',
-    '      tier: text(tier1Value.tier, data.rankTier || "STANDARD"),',
-    '      topPercent: Number(tier1Value.topPercent) || 0,',
-    '      topPercentLabel: text(tier1Value.topPercentLabel, data.rankTopPercentLabel),',
-    '    },',
-    '  };',
-    '  PERSONAS.publisher = {',
-    '    pd: persona,',
-    '    finish: text(data.cardFinish, "ink"),',
-    '    ser: text(data.cardSerial, text(data.serial, "UNMINTED")),',
-    '    user: [persona.handle, persona.type, persona.family, text(data.tag, data.usageLabel)].filter(Boolean).join(" · "),',
-    '    title: text(data.shareTitle, data.title || "Your Stax is ready."),',
-    '    tag: text(data.tag, data.usageLabel || "LOCAL"),',
-    '    scan: [text(data.tokenLabel, "0") + " TOKENS", text(data.scanLabel, data.rhythm || "LOCAL SCAN")],',
-    '    scanLines: Array.isArray(data.scanLines) ? data.scanLines : [],',
-    '    loginUrl: text(data.loginUrl || data.auth?.loginUrl, ""),',
-    '    needsTakuAuth: Boolean(data.needsTakuAuth),',
-    '    needsTakuProfile: Boolean(data.needsTakuProfile),',
-    '    auth: data.auth || {},',
-    '    unlockSummary: data.unlockSummary || (data.auth && data.auth.unlockSummary) || {},',
-    '    cap: text(data.caption, "Built from local publisher scan. Estimated fields are marked in the dock."),',
-    '    fullset: selected.length ? selected : ["hero", "team", "type"],',
-    '    locks,',
-    '    blocks,',
-    '  };',
-    '  const sw = document.getElementById("pswitch");',
-    '  if (sw) {',
-    '    sw.innerHTML = "";',
-    '    const avatar = document.createElement("span");',
-    '    avatar.className = "pav on";',
-    '    avatar.dataset.p = "publisher";',
-    '    avatar.style.background = persona.fam;',
-    '    avatar.innerHTML = "<img src=\\\"" + (ART[persona.art] || ART.inv || "") + "\\\" alt=\\\"\\\">";',
-    '    avatar.title = persona.handle;',
-    '    avatar.addEventListener("click", () => setPersona("publisher"));',
-    '    sw.appendChild(avatar);',
-    '  }',
-    '  setPersona("publisher");',
-    '  const teamSelect = document.getElementById("teamselect");',
-    '  const teamOptions = Array.isArray(data.teamOptions) ? data.teamOptions : [];',
-    '  if (teamSelect && teamOptions.length) {',
-    '    teamSelect.replaceChildren(...teamOptions.map((option) => new Option(text(option.label, option.id).toUpperCase(), text(option.id, option.icon))));',
-    '    const activeTeam = teamOptions.find((option) => option.selected) || teamOptions[0];',
-    '    teamSelect.value = text(activeTeam.id, activeTeam.icon);',
-    '    teamSelect.disabled = Boolean(data.readonly) || teamOptions.length < 2;',
-    '    teamSelect.closest(".teamswitch")?.classList.remove("is-hidden");',
-    '    teamSelect.addEventListener("change", async () => {',
-    '      const selectedTeam = teamOptions.find((option) => text(option.id, option.icon) === teamSelect.value);',
-    '      if (!selectedTeam) return;',
-    '      persona.team = [text(selectedTeam.label, "CODEX").toUpperCase(), text(selectedTeam.icon, "codex")];',
-    '      const teamBlock = byKey.get("team");',
-    '      if (teamBlock) teamBlock.value = { ...(teamBlock.value || {}), team: persona.team, teamIcon: persona.team[1], identityBasis: "user-selection" };',
-    '      PERSONAS.publisher.pd = persona;',
-    '      PD = persona;',
-    '      for (const placed of placedP.filter((item) => item.key === "team")) {',
-    '        placed.el.innerHTML = R.team(placed.cw * U - GAP, placed.ch * U - GAP);',
-    '      }',
-    '      for (const key in chipRefs) delete chipRefs[key];',
-    '      document.getElementById("dockscroll").innerHTML = "";',
-    '      buildDock();',
-    '      for (const placed of placedP) chipRefs[placed.key]?.classList.add("on");',
-    '      toast("PRIMARY AI · " + persona.team[0]);',
-    '      if (!data.readonly) {',
-    '        try {',
-    '          await fetch("/api/card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ card: { primaryAi: selectedTeam.id } }) });',
-    '        } catch {}',
-    '      }',
-    '    });',
-    '  }',
-    '  const qrSelect = document.getElementById("qrselect");',
-    '  const qrOptions = Array.isArray(data.qrOptions) ? data.qrOptions : [];',
-    '  if (qrSelect && qrOptions.length) {',
-    '    qrSelect.replaceChildren(...qrOptions.map((option) => new Option(text(option.label, option.id).toUpperCase(), text(option.id, "stax"))));',
-    '    const activeQr = qrOptions.find((option) => text(option.id, "stax") === text(data.qrTarget, persona.qr.target)) || qrOptions[0];',
-    '    qrSelect.value = text(activeQr.id, "stax");',
-    '    qrSelect.disabled = Boolean(data.readonly);',
-    '    qrSelect.closest(".qrswitch")?.classList.remove("is-hidden");',
-    '    qrSelect.addEventListener("change", async () => {',
-    '      const selectedQr = qrOptions.find((option) => text(option.id, "stax") === qrSelect.value);',
-    '      if (!selectedQr) return;',
-    '      persona.qr = { target: text(selectedQr.id, "stax"), url: text(selectedQr.url, ""), username: text(selectedQr.username, qrValue.username), size: Math.max(0, Math.floor(Number(selectedQr.size) || 0)), matrix: text(selectedQr.matrix, ""), errorCorrectionLevel: text(selectedQr.errorCorrectionLevel, "M") };',
-    '      const qrBlock = byKey.get("qr");',
-    '      if (qrBlock) qrBlock.value = { ...(qrBlock.value || {}), ...persona.qr };',
-    '      PERSONAS.publisher.pd = persona;',
-    '      PD = persona;',
-    '      for (const placed of placedP.filter((item) => item.key === "qr")) {',
-    '        placed.el.innerHTML = R.qr(placed.cw * U - GAP, placed.ch * U - GAP);',
-    '      }',
-    '      for (const key in chipRefs) delete chipRefs[key];',
-    '      document.getElementById("dockscroll").innerHTML = "";',
-    '      buildDock();',
-    '      for (const placed of placedP) chipRefs[placed.key]?.classList.add("on");',
-    '      toast("QR LINK · " + text(selectedQr.label, selectedQr.id).toUpperCase());',
-    '      if (!data.readonly) {',
-    '        try {',
-    '          await fetch("/api/card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ card: { qrTarget: selectedQr.id } }) });',
-    '        } catch {}',
-    '      }',
-    '    });',
-    '  }',
-    '  const githubConnect = document.getElementById("githubconnect");',
-    '  const githubConfirm = document.getElementById("githubconfirm");',
-    '  const githubConfirmHandle = document.getElementById("githubconfirmhandle");',
-    '  const githubConfirmCancel = document.getElementById("githubconfirmcancel");',
-    '  const githubConfirmSubmit = document.getElementById("githubconfirmsubmit");',
-    '  const socialCandidate = data.socialCandidate && typeof data.socialCandidate === "object" ? data.socialCandidate : null;',
-    '  const githubCandidate = text(socialCandidate?.username, "").replace(/^@+/, "");',
-    '  if (githubConnect && githubConfirm && githubConfirmSubmit && githubCandidate && !persona.social.github && !data.readonly) {',
-    '    document.getElementById("githubcandidate").textContent = "@" + githubCandidate;',
-    '    if (githubConfirmHandle) githubConfirmHandle.textContent = "@" + githubCandidate;',
-    '    githubConnect.classList.remove("is-hidden");',
-    '    const closeGithubConfirm = () => githubConfirm.classList.remove("on");',
-    '    const openGithubConfirm = () => { githubConfirm.classList.add("on"); githubConfirmSubmit.focus(); };',
-    '    window.__TAKU_OPEN_GITHUB_CONFIRM__ = openGithubConfirm;',
-    '    githubConnect.addEventListener("click", openGithubConfirm);',
-    '    githubConfirmCancel?.addEventListener("click", closeGithubConfirm);',
-    '    githubConfirm.addEventListener("click", (event) => { if (event.target === githubConfirm) closeGithubConfirm(); });',
-    '    let pendingGithubRequestId = "";',
-    '    const setGithubSaving = (saving) => {',
-    '      githubConfirmSubmit.disabled = saving;',
-    '      githubConfirmSubmit.textContent = saving ? "CONNECTING..." : "ADD GITHUB";',
-    '      githubConfirmSubmit.setAttribute("aria-busy", saving ? "true" : "false");',
-    '      if (githubConfirmCancel) githubConfirmCancel.disabled = saving;',
-    '    };',
-    '    const applyConfirmedGithub = () => {',
-    '      setGithubSaving(false);',
-    '      persona.social.github = githubCandidate;',
-    '      const socialBlock = byKey.get("social");',
-    '      if (socialBlock) { socialBlock.status = "supported"; socialBlock.source = "publisher.confirmed_social"; socialBlock.value = { ...(socialBlock.value || {}), github: githubCandidate }; }',
-    '      delete locks.social;',
-    '      if (!selected.includes("social")) selected.splice(Math.min(1, selected.length), 0, "social");',
-    '      PERSONAS.publisher.fullset = [...selected];',
-    '      PERSONAS.publisher.pd = persona;',
-    '      githubConnect.classList.add("is-hidden");',
-    '      closeGithubConfirm();',
-    '      setPersona("publisher");',
-    '      toast("GITHUB @" + githubCandidate + " ADDED");',
-    '    };',
-    '    window.__TAKU_GITHUB_SAVE_SUCCESS__ = (message) => {',
-    '      if (pendingGithubRequestId && message?.requestId !== pendingGithubRequestId) return;',
-    '      pendingGithubRequestId = "";',
-    '      applyConfirmedGithub();',
-    '    };',
-    '    window.__TAKU_GITHUB_SAVE_ERROR__ = (message) => {',
-    '      if (pendingGithubRequestId && message?.requestId !== pendingGithubRequestId) return;',
-    '      pendingGithubRequestId = "";',
-    '      setGithubSaving(false);',
-    '      toast(text(message?.message, "Could not add GitHub account."));',
-    '    };',
-    '    githubConfirmSubmit.addEventListener("click", async () => {',
-    '      setGithubSaving(true);',
-    '      if (typeof window.__TAKU_STAX_POST__ === "function") {',
-    '        pendingGithubRequestId = "github-" + Date.now() + "-" + Math.random().toString(36).slice(2);',
-    '        window.__TAKU_STAX_POST__("settings-change", { requestId: pendingGithubRequestId, settings: { confirmedSocial: { github: githubCandidate } } });',
-    '        return;',
-    '      }',
-    '      try {',
-    '        const response = await fetch("/api/card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ card: { confirmedSocial: { github: githubCandidate } } }) });',
-    '        const result = await response.json().catch(() => ({}));',
-    '        if (!response.ok || result.ok === false) throw new Error(result.error || "Could not add GitHub account.");',
-    '        applyConfirmedGithub();',
-    '      } catch (error) {',
-    '        setGithubSaving(false);',
-    '        toast(error instanceof Error ? error.message : "COULD NOT ADD GITHUB");',
-    '      }',
-    '    });',
-    '  }',
-    '  if (data.readonly) {',
-    '    document.getElementById("scanov")?.classList.add("off");',
-    '    document.getElementById("revealov")?.classList.remove("on");',
-    '    openShare("visitor");',
-    '  } else {',
-    '    playIntro("publisher");',
-    '  }',
-    '};',
-  ].join('\n');
+  return 'window.__TAKU_STAX_DATA__ = ' + jsonForScript(model) + ';\n'
+    + readFileSync(new URL('../templates/stax-bootstrap.js', import.meta.url), 'utf8');
 }
 
 export function renderPreview(draft, options = {}) {

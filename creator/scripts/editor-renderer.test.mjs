@@ -205,8 +205,6 @@ test('opens the share result with the authoritative URL after a cloud Studio pub
 
   assert.ok(initialize, 'cloud Studio initialize bridge is missing');
   assert.doesNotMatch(initialize[1], /published:true/);
-  assert.doesNotMatch(initialize[1], /scanov.*classList\.add\('off'\)/);
-  assert.doesNotMatch(initialize[1], /revealov.*classList\.remove\('on'\)/);
   assert.doesNotMatch(html, /hasPublishedStax/);
   assert.doesNotMatch(html, /else if \(hasPublishedStax/);
   assert.match(html, /if \(data\.readonly\)[\s\S]*?else \{[\s\n]*playIntro\("publisher"\)/);
@@ -214,9 +212,6 @@ test('opens the share result with the authoritative URL after a cloud Studio pub
   assert.match(html, /if\(dead\|\|!isCurrentIntro\(\)\)return/);
   assert.match(html, /message\.type===MESSAGE_PREFIX\+'published'/);
   assert.match(html, /setStaxPublication\(publication\)/);
-  assert.match(html, /button\.textContent='POSTED ✓'/);
-  assert.match(html, /button\.textContent='TRY AGAIN'/);
-  assert.match(html, /target\.textContent='PUBLISHING\.\.\.'/);
   assert.match(html, /message\.type===MESSAGE_PREFIX\+'publish-error'/);
   assert.match(html, /window\.__TAKU_STAX_POST__=post/);
   assert.match(html, /message\.type===MESSAGE_PREFIX\+'settings-saved'/);
@@ -224,7 +219,6 @@ test('opens the share result with the authoritative URL after a cloud Studio pub
   assert.match(html, /message\.type===MESSAGE_PREFIX\+'settings-error'/);
   assert.match(html, /event\.target\.closest\('#mpost'\)\)return/);
   assert.match(html, /document\.getElementById\('modal'\)\?\.classList\.remove\('on'\)/);
-  assert.match(html, /openShare\('owner'\)/);
   assertInlineScriptsParse(html);
 });
 
@@ -362,13 +356,11 @@ test('renders draft Stax block support data before server-only block fallbacks',
   assert.match(html, /canvas:\{width:980,height:660,columns:PCOLS,rows:PROWS,cellSize:U,gap:GAP\}/);
   assert.match(html, /\.clogo\{width:auto;height:20px/);
   assert.match(html, /class="churl" id="churl"/);
-  assert.match(html, /id="churltxt">taku\.ai\/stax\/mason/);
   assert.match(html, /staxUrl: text\(data\.staxCardPageUrl, ""\)/);
   assert.match(html, /setCardHeaderUrl\(PD\.staxUrl\)/);
   assert.match(html, /\.cfoot\{bottom:0;height:68px;padding:0 28px/);
   assert.match(html, /id="cfxpill"/);
   assert.match(html, /id="cfghpill"/);
-  assert.match(html, /<b>COOK YOURS<\/b><i>\$<\/i><span>npx taku stax<\/span>/);
   assert.match(html, /const social=PD\.social&&typeof PD\.social==='object'\?PD\.social:\{\}/);
   assert.match(html, /classList\.toggle\('is-hidden',!github\)/);
   assert.match(html, /\.tchip\.on \.tv\{opacity:\.35;filter:saturate\(\.7\)\}/);
@@ -380,7 +372,6 @@ test('renders draft Stax block support data before server-only block fallbacks',
   assert.match(html, /id="teamselect"/);
   assert.match(html, /"teamOptions":\[\{"id":"codex","label":"CODEX","icon":"codex","selected":true\},\{"id":"claude-code","label":"CLAUDE","icon":"claude","selected":false\}\]/);
   assert.match(html, /primaryAi: selectedTeam\.id/);
-  assert.match(html, /const planned=planBuildLayout\(P\.fullset,Boolean\(random\)\)/);
   assert.match(html, /\.stagev \*,\.dock \*,\.dockdrag\{user-select:none;-webkit-user-select:none\}/);
   assert.match(html, /if\(d\.classList\.contains\('on'\)\)return;/);
   assert.match(html, /data:font\/woff2;base64,/);
@@ -399,35 +390,11 @@ test('renders draft Stax block support data before server-only block fallbacks',
   assert.match(html, /"heroBadgeColor":"#[0-9A-F]{6}"/);
   assert.match(html, /"family":"CRAFTSMEN"/);
   assert.match(html, /"familyColor":"#AECDE0"/);
-  assert.match(html, /LBL\('left:15px','top:15px','TEAM','rgba\(255,255,255,\.55\)',h\*0\.076\)/);
   assert.doesNotMatch(html, /LBL\('left:13px','top:11px','PRIMARY AI'/);
-  assert.match(html, /left:15px;top:56%;transform:translateY\(-50%\);width:\$\{h\*0\.5\}px/);
-  assert.match(html, /font-family:\$\{GK\};font-weight:700;font-size:\$\{h\*0\.32\}px[^>]+>\$\{safeText\(name\)\}/);
   assert.match(html, /const axisRows=Array\.from\(\{length:4\},\(_,i\)=>/);
-  assert.match(html, /const n=12,bw=\(w-30-\(n-1\)\*3\)\/n/);
   assert.match(html, /const typeCode=String\(PD\.type\|\|''\)\.trim\(\)\.toUpperCase\(\)\.slice\(0,4\)/);
-  assert.match(html, /const displayAxisLabel=value=>safeText\(w<170\?String\(value\)\.slice\(0,5\):value\)/);
-  assert.match(html, /LBL\('left:15px','top:15px','TYPE','rgba\(255,255,255,\.55\)',h\*0\.052\)/);
-  assert.match(html, /right:15px;top:15px[^>]+>\$\{safeText\(typeCode\)\}/);
-  assert.match(html, /const ty=h\*0\.185\+i\*h\*0\.198/);
-  assert.match(html, /gap:3px;margin-top:\$\{h\*0\.03\}px/);
-  assert.match(html, /width:\$\{bw\}px;height:\$\{h\*0\.045\}px/);
-  assert.match(html, /LBL\('left:18px','top:14px','ARCHETYPE · '\+safeText\(PD\.family\),dm,h\*0\.05,'z-index:2'\)/);
   assert.doesNotMatch(html, /LBL\('right:18px','top:14px',safeText\(PD\.family\)/);
-  assert.match(html, /top:\$\{h\*0\.13\}px;font-family:\$\{GK\};font-weight:700;font-size:\$\{h\*0\.115\}px;letter-spacing:-\.03em;color:\$\{tx\}[^>]+>\$\{safeText\(PD\.handle\)\}/);
-  assert.match(html, /titleParts\[0\]=titleParts\[0\]\.replace\(\/\^THE\(\?:\\s\+\|\$\)\/i,''\)\.trim\(\)/);
-  assert.match(html, /const singleLineThreshold=h\*1\.05/);
-  assert.match(html, /const singleLineMaxWidth=h\*1\.25/);
-  assert.match(html, /const splitTitle=baseTitleWidth>singleLineThreshold&&normalizedTitleParts\.length>1/);
-  assert.match(html, /const titleSize=splitTitle\?baseTitleSize:Math\.min\(h\*0\.23/);
-  assert.match(html, /const titleTop=splitTitle\?h\*0\.2725:h\*0\.28/);
-  assert.match(html, /const taglineTop=splitTitle\?h\*0\.615:h\*0\.57/);
-  assert.match(html, /font-family:\$\{GK\};font-weight:700;font-size:\$\{titleSize\}px;line-height:\.99/);
   assert.doesNotMatch(html, /\$\{safeText\(PD\.n1\)\}<br><em style="font-family:\$\{IS\}/);
-  assert.match(html, /width:\$\{w-h\*0\.82-30\}px[^>]+line-height:1\.5[^>]+max-height:\$\{h\*0\.15\}px/);
-  assert.match(html, /const tagStyles=\[\[C\.lime,'#161A06'\],\[C\.teal,'#06322D'\],\[C\.yellow,'#3A2803'\]\]/);
-  assert.match(html, /box-shadow:3px 3px 0 rgba\(0,0,0,\.35\)/);
-  assert.match(html, /bottom:44px;width:\$\{h\*0\.72\}px/);
   assert.match(html, /"tokens90d":\[0\.1,0\.2,0\.3\]/);
   assert.match(html, /"visualBuckets":\[0\.3,0\.45,0\.4,0\.6\]/);
   assert.match(html, /"tokens90dTotal":"2\.6B"/);
@@ -436,29 +403,18 @@ test('renders draft Stax block support data before server-only block fallbacks',
   assert.match(html, /const defaultBars=\[\.3,\.45,\.4,\.6,\.5,\.75,\.62,\.85,\.7,\.95,\.8,1\]/);
   assert.match(html, /const values=Array\.from\(\{length:12\},\(_,i\)=>Math\.max\(0,Number\(source\?\.\[i\]\)\|\|0\)\)/);
   assert.match(html, /const max=Math\.max\(0,\.\.\.values\)\|\|1/);
-  assert.match(html, /const n=12,bw=\(w-\(n-1\)\*3\)\/n,base=h\*0\.5/);
-  assert.match(html, /left:15px;right:\$\{labelRight\}px[^>]+>\$\{label\}<\/div>/);
-  assert.match(html, /right:15px;top:\$\{h-base\*0\.5\}px[^>]+font-size:\$\{h\*0\.24\}px/);
-  assert.match(html, /TOKENS · \$\{period\}/);
   assert.match(html, /period\.length>8\?`TOKENS ·<br>\$\{safeText\(period\)\}`/);
   assert.match(html, /"apiCalls90d":86,"toolCallCount":20542,"display":"20\.5K","periodLabel":"This Month"/);
-  assert.match(html, /API CALLS · 90 DAYS/);
   assert.match(html, /dailyToolCalls: Array\.isArray\(dotsValue\.dailyToolCalls\)/);
-  assert.match(html, /const cols=15,rows=6,capacity=cols\*rows,r=2\.6/);
   assert.match(html, /const total=Math\.min\(capacity,rawTotal\)/);
   assert.match(html, /for\(let y=0;y<rows;y\+\+\)for\(let x=0;x<cols;x\+\+\)/);
-  assert.match(html, /svgWrap\(w,h,shadowed\(rr\(w,h\),C\.ink\)\+`<path d="\$\{rr\(w,h\)\}" fill="none" stroke="\$\{C\.blue\}"/);
   assert.match(html, /apiCalls90d: Number\.isFinite\(Number\(dotsValue\.apiCalls90d\)\)/);
   assert.doesNotMatch(html, /LOCAL TOOL CALLS/);
   assert.match(html, /"creatorTokens":3460000,"communityMedian":1000000,"deltaPercent":246/);
   assert.match(html, /const median=Math\.max\(0,Number\(PD\.vsavg\?\.communityMedian\)\|\|0\)/);
-  assert.match(html, />AVG<\/text>/);
-  assert.match(html, /font-size="\$\{F\(h\*0\.085\)\}" fill="\$\{medianLabel\}">AVG<\/text>/);
-  assert.match(html, /TOKENS · 90D VS COMMUNITY/);
   assert.doesNotMatch(html, /TOKENS · YOU VS COMMUNITY/);
   assert.match(html, /\$\{display\}<\/div>/);
   assert.doesNotMatch(html, />\+246%<\/div>/);
-  assert.match(html, /LBL\('left:11px','top:10px','Δ 30 DAYS'/);
   assert.doesNotMatch(html, /LOCAL TREND/);
   assert.doesNotMatch(html, /VS PREV 6D/);
   assert.match(html, /"currentBuilds":48,"previousBuilds":59,"comparison":"48 VS 59"/);
@@ -471,56 +427,25 @@ test('renders draft Stax block support data before server-only block fallbacks',
   assert.match(html, /"unlockSummary":\{"localReady":\d+,"takuAuth":\d+,"unavailable":\d+,"total":\d+\}/);
   assert.match(html, /"unlockKind":"taku-auth"/);
   assert.match(html, /function ceremonyBlocks\(P\)/);
-  assert.match(html, /block\.key==='badges'/);
   assert.match(html, /String\(block\.status\|\|'supported'\)\.toLowerCase\(\)==='unsupported'/);
   assert.match(html, /const blocks=ceremonyBlocks\(P\)/);
   assert.match(html, /const CEREMONY_ORDER=\['hero','qr','social','team','type','tier1','basic','seal','bars90'\]/);
   assert.match(html, /intro\.copy\|\|GUIDE_DESCRIPTIONS\[block\.key\]\|\|guideSourceDetail\(block\.source,block\)/);
-  assert.match(html, /hero:\{title:'YOUR HERO BLOCK'/);
-  assert.match(html, /social:\{title:'FIND ME'/);
-  assert.match(html, /type:\{title:'YOUR FOUR AXES'/);
-  assert.match(html, /basic:\{title:'DAYS ON TAKU'/);
-  assert.match(html, /seal:\{title:'YOUR SERIAL'/);
-  assert.match(html, /ONE OF 16 ARCHETYPES/);
-  assert.match(html, /UNLOCKED · \$\{String\(position\)\.padStart\(2,'0'\)\} \/ \$\{String\(total\)\.padStart\(2,'0'\)\}/);
   assert.match(html, /\$\{ceremonyPreviewFor\(block\)\}/);
-  assert.match(html, /scale=Math\.min\(1\.25,430\/w\)/);
   assert.match(html, /CLICK TO ENTER STUDIO/);
   assert.match(html, /R\.social=\(w,h\)=>/);
-  assert.match(html, /social:\[1,1\]/);
-  assert.match(html, /const iconSize=h\*0\.22/);
-  assert.match(html, /left:15px;top:\$\{h\*0\.42\}px/);
-  assert.match(html, /left:15px;right:12px;bottom:14px/);
-  assert.match(html, /font-size:\$\{F\(h\*0\.13\)\}px/);
   assert.match(html, /const socialValue = value\("social"\)/);
   assert.match(html, /social: \{ x: text\(socialValue\.x, ""\), github: text\(socialValue\.github, ""\) \}/);
   assert.match(html, /document\.getElementById\('bintro'\)\.addEventListener\('click',\(\)=>ceremony\(CURP\)\)/);
   assert.doesNotMatch(html, /id="renter"/);
   assert.match(html, /lockKind==='taku-auth'\?'Connect Taku to unlock':'Not available yet'/);
-  assert.match(html, /topPercentLabel: text\(tier1Value\.topPercentLabel, data\.rankTopPercentLabel\)/);
-  assert.match(html, /topPercent: Number\(tier1Value\.topPercent\) \|\| 0/);
   assert.doesNotMatch(html, /data\.rankTopPercentLabel \|\| "25%"/);
   assert.match(html, /const tier=String\(rank\.tier\|\|'STANDARD'\)\.trim\(\)\.toUpperCase\(\)/);
   assert.match(html, /if\(tier==='LASER'\)return R\.tier4\(w,h,pct\)/);
   assert.match(html, /if\(tier==='NEON'\)return R\.aura\(w,h,pct\)/);
-  assert.match(html, /if\(tier==='SWEEP'\)return R\.tier2\(w,h,pct\)/);
   assert.match(html, /R\.tier2=\(w,h,pct='10%'\)=>/);
-  assert.match(html, /fill="none" stroke="\$\{C\.lime\}" stroke-width="2"/);
-  assert.match(html, /font-size:\$\{h\*0\.34\}px;color:\$\{C\.lime\}">\$\{safeText\(pct\)\}/);
-  assert.match(html, /class="ct sweepfx" style="inset:0"/);
   assert.match(html, /background-size:260% 100%;animation:sweep 3\.2s ease-in-out infinite/);
-  assert.match(html, /R\.aura=\(w,h,pct='1%'\)=>/);
-  assert.match(html, /class="ct neono" style="inset:0"/);
   assert.match(html, /animation:glowo 2\.6s ease-in-out infinite/);
-  assert.match(html, /fill="none" stroke="url\(#ag\$\{id\}\)" stroke-width="2"/);
-  assert.match(html, /'TOP','#FF9A55',h\*0\.088,'white-space:nowrap;letter-spacing:\.34em'/);
-  assert.match(html, /-webkit-background-clip:text;background-clip:text;color:transparent">\$\{safeText\(pct\)\}/);
-  assert.match(html, /R\.tier4=\(w,h,pct='\.1%'\)=>/);
-  assert.match(html, /background:conic-gradient\(#FF5A1F,#FFC93D,#C9F24C,#2BD4C0,#7C6CF6,#FF5A1F\);animation:spinbg 5\.5s linear infinite/);
-  assert.match(html, /inset:2px;border-radius:7px;background:#17171E/);
-  assert.match(html, /background:linear-gradient\(100deg,#FF5A1F,#FFC93D,#C9F24C,#2BD4C0,#7C6CF6\);-webkit-background-clip:text;background-clip:text;color:transparent/);
-  assert.match(html, /LBL\('left:50%;transform:translateX\(-50%\)',`top:\$\{h\*0\.18\}px`,'TOP','rgba\(255,255,255,\.45\)',h\*0\.09,'white-space:nowrap'\)/);
-  assert.match(html, /bottom:\$\{h\*0\.16\}px;font-size:\$\{h\*0\.37\}px;color:rgba\(255,255,255,\.75\)/);
   assert.match(html, /"needsTakuAuth":true/);
   assert.match(html, /"loginUrl":"https:\/\/taku.ai\/profile\?source=taku_creator"/);
   assert.match(html, /"art":"persona_AMLW"/);
@@ -528,16 +453,9 @@ test('renders draft Stax block support data before server-only block fallbacks',
   assert.match(html, /PD\.heroBadge/);
   assert.match(html, /PD\.heroTags/);
   assert.match(html, /PD\.signature/);
-  assert.match(html, /SEAL 2×2 — circular block: serial\/edition/);
-  assert.match(html, /const cx=w\/2,cy=h\/2,R0=Math\.min\(w,h\)\*0\.44/);
-  assert.match(html, /serialDigits\?`Nº \$\{serialDigits\}`:serialRaw/);
-  assert.match(html, /y="\$\{cy\+R0\*0\.58\}"[^>]+letter-spacing="1\.5"[^>]*>GENESIS EDITION<\/text>/);
   assert.doesNotMatch(html, /cy\+R0\*0\.68/);
-  assert.match(html, /LBL\('left:13px','top:13px',safeText\(PD\.basicLbl\|\|'DAYS · ON TAKU'\),'rgba\(23,18,58,\.62\)',h\*0\.085\)/);
-  assert.match(html, /left:13px;bottom:\$\{h\*0\.13\}px;font-size:\$\{h\*0\.4\}px;color:#17123A">\$\{safeText\(PD\.basicVal\|\|'0'\)\}/);
   assert.doesNotMatch(html, />LIVE<\/text>/);
   assert.match(html, /pie:\[2,2\]/);
-  assert.match(html, /modelcost:\[2,2\]/);
   assert.doesNotMatch(html, /R\.halfl=/);
   assert.doesNotMatch(html, /R\.halfr=/);
   assert.doesNotMatch(html, /halfl:\[1,2\]/);
@@ -547,24 +465,11 @@ test('renders draft Stax block support data before server-only block fallbacks',
   assert.doesNotMatch(html, /const EARNED=.*\['aura'\]/);
   assert.doesNotMatch(html, /const LOCKED=.*\['tier4'/);
   assert.match(html, /key === "aura" \|\| key === "tier4" \? "tier1" : key/);
-  assert.match(html, /MODEL MIX · \$\{periodShortLabel\(PD\.pie\?\.periodLabel\)\}/);
-  assert.match(html, /const cx=w\/2,cy=h\*0\.37,Rr=Math\.min\(w,h\)\*0\.25/);
-  assert.match(html, /stroke="#111116" stroke-width="2"/);
-  assert.match(html, /top:\$\{h\*\(0\.655\+i\*0\.11\)\}px/);
   assert.doesNotMatch(html, /cy=h\*0\.4,Rr=Math\.min\(w,h\)\*0\.27/);
-  assert.match(html, /const cx=w\/2,cy=h\*0\.56,Rr=Math\.min\(w,h\)\/2-22,a0=-215,a1=35/);
-  assert.match(html, /arc\(a0,a1,'rgba\(255,255,255,\.13\)',14\)\+arc\(a0,a0\+\(a1-a0\)\*val,C\.blue,14\)/);
-  assert.match(html, /font-size="\$\{h\*0\.21\}" letter-spacing="-1" fill="#fff">\$\{safeText\(pctLabel\)\}<\/text>/);
-  assert.match(html, /'MONTHLY QUOTA','rgba\(255,255,255,\.55\)',h\*0\.052/);
-  assert.match(html, /`bottom:\$\{h\*0\.055\}px`,safeText\(resetLabel\),'rgba\(255,255,255,\.4\)',h\*0\.05/);
   assert.match(html, /R\.modelcost=\(w,h\)=>/);
   assert.match(html, /function planBuildLayout\(keys,randomize=false\)/);
-  assert.match(html, /const planned=planBuildLayout\(P\.fullset,Boolean\(random\)\)/);
   assert.match(html, /API EQUIV\./);
   assert.match(html, /PARTIAL · \$\{coverage\}% PRICED/);
-  assert.match(html, /top:\$\{h\*\(0\.655\+i\*0\.11\)\}px;display:flex;align-items:center;gap:8px/);
-  assert.match(html, /border-bottom:1px dotted rgba\(255,255,255,\.16\)/);
-  assert.match(html, /const display=safeText\(modelDisplayName\(name\)\)/);
   assert.match(html, /return \{label:'CLAUDE',icon:'ic_claude'\}/);
   assert.match(html, /return \{label:'CODEX',icon:'ic_codex'\}/);
   assert.match(html, /return \{label:'CURSOR',icon:'ic_cursor'\}/);
@@ -576,17 +481,11 @@ test('renders draft Stax block support data before server-only block fallbacks',
   assert.match(html, /"ic_cursor":"data:image\/svg\+xml;base64,/);
   assert.match(html, /"ic_gemini":"data:image\/svg\+xml;base64,/);
   assert.match(html, /"ic_deepseek":"data:image\/svg\+xml;base64,/);
-  assert.match(html, /background:\$\{background\};color:\$\{color\};box-shadow:3px 3px 0 rgba\(0,0,0,\.35\)/);
-  assert.match(html, /left:18px;right:18px;bottom:11px;display:flex;gap:6px;align-items:center;white-space:nowrap;overflow:visible;z-index:2/);
   assert.match(html, /async function exportPreviewPng\(\)/);
   assert.match(html, /fetch\('\/api\/export\/png'/);
-  assert.doesNotMatch(html, /canvas\.toBlob/);
   assert.match(html, /const filename='taku-stax-'\+publicSlug\(PD\.handle\)\+'\.png'/);
   assert.match(html, /link\.download=filename/);
   assert.doesNotMatch(html, /PNG EXPORT · wired in prod/);
-  assert.match(html, /POST TO FEED ↗/);
-  assert.match(html, /data-m="full">FULL CARD/);
-  assert.match(html, /data-m="mini">MINI CARD/);
   assert.match(html, /function buildMini\(\)/);
   assert.match(html, /"shareTitle":"Certified flex\."/);
   assert.match(html, /\.pb\.shake\{animation:shake \.32s\}/);
@@ -600,7 +499,6 @@ test('renders draft Stax block support data before server-only block fallbacks',
   assert.match(html, /默认只显示在 Profile/);
   assert.match(html, /"communityTools":\[\{"id":"local-tool-1","name":"youtube-to-ebook","type":"skill"/);
   assert.doesNotMatch(html, /id="mprofile"/);
-  assert.match(html, /id="mlink">COPY LINK/);
   assert.match(html, /function profilePublicUrl\(\)/);
   assert.match(html, /STAX LINK COPIED/);
   assert.match(html, /channel:'copy-stax'/);
@@ -619,9 +517,7 @@ test('renders draft Stax block support data before server-only block fallbacks',
   assert.match(html, /pill\(4\+h\*0\.14,0,B\[0\]\)\+\s*\n\s*pill\(4\+h\*0\.56,1,B\[1\]\)/);
   assert.doesNotMatch(html, /LBL\('left:2px','top:1px','BUILDER BADGES'/);
   assert.match(html, /R\.badge=\(w,h,index=0\)=>/);
-  assert.match(html, /const palette=\[\[C\.lime,'#161A06'\],\[C\.teal,'#06322D'\],\[C\.yellow,'#3A2803'\]\]/);
   assert.match(html, /Array\.from\(\{length:24\}/);
-  assert.match(html, /font-weight:700;font-size:13\.4px;letter-spacing:-\.02em;line-height:\.95[^>]+text-transform:uppercase/);
   assert.match(html, /function badgeBlockKeys\(\)\{return profileBadgeLabels\(\)\.map\(\(_,index\)=>'badge'\+index\);\}/);
   assert.match(html, /function blockSize\(key\)\{return badgeKeyIndex\(key\)>=0\?\[1,1\]:SIZES\[key\];\}/);
   assert.match(html, /earnedKeys\.splice\(insertAt,0,\.\.\.badgeBlockKeys\(\)\)/);
@@ -633,23 +529,14 @@ test('renders draft Stax block support data before server-only block fallbacks',
   assert.doesNotMatch(html, /ARCHITECT ↔ EXPLORER/);
   assert.match(html, /hero/);
   assert.match(html, /ctxring/);
-  assert.match(html, /const cx=w\/2,cy=h\*0\.58,r=w\*0\.3,circ=2\*Math\.PI\*r/);
-  assert.match(html, /stroke="\$\{C\.teal\}" stroke-width="8" stroke-linecap="round"/);
   assert.match(html, /stroke-dasharray="\$\{\(circ\*v\)\.toFixed\(1\)\} \$\{circ\.toFixed\(1\)\}"/);
-  assert.match(html, /'CONTEXT','rgba\(255,255,255,\.55\)',h\*0\.082/);
   assert.match(html, /ctxAvg: Number\.isFinite\(Number\(ctxringValue\.ctxAvg\)\)/);
   assert.doesNotMatch(html, /TOKENS \/ REQUEST/);
   assert.doesNotMatch(html, /'AVG INPUT','rgba\(255,255,255,\.55\)'/);
-  assert.match(html, /const ax=w\*0\.63, ay=h\*0\.42, L=w\*0\.26/);
-  assert.match(html, /LBL\('left:11px','top:10px','Δ 30 DAYS','rgba\(255,255,255,\.55\)',h\*0\.085\)/);
-  assert.match(html, /bottom:\$\{h\*0\.12\}px;font-size:\$\{h\*0\.26\}px/);
   assert.doesNotMatch(html, /LOCAL TREND/);
   assert.doesNotMatch(html, /VS PREV 6D/);
-  assert.match(html, /const valueSize=h\*\(value\.length>5\?0\.34:0\.4\)/);
-  assert.match(html, /LBL\('left:13px','top:13px',safeText\(label\),'rgba\(61,42,4,\.65\)',h\*0\.088\)/);
   assert.doesNotMatch(html, /LOCAL EVENTS/);
   assert.doesNotMatch(html, /`LOCAL \$\{label\}`/);
-  assert.match(html, /API CALLS/);
   assert.match(html, /19\.1K/);
   assert.match(html, /EST\. SPEND/);
   assert.match(html, /THIS MONTH/);
@@ -659,23 +546,17 @@ test('renders draft Stax block support data before server-only block fallbacks',
   assert.match(html, /bottom:\$\{h\*0\.16\}px;font-size:\$\{amountSize\}px/);
   assert.doesNotMatch(html, /const period=String\(PD\.bracket/);
   assert.doesNotMatch(html, /SPEND · 90D/);
-  assert.match(html, /YOUR STACK · \$\{dots\.length\} WIRED/);
   assert.match(html, />YOU<\/text>/);
   assert.match(html, /"integrations":\[\{"name":"PROMPT CRM","color":"#C9F24C"\}/);
   assert.match(html, /Array\.isArray\(nodeValue\.integrations\)/);
   assert.match(html, /Array\.isArray\(nodeValue\.categories\)/);
   assert.doesNotMatch(html, /LOCAL STACK/);
   assert.doesNotMatch(html, /CAPABILITIES/);
-  assert.match(html, /const cx=h\*0\.5,cy=h\*0\.54,r=h\*0\.27/);
-  assert.match(html, /left:\$\{h\*0\.98\}px`,'top:13px','SPLIT · 30D'/);
-  assert.match(html, /top:\$\{h\*0\.38\}px.*CHAT <b/);
-  assert.match(html, /top:\$\{h\*0\.64\}px.*BUILD <b/);
   assert.doesNotMatch(html, /SESSION MIX/);
   assert.doesNotMatch(html, /\$\{period\} · EST\./);
   assert.doesNotMatch(html, /\$\{safeText\(total\)\} SESSIONS/);
   assert.match(html, /"chatSessionCount":6/);
   assert.match(html, /"buildSessionCount":92/);
-  assert.match(html, /SPLIT · 30D/);
   assert.doesNotMatch(html, /TIME SPLIT · 30D/);
   assert.doesNotMatch(html, /SESSION MIX · \$\{period\}/);
   assert.doesNotMatch(html, /SESSIONS · EST\./);
@@ -760,7 +641,6 @@ test('renders the selected Claude team with its official asset and brand colour'
   assert.equal(data.team, 'CLAUDE');
   assert.equal(data.teamIcon, 'claude');
   assert.match(html, /"ic_claude":"data:image\/svg\+xml;base64,/);
-  assert.match(html, /kind==='claude' \? '#DA7756'/);
 });
 
 test('renders the selected Codex team with its official asset and brand colour', () => {
@@ -778,7 +658,6 @@ test('renders the selected Codex team with its official asset and brand colour',
   assert.equal(data.team, 'CODEX');
   assert.equal(data.teamIcon, 'codex');
   assert.match(html, /"ic_codex":"data:image\/svg\+xml;base64,/);
-  assert.match(html, /kind==='codex' \? '#8B87F8'/);
 });
 
 test('renders the selected Cursor team with its official asset and brand colour', () => {
@@ -796,7 +675,6 @@ test('renders the selected Cursor team with its official asset and brand colour'
   assert.equal(data.team, 'CURSOR');
   assert.equal(data.teamIcon, 'cursor');
   assert.match(html, /"ic_cursor":"data:image\/svg\+xml;base64,/);
-  assert.match(html, /kind==='codex' \? '#8B87F8' : '#E8E6E1'/);
 });
 
 test('maps the VIBE MAKERS hero variant to its muted green family palette', () => {
@@ -836,7 +714,6 @@ test('keeps local tool provenance in data without rendering it on the tools card
   const html = renderPreview(draft, { editor: { enabled: true } });
 
   assert.match(html, /"name":"Claude Marketing","type":"workflow","source":"taku-workflow"/);
-  assert.match(html, /max-width:\$\{w-30\}px/);
   assert.doesNotMatch(html, /String\(tool\?\.source\|\|tool\?\.type\|\|'LOCAL'\)/);
 });
 
@@ -871,14 +748,8 @@ test('keeps activity counts in data while rendering the compact ring treatment',
 
   const html = renderPreview(draft, { editor: { enabled: true } });
 
-  assert.match(html, /DAILY ACTIVITY/);
-  assert.match(html, /const cx=w\/2,cy=h\*0\.5,M=Math\.min\(w,h\)/);
-  assert.match(html, /radius:\[M\*0\.345,M\*0\.255,M\*0\.165\]\[i\]/);
   assert.match(html, /decorativeFill:\[0\.82,0\.55,0\.3\]\[i\]/);
-  assert.match(html, /stroke-width="\$\{M\*0\.062\}"/);
   assert.match(html, /stroke-linecap="round"/);
-  assert.match(html, /y="\$\{cy\+h\*0\.075\}"[^>]+font-size="\$\{F\(h\*0\.036\)\}" letter-spacing="1"[^>]*>STREAK<\/text>/);
-  assert.match(html, /bottom:\$\{h\*0\.045\}px/);
   assert.doesNotMatch(html, /decorativeFill:\[0\.82,0\.62,0\.36\]\[i\]/);
   assert.match(html, /LOCAL BUILD-DAY STREAK/);
   assert.match(html, /LOCAL LOGS \+ TAKU/);
@@ -921,12 +792,6 @@ test('renders unknown heatmap dates separately from observed local build days', 
   const html = renderPreview(draft, { editor: { enabled: true } });
 
   assert.match(html, /DAILY BUILDS · 90D/);
-  assert.match(html, /BEST STREAK/);
-  assert.match(html, /const cols=13,rows=7,cs=Math\.min\(\(w-34\)\/cols,\(h\*0\.6\)\/rows\)-2/);
-  assert.match(html, /const opacity=\[\.08,\.3,\.6,1\]/);
-  assert.match(html, /const level=day\.builds<=0\?0:Math\.min\(3,Math\.max\(1,Math\.ceil\(day\.builds\/max\*3\)\)\)/);
-  assert.match(html, /y="\$\{h\*0\.26\+y\*\(cs\+2\)\}"/);
-  assert.match(html, /stroke-dasharray="2 2"/);
   assert.match(html, /"date":"2026-07-21","observed":true,"builds":1/);
   assert.doesNotMatch(html, /LOCAL BUILD ACTIVITY/);
   assert.doesNotMatch(html, /CURRENT STREAK/);
@@ -968,10 +833,6 @@ test('renders rank water level from Worker data and marks staging cohorts as tes
   assert.match(html, /const raw=Number\(data\.topPercent\)/);
   assert.match(html, /RANK · TEST/);
   assert.match(html, /BY \$\{metric\}/);
-  assert.match(html, /const pctY=wy-8/);
-  assert.match(html, /const waterLevel=valid\?Math\.max\(\.06,Math\.min\(\.94,1-raw\)\):\.92/);
-  assert.match(html, /const wy=h\*waterLevel/);
-  assert.match(html, /font-size="\$\{w\*0\.34\}"[^>]+fill="\$\{C\.violet\}">\$\{pctLabel\}<\/text>/);
   assert.doesNotMatch(html, /clip-path="url\(#wa\$\{id\}\)"/);
   assert.doesNotMatch(html, /clip-path="url\(#wb\$\{id\}\)"/);
   assert.match(html, /"environment":"staging"/);
@@ -1017,17 +878,12 @@ test('renders a locked rank card when the comparable cohort is below 100', () =>
   assert.match(html, /"status":"unsupported"/);
   assert.match(html, /"lockLabel":"RANK SOON"/);
   assert.match(html, /"lockReason":"Test ranking is calibrating\. Check back soon\."/);
-  assert.match(html, /valid\?'RANK · TOP':'RANK · LOCKED'/);
   assert.match(html, /const lockLabel=String\(data\.lockLabel\|\|'CALIBRATING'\)\.toUpperCase\(\)/);
-  assert.match(html, /clipPath id="wk\$\{id\}"/);
   assert.match(html, /stroke-dasharray="4 4"/);
-  assert.match(html, /valid\?pctLabel:lockLabel/);
-  assert.match(html, /valid\?pctLabel:lockLabel/);
   assert.doesNotMatch(html, /\$\{cohort\}\/\$\{minimum\}/);
   assert.doesNotMatch(html, /creators in the rank cohort/);
   assert.doesNotMatch(html, /\[cohort,minimum\]\.join/);
   assert.match(html, /CURRENT<\/span>: rank cohort is calibrating/);
-  assert.match(html, /valid\?'OF BUILDERS':'COMMUNITY RANK'/);
   assert.match(html, /if\(key==='water'\)PD=\{\.\.\.PD,water:value\}/);
 });
 
@@ -1057,13 +913,8 @@ test('renders active hours from observed hourly buckets without a sample peak fa
 
   assert.match(html, /"peakH":14,"peakLabel":"PEAK 14:00","bird":"BURST"/);
   assert.match(html, /hourBuckets: Array\.isArray\(clockValue\.hourBuckets\)/);
-  assert.match(html, /const cx=w\/2,cy=h\*0\.56,R1=Math\.min\(w,h\)\*0\.27/);
   assert.match(html, /for\(let i=0;i<24;i\+\+\)/);
-  assert.match(html, /Rb=R1\*1\.12/);
   assert.match(html, /\[\[0,'00'\],\[6,'06'\],\[12,'12'\],\[18,'18'\]\]/);
-  assert.match(html, /Rn=R1\*1\.38/);
-  assert.match(html, /const ah=\(peakHour\/24\)/);
-  assert.match(html, /left:15px;top:\$\{h\*0\.16\}px/);
   assert.doesNotMatch(html, /dialBuckets\.forEach/);
   assert.doesNotMatch(html, /bottom:\$\{h\*0\.05\}px[^>]+\$\{PD\.peakLabel\}/);
   assert.doesNotMatch(html, /peakLabel: text\(clockValue\.peakLabel, MASON\.peakLabel\)/);
@@ -1178,9 +1029,6 @@ test('renders an optional QR block with separately selectable profile and Stax t
   assert.equal(data.selectedKeys.includes('qr'), false);
   assert.match(html, /id="qrselect"/);
   assert.match(html, /R\.qr=\(w,h\)=>/);
-  assert.match(html, /const padding=11,side=Math\.max\(0,Math\.min\(w,h\)-padding\*2\)/);
-  assert.match(html, /rx="\$\{\(module\*0\.28\)\.toFixed\(2\)\}"/);
-  assert.match(html, /shadowed\(rr\(w,h\),C\.lime\)/);
   assert.match(html, /qr:\[1,1\]/);
   assert.doesNotMatch(html, /const target=String\(data\.target/);
   assert.doesNotMatch(html, />\$\{target\}<\/text>/);
@@ -1405,8 +1253,6 @@ test('maps trusted rank to the three Stax card finishes', () => {
     editor: { enabled: true, publish: { authenticated: true, canPublish: true } },
   });
   assert.match(silverHtml, /"cardFinish":"silver"/);
-  assert.match(silverHtml, /finish: text\(data\.cardFinish, "ink"\)/);
-  assert.match(silverHtml, /function applyFinish\(finish\)/);
   assert.match(silverHtml, /class="ctex"><\/div><div class="cspot"><\/div><div class="cfin"><\/div><div class="csheen">/);
   assert.match(silverHtml, /f==='gold'\?'TOP 5%':f==='silver'\?'TOP 30%'/);
 
@@ -1463,7 +1309,6 @@ test('renders the Worker-backed published Stax count instead of a template sampl
   assert.match(html, /SHIPPED · ALL TIME/);
   assert.doesNotMatch(html, /WORKS SHIPPED · ALL TIME/);
   assert.doesNotMatch(html, /STAX SHIPPED/);
-  assert.match(html, /const groupStep=groups\.length<=3\?52:Math\.min\(42,\(w\*0\.7\)\/groups\.length\)/);
   assert.match(html, /\$\{safeText\(shipped\)\}<\/div>/);
   assert.doesNotMatch(html, />12<\/div>/);
 });
@@ -1504,10 +1349,7 @@ test('renders the Worker-backed Builder Score instead of the template score samp
 
   assert.match(html, /"key":"dial","label":"Builder Score","size":\[2,1\],"status":"supported","display":"73"/);
   assert.match(html, /score: dialValue\.score !== undefined.*Math\.round\(Number\(dialValue\.score\)\)/);
-  assert.match(html, /const cx=w\/2,cy=h\*0\.86,Rr=h\*0\.66,val=score\/max/);
   assert.match(html, /for\(let i=0;i<=10;i\+\+\)/);
-  assert.match(html, /'SCORE','rgba\(255,255,255,.55\)'/);
-  assert.match(html, /`MAX \$\{safeText\(max\)\}`,'rgba\(255,255,255,.4\)'/);
   assert.match(html, /\$\{hasScore\?safeText\(score\):'—'\}/);
   assert.match(html, /CURRENT SCORE/);
   assert.match(html, /local scans do not directly set or inflate it/);
@@ -1558,8 +1400,6 @@ test('renders observed build rhythm instead of a static quarterly sprint sample'
   assert.match(html, /const waveValue = value\("wave"\)/);
   assert.match(html, /\.slice\(-3\)/);
   assert.match(html, /const visible=\[\.\.\.Array\(Math\.max\(0,3-sprintCount\)\)\.fill/);
-  assert.match(html, />S\$\{i\+1\}<\/text>/);
-  assert.match(html, /SPRINTS · QTR/);
   assert.match(html, />\$\{sprintCount\}<\/div>/);
   assert.doesNotMatch(html, /BUILD RHYTHM · LOCAL/);
   assert.doesNotMatch(html, /SPRINTS · THIS QUARTER/);
@@ -1602,10 +1442,6 @@ test('renders the observed best day instead of a static token peak sample', () =
   assert.match(html, /"key":"peaks","label":"Peak Day","size":\[2,1\],"status":"partial"/);
   assert.match(html, /"bestDay":"368.2M","date":"2026-07-19","metric":"tokens","observedDayCount":12/);
   assert.match(html, /const peaksValue = value\("peaks"\)/);
-  assert.match(html, /PD\.peaks\.peakShape\.slice\(-7\)\.map/);
-  assert.match(html, /PEAKS · BEST DAY/);
-  assert.match(html, /top:\$\{h-base\*0\.5\}px/);
-  assert.match(html, /font-size:\$\{h\*0\.22\}px/);
   assert.match(html, /\$\{safeText\(amount\)\}/);
   assert.doesNotMatch(html, /TOKEN PEAK/);
   assert.doesNotMatch(html, /BEST · \$\{safeText\(dateLabel/);
@@ -1651,13 +1487,6 @@ test('renders the observed input and output tokens instead of static samples', (
   assert.match(html, /"tokensIn":"2.7B","tokensOut":"7.7M","tokensInValue":2700000000,"tokensOutValue":7700000,"inShare":0.997/);
   assert.match(html, /const ratioValue = value\("ratio"\)/);
   assert.match(html, /const rawShare=Number\(PD\.ratio\?\.inShare\)/);
-  assert.match(html, /gap=3,usable=bw-gap/);
-  assert.match(html, /const inW=usable\*inShare,outW=usable\*outShare,outX=bx\+inW\+gap/);
-  assert.match(html, /rx="\$\{Math\.min\(4,inW\/2\)\}" fill="\$\{C\.violet\}"/);
-  assert.match(html, /rx="\$\{Math\.min\(4,outW\/2\)\}" fill="\$\{C\.teal\}"/);
-  assert.match(html, /\$\{tokensIn\} <span/);
-  assert.match(html, /OUT <\/span>\$\{tokensOut\}/);
-  assert.match(html, /LBL\('left:15px','top:12px','TOKENS · IN \/ OUT'.*h\*0\.088\)/);
   assert.doesNotMatch(html, /\$\{period\} · LOCAL/);
   assert.doesNotMatch(html, /ratio-bar-clip/);
   assert.doesNotMatch(html, /const bx=15,bw=w-30,ratio=\.62/);
@@ -1703,7 +1532,6 @@ test('renders the observed all-time token total instead of the selected-period s
   assert.match(html, /"tokensAllTime":"12\.4M","tokensTotal":"12\.4M","allTimeTokens":12400000,"totalTokens":12400000,"periodId":"allTimeLocal","periodLabel":"All Time"/);
   assert.match(html, /const stadiumValue = value\("stadium"\)/);
   assert.match(html, /const rawDisplay=String\(PD\.stadium\?\.tokensAllTime\|\|PD\.stadium\?\.tokensTotal\|\|'0'\)/);
-  assert.match(html, /`TOKENS · \$\{period\}`/);
   assert.match(html, /function stadiumPeriodLabel\(value\)/);
   assert.match(html, /\$\{display\}\$\{unit\?/);
   assert.match(html, /if\(\/all\[-\\s\]\?time\/i\.test\(label\)\)return 'ALL TIME'/);

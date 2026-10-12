@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { sendLocalStudioPreview } from './local-studio-preview.mjs';
 
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
@@ -348,6 +349,10 @@ async function createDraftResult(parsed) {
 }
 
 async function runDraft(parsed) {
+  if (parsed.flags.has('local-studio-preview')) {
+    const result = await createDraftResult(parsed);
+    return sendLocalStudioPreview(result, getFlag(parsed, 'local-studio-preview'));
+  }
   if (hasFlag(parsed, 'challenge-handoff') && (!hasFlag(parsed, 'editor') || hasFlag(parsed, 'local-editor'))) {
     throw new Error('Challenge requires the cloud Studio: use --editor without --local-editor.');
   }
@@ -456,6 +461,13 @@ async function readDraft(filePath) {
 }
 
 async function runEditor(parsed) {
+  if (parsed.flags.has('local-studio-preview')) {
+    const draftPath = getFlag(parsed, 'draft');
+    const result = draftPath
+      ? { draftPath: path.resolve(draftPath), draft: await readDraft(draftPath) }
+      : await createDraftResult(parsed);
+    return sendLocalStudioPreview(result, getFlag(parsed, 'local-studio-preview'));
+  }
   if (hasFlag(parsed, 'challenge-handoff') && hasFlag(parsed, 'local-editor')) {
     throw new Error('Challenge requires the cloud Studio, not --local-editor.');
   }
@@ -607,8 +619,8 @@ function printUsage() {
   node scripts/taku_creator.mjs doctor --json
   node scripts/taku_creator.mjs scan --json [--compact] [--workspace <dir>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal|aiBurn] [--persona-tone brainrot] [--persona-rules <json>] [--creator-metrics <json>] [--fetch-creator-stats] [--include-github-metrics] [--include-prompt-style]
   node scripts/taku_creator.mjs ai-setup --json [--workspace <dir>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal|aiBurn]
-  node scripts/taku_creator.mjs draft --json [--editor] [--local-editor] [--foreground-editor] [--workspace <dir>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal|aiBurn] [--persona-tone brainrot] [--persona-rules <json>] [--creator-metrics <json>] [--fetch-creator-stats] [--include-github-metrics] [--include-prompt-style] [--tool-limit <n>] [--display-tools <ids,names,or indexes>] [--hide-tools <ids,names,or indexes>] [--creation-limit <n>] [--display-creations <ids,names,or indexes>] [--hide-creations <ids,names,or indexes>] [--reuse-listing-drafts] [--worker-url <url>] [--site-url <url>] [--auth-site-url <url>] [--output <file>]
-  node scripts/taku_creator.mjs editor --json [--draft <file>] [--workspace <dir>] [--local-editor] [--port <port>] [--site-url <url>] [--auth-site-url <url>] [--worker-url <url>] [--reuse-listing-drafts]
+  node scripts/taku_creator.mjs draft --json [--editor] [--local-editor] [--local-studio-preview <url>] [--foreground-editor] [--workspace <dir>] [--usage-period today|last7Days|last30Days|last90Days|thisMonth|allTimeLocal|aiBurn] [--persona-tone brainrot] [--persona-rules <json>] [--creator-metrics <json>] [--fetch-creator-stats] [--include-github-metrics] [--include-prompt-style] [--tool-limit <n>] [--display-tools <ids,names,or indexes>] [--hide-tools <ids,names,or indexes>] [--creation-limit <n>] [--display-creations <ids,names,or indexes>] [--hide-creations <ids,names,or indexes>] [--reuse-listing-drafts] [--worker-url <url>] [--site-url <url>] [--auth-site-url <url>] [--output <file>]
+  node scripts/taku_creator.mjs editor --json [--draft <file>] [--workspace <dir>] [--local-editor] [--local-studio-preview <url>] [--port <port>] [--site-url <url>] [--auth-site-url <url>] [--worker-url <url>] [--reuse-listing-drafts]
   node scripts/taku_creator.mjs publish --json --draft <file> [--worker-url <url>] [--site-url <url>] [--auth-site-url <url>]
   node scripts/taku_creator.mjs center-list --json [--type <type>] [--status <status>] [--search <text>] [--limit <n>] [--offset <n>]
   node scripts/taku_creator.mjs center-show --json --item-id <id>

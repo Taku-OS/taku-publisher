@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
@@ -11,5 +11,9 @@ if (!output) {
 
 const resolved = path.resolve(output);
 mkdirSync(path.dirname(resolved), { recursive: true });
-writeFileSync(resolved, renderStaxStudioRuntime(), 'utf8');
+const externalStudioAssets = process.argv.includes('--with-assets');
+if (externalStudioAssets) {
+  cpSync(new URL('../assets/studio/', import.meta.url), path.dirname(resolved), { recursive: true });
+}
+writeFileSync(resolved, renderStaxStudioRuntime({ externalStudioAssets }), 'utf8');
 console.log(resolved);

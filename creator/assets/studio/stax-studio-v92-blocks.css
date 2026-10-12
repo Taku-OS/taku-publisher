@@ -1,0 +1,1867 @@
+/* Stax Studio v9.2 block treatment.
+ * Loaded after stax-studio-runtime.html's inline styles. Block classes also
+ * apply to publish, export, Intro, and Guide previews. Legacy overrides use
+ * data-block-key on board blocks, dock chips, and standalone previews. */
+
+@font-face {
+  font-family: "Doto";
+  src: url("/studio/fonts/doto-variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Space Grotesk v92";
+  src: url("/studio/fonts/space-grotesk-v92.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+/* Use the designer's variable face for the runtime's existing family name too.
+ * The legacy embedded face only advertises weights 500–700, so 400 was still
+ * rendered with the heavier face even when component styles requested 400. */
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/studio/fonts/space-grotesk-v92.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+}
+
+:root {
+  --v92-block-ink: #1b1b1b;
+  --v92-block-muted: rgba(0, 0, 0, .48);
+  --v92-block-shadow: 0 1px 2px -1px rgba(0, 0, 0, .1),
+    0 1px 3px rgba(0, 0, 0, .05);
+}
+
+.v92-hero-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+}
+
+.v92-hero-screen {
+  position: absolute;
+  inset: 6px;
+  overflow: hidden;
+  border-radius: 8px;
+  background-image: radial-gradient(circle, rgba(0, 0, 0, .06) 0 .8px, transparent 1.1px);
+  background-size: 4.5px 4.5px;
+  box-shadow: inset 0 .5px 1px rgba(0, 0, 0, .14);
+}
+
+.v92-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, .62);
+  color: rgba(0, 0, 0, .8);
+  font-family: "Hanken Grotesk", "DM Sans", sans-serif;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* The designer's three rank treatments share the same real percentile. */
+.v92-rank-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: calc(12 * var(--rank-unit));
+  background: #fff;
+  box-shadow: 0 1px 2px -1px rgba(0, 0, 0, .1),
+    0 1px 3px rgba(0, 0, 0, .05), 0 0 0 .5px rgba(0, 0, 0, .05);
+}
+
+.v92-rank-block.is-ink {
+  background: #1b1b1b url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .52 0 0 0 0 .52 0 0 0 0 .52 0 0 0 .5 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: calc(160 * var(--rank-unit)) calc(160 * var(--rank-unit));
+}
+
+.v92-rank-label {
+  position: absolute;
+  left: calc(12 * var(--rank-unit));
+  top: calc(12 * var(--rank-unit));
+  color: rgba(0, 0, 0, .64);
+  font: 400 calc(11 * var(--rank-unit))/1.15 "Space Grotesk", system-ui, sans-serif;
+  letter-spacing: .03em;
+  white-space: nowrap;
+}
+
+.v92-rank-value {
+  position: absolute;
+  left: calc(11 * var(--rank-unit));
+  bottom: calc(12 * var(--rank-unit));
+  color: #1b1b1b;
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-size: calc(36 * var(--rank-unit));
+  font-weight: 400;
+  font-variation-settings: normal;
+  line-height: .9;
+  letter-spacing: -.045em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.v92-rank-value small {
+  margin-left: .06em;
+  color: rgba(0, 0, 0, .48);
+  font-size: .5em;
+  letter-spacing: -.01em;
+}
+
+.v92-rank-led {
+  position: absolute;
+  right: calc(13 * var(--rank-unit));
+  top: calc(14 * var(--rank-unit));
+  width: calc(6 * var(--rank-unit));
+  height: calc(6 * var(--rank-unit));
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .16);
+}
+
+.v92-rank-block.is-ink .v92-rank-label {
+  color: rgba(255, 255, 255, .48);
+}
+
+.v92-rank-block.is-ink .v92-rank-value {
+  bottom: calc(11 * var(--rank-unit));
+  color: rgba(255, 255, 255, .92);
+  font-family: "Doto", ui-monospace, monospace;
+  font-size: calc(40 * var(--rank-unit));
+  font-weight: 900;
+  font-variation-settings: "ROND" 100, "wght" 900;
+  letter-spacing: -.02em;
+}
+
+.v92-rank-block.is-ink .v92-rank-value small {
+  margin-left: -.04em;
+  color: rgba(255, 255, 255, .48);
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-size: .42em;
+  font-weight: 400;
+  font-variation-settings: normal;
+  letter-spacing: 0;
+}
+
+.v92-rank-block.is-ink .v92-rank-led {
+  right: calc(12 * var(--rank-unit));
+  top: calc(13 * var(--rank-unit));
+  width: calc(8 * var(--rank-unit));
+  height: calc(8 * var(--rank-unit));
+  background: #ff5a1f;
+  box-shadow: 0 0 0 3px rgba(255, 90, 31, .16), 0 0 12px rgba(255, 90, 31, .7);
+  animation: v92-rank-breathe 2.6s ease-in-out infinite;
+}
+
+@keyframes v92-rank-breathe {
+  50% {
+    box-shadow: 0 0 0 4px rgba(255, 90, 31, .1), 0 0 18px rgba(255, 90, 31, .95);
+  }
+}
+
+.v92-rank-block.is-rare .v92-rank-value {
+  left: calc(10 * var(--rank-unit));
+  font-size: calc(36 * var(--rank-unit));
+}
+
+.v92-rank-dot {
+  display: inline-block;
+  width: .13em;
+  height: .13em;
+  margin: 0 .07em;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: .02em;
+  font-style: normal;
+}
+
+.v92-rank-block > .v92-rank-orbit {
+  position: absolute;
+  inset: auto;
+  right: calc(7 * var(--rank-unit));
+  top: calc(7 * var(--rank-unit));
+  width: calc(22 * var(--rank-unit));
+  height: calc(22 * var(--rank-unit));
+}
+
+.v92-rank-spin {
+  animation: v92-rank-spin 5.5s linear infinite;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+
+@keyframes v92-rank-spin {
+  to { transform: rotate(360deg); }
+}
+
+.v92-team-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+}
+
+.v92-team-label {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  color: rgba(0, 0, 0, .55);
+  font: 400 11px/1.15 "Space Grotesk", sans-serif;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.v92-team-icon {
+  position: absolute;
+  left: 12px;
+  top: 42px;
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+}
+
+.v92-team-name {
+  position: absolute;
+  left: 58px;
+  top: 48px;
+  color: var(--v92-block-ink);
+  font: 400 30px/.9 "Space Grotesk", sans-serif;
+  letter-spacing: -.045em;
+  white-space: nowrap;
+}
+
+.v92-type-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+  text-align: left;
+}
+
+.v92-type-title {
+  left: 15px;
+  top: 15px;
+  color: rgba(0, 0, 0, .4);
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-weight: 400;
+  letter-spacing: .03em;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.v92-basic-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+  text-align: left;
+}
+
+.v92-basic-screen {
+  position: absolute;
+  inset: 6px;
+  overflow: hidden;
+  border-radius: 8px;
+  background-color: #C4DFCB;
+  background-image: radial-gradient(circle, rgba(0, 0, 0, .06) 0 .8px, transparent 1.1px);
+  background-size: 4.5px 4.5px;
+  box-shadow: inset 0 .5px 1px rgba(0, 0, 0, .14);
+}
+
+.v92-basic-label {
+  left: 9px;
+  top: 8px;
+  color: rgba(0, 0, 0, .64);
+  font: 400 11px/1.15 "Space Grotesk", sans-serif;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.v92-basic-value {
+  left: 8px;
+  bottom: 7px;
+  color: rgba(0, 0, 0, .92);
+  font-family: "Doto", "Space Mono", monospace;
+  font-weight: 900;
+  font-variation-settings: "ROND" 100, "wght" 900;
+  letter-spacing: -.02em;
+  line-height: .9;
+  white-space: nowrap;
+}
+
+.v92-water-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+}
+
+.v92-water-screen {
+  position: absolute;
+  inset: 6px;
+  overflow: hidden;
+  border-radius: 8px;
+  background-color: #d8d5f1;
+  background-image: radial-gradient(circle, rgba(0, 0, 0, .06) 0 .8px, transparent 1.1px);
+  background-size: 4.5px 4.5px;
+  box-shadow: inset 0 .5px 1px rgba(0, 0, 0, .14);
+}
+
+.v92-water-fill {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: rgba(0, 0, 0, .07);
+}
+
+.v92-water-divider {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.v92-water-heading,
+.v92-water-subtitle,
+.v92-water-number,
+.v92-water-footer {
+  position: absolute;
+  right: 0;
+  left: 0;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.v92-water-heading {
+  top: 9px;
+  color: rgba(0, 0, 0, .64);
+  font: 400 11px/1.15 "Space Grotesk", sans-serif;
+  letter-spacing: .03em;
+}
+
+.v92-water-subtitle {
+  top: 26px;
+  color: rgba(0, 0, 0, .48);
+  font: 400 8px/1.15 "Space Grotesk", sans-serif;
+  letter-spacing: .03em;
+}
+
+.v92-water-number {
+  color: var(--v92-block-ink);
+  font: 900 28px/.9 "Doto", "Space Mono", monospace;
+  font-variation-settings: "ROND" 100, "wght" 900;
+  letter-spacing: -.02em;
+}
+
+.v92-water-number small {
+  margin-left: -.04em;
+  color: var(--v92-block-muted);
+  font: 400 .42em/.9 "Space Grotesk", sans-serif;
+  font-variation-settings: normal;
+  letter-spacing: 0;
+}
+
+.v92-water-number.is-message {
+  font: 500 10px/1.1 "Space Grotesk", sans-serif;
+  letter-spacing: 0;
+}
+
+.v92-water-footer {
+  bottom: 9px;
+  color: rgba(0, 0, 0, .64);
+  font: 400 11px/1.3 "Hanken Grotesk", "DM Sans", sans-serif;
+}
+
+.v92-ratio-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow), 0 0 0 .5px rgba(0, 0, 0, .05);
+  color: var(--v92-block-ink);
+}
+
+.v92-ratio-label {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  color: rgba(0, 0, 0, .64);
+  font: 400 11px/1.15 "Space Grotesk v92", sans-serif;
+  letter-spacing: .03em;
+}
+
+.v92-ratio-bars {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+.v92-ratio-value {
+  position: absolute;
+  bottom: 12px;
+  color: var(--v92-block-ink);
+  font: 400 22px/.9 "Space Grotesk v92", sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.045em;
+  white-space: nowrap;
+}
+
+.v92-ratio-value.is-in { left: 12px; }
+.v92-ratio-value.is-out { right: 12px; }
+
+.v92-ratio-value small {
+  margin-left: .06em;
+  color: var(--v92-block-muted);
+  font-size: .5em;
+  letter-spacing: -.01em;
+}
+
+.v92-stadium-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 48px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow), 0 0 0 .5px rgba(0, 0, 0, .05);
+}
+
+.v92-stadium-screen {
+  position: absolute;
+  inset: 6px;
+  overflow: hidden;
+  border-radius: 42px;
+  background-color: #ece5cf;
+  background-image: radial-gradient(circle, rgba(0, 0, 0, .06) 0 .8px, transparent 1.1px);
+  background-size: 4.5px 4.5px;
+  box-shadow: inset 0 .5px 1px rgba(0, 0, 0, .14);
+}
+
+.v92-stadium-label {
+  position: absolute;
+  left: 30px;
+  top: 10px;
+  color: rgba(0, 0, 0, .64);
+  font: 400 11px/1.15 "Space Grotesk v92", sans-serif;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.v92-stadium-value {
+  position: absolute;
+  left: 28px;
+  bottom: 7px;
+  color: rgba(0, 0, 0, .92);
+  font: 900 36px/.9 "Doto", "Space Mono", monospace;
+  font-variation-settings: "ROND" 100, "wght" 900;
+  letter-spacing: -.02em;
+  white-space: nowrap;
+}
+
+.v92-stadium-dot {
+  display: inline-block;
+  width: .13em;
+  height: .13em;
+  margin: 0 .07em;
+  overflow: hidden;
+  border-radius: 50%;
+  background: currentColor;
+  text-indent: -999px;
+  vertical-align: .02em;
+}
+
+.v92-stadium-value small {
+  margin-left: -.04em;
+  color: var(--v92-block-muted);
+  font: 400 .42em/.9 "Space Grotesk v92", sans-serif;
+  font-variation-settings: normal;
+  letter-spacing: 0;
+}
+
+.v92-ctxring-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow), 0 0 0 .5px rgba(0, 0, 0, .05);
+  color: var(--v92-block-ink);
+}
+
+.v92-ctxring-label {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  color: rgba(0, 0, 0, .64);
+  font: 400 11px/1.15 "Space Grotesk v92", sans-serif;
+  letter-spacing: .03em;
+}
+
+.v92-ctxring-graphic {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+.v92-ctxring-value {
+  position: absolute;
+  left: 0;
+  right: 0;
+  color: var(--v92-block-ink);
+  font: 400 16px/.9 "Space Grotesk v92", sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.045em;
+  text-align: center;
+  white-space: nowrap;
+  transform: translateY(-50%);
+}
+
+.v92-ctxring-value small {
+  margin-left: .06em;
+  color: var(--v92-block-muted);
+  font-size: .5em;
+  letter-spacing: -.01em;
+}
+
+.v92-dots-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+}
+
+.v92-dots-label {
+  left: 12px;
+  top: 12px;
+  color: rgba(0, 0, 0, .64);
+  font: 400 11px/1.15 "Space Grotesk", sans-serif;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.v92-dots-metrics {
+  position: absolute;
+  inset: 37px 12px 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: end;
+  gap: 8px;
+}
+
+.v92-dots-block .v92-dots-matrix {
+  position: static;
+  inset: auto;
+  display: block;
+  width: 100%;
+  max-width: 110px;
+  height: auto;
+  margin-bottom: 6px;
+}
+
+.v92-dots-value {
+  min-width: 0;
+  color: var(--v92-block-ink);
+  font: 400 40px/.9 "Space Grotesk", sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.045em;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.v92-dots-value small {
+  color: var(--v92-block-muted);
+  font-size: .55em;
+  letter-spacing: -.01em;
+}
+
+.v92-vsavg-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+}
+
+.v92-vsavg-title {
+  left: 12px;
+  top: 12px;
+  right: 74px;
+  color: rgba(0, 0, 0, .64);
+  font: 400 11px/1.15 "Space Grotesk", sans-serif;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.v92-vsavg-delta {
+  right: 12px;
+  top: 10px;
+  color: var(--v92-block-ink);
+  font: 400 22px/.9 "Space Grotesk", sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.045em;
+  white-space: nowrap;
+}
+
+.v92-vsavg-delta small {
+  color: var(--v92-block-muted);
+  font-size: .5em;
+  letter-spacing: -.01em;
+}
+
+.v92-vsavg-chart {
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.v92-vsavg-label {
+  left: 12px;
+  color: var(--v92-block-muted);
+  font: 400 12px/1.2 "Hanken Grotesk", "DM Sans", sans-serif;
+}
+
+.v92-vsavg-you {
+  top: 42px;
+}
+
+.v92-vsavg-avg {
+  top: 64px;
+}
+
+.v92-tally-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+}
+
+.v92-tally-title {
+  left: 12px;
+  top: 12px;
+  color: rgba(0, 0, 0, .64);
+  font: 400 11px/1.15 "Space Grotesk", sans-serif;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.v92-tally-marks {
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.v92-tally-value {
+  right: 12px;
+  bottom: 12px;
+  color: var(--v92-block-ink);
+  font: 400 40px/.9 "Space Grotesk", sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.045em;
+  white-space: nowrap;
+}
+
+.v92-dial-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+}
+
+.v92-dial-dots {
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.v92-dial-knob {
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, .08);
+  border-radius: 50%;
+  background-color: #1b1b1b;
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, .09) 0 .45px, transparent .8px),
+    radial-gradient(circle, rgba(0, 0, 0, .16) 0 .45px, transparent .8px);
+  background-size: 3px 3px, 4px 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .25), inset 0 1px 0 rgba(255, 255, 255, .08);
+}
+
+.v92-dial-point {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff5a1f;
+}
+
+.v92-dial-label {
+  left: 102px;
+  top: 13px;
+  color: rgba(0, 0, 0, .64);
+  font: 400 11px/1.15 "Space Grotesk", sans-serif;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.v92-dial-score {
+  left: 101px;
+  top: 32px;
+  color: var(--v92-block-ink);
+  font: 400 36px/.9 "Space Grotesk", sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.045em;
+  white-space: nowrap;
+}
+
+.v92-dial-max {
+  left: 102px;
+  bottom: 12px;
+  color: var(--v92-block-muted);
+  font: 400 11px/1.3 "Hanken Grotesk", "DM Sans", sans-serif;
+  white-space: nowrap;
+}
+
+.v92-wave-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+}
+
+.v92-wave-screen {
+  position: absolute;
+  inset: 6px;
+  overflow: hidden;
+  border-radius: 8px;
+  background-color: #d8d4f2;
+  background-image: radial-gradient(circle, rgba(0, 0, 0, .07) 0 .8px, transparent 1.1px);
+  background-size: 4.5px 4.5px;
+  box-shadow: inset 0 .5px 1px rgba(0, 0, 0, .12);
+}
+
+.v92-wave-title {
+  left: 9px;
+  top: 8px;
+  color: rgba(0, 0, 0, .64);
+  font: 400 11px/1.15 "Space Grotesk", sans-serif;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.v92-wave-chart {
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.v92-wave-step {
+  top: 69px;
+  width: 24px;
+  color: rgba(0, 0, 0, .64);
+  font: 400 10px/1.2 "Hanken Grotesk", "DM Sans", sans-serif;
+  text-align: center;
+}
+
+.v92-wave-count {
+  right: 8px;
+  bottom: 8px;
+  color: var(--v92-block-ink);
+  font: 900 34px/.9 "Doto", "Space Mono", monospace;
+  font-variation-settings: "ROND" 100, "wght" 900;
+  letter-spacing: -.02em;
+  white-space: nowrap;
+}
+
+.v92-peaks-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+}
+
+.v92-peaks-title {
+  left: 12px;
+  top: 12px;
+  color: rgba(0, 0, 0, .64);
+  font: 400 11px/1.15 "Space Grotesk", sans-serif;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.v92-peaks-value {
+  right: 12px;
+  top: 10px;
+  color: var(--v92-block-ink);
+  font: 400 24px/.9 "Space Grotesk", sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.045em;
+  white-space: nowrap;
+}
+
+.v92-peaks-value small {
+  margin-left: .02em;
+  color: var(--v92-block-muted);
+  font-size: .5em;
+  letter-spacing: -.01em;
+}
+
+.v92-peaks-chart {
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.v92-trend-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+}
+
+.v92-trend-title {
+  left: 12px;
+  top: 12px;
+  color: rgba(0, 0, 0, .64);
+  font: 400 11px/1.15 "Space Grotesk", sans-serif;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.v92-trend-icon {
+  top: 9px;
+  right: 10px;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 6px;
+  background: #94e9a1;
+  color: #126b20;
+}
+
+.v92-trend-icon.is-negative {
+  background: #f5c2b0;
+  color: #9d351b;
+}
+
+.v92-trend-icon svg {
+  position: static;
+  inset: auto;
+  display: block;
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+  stroke: none;
+  transform: rotate(45deg);
+}
+
+.v92-trend-icon.is-negative svg {
+  transform: rotate(135deg);
+}
+
+.v92-trend-value {
+  left: 11px;
+  bottom: 12px;
+  color: var(--v92-block-ink);
+  font: 400 30px/.9 "Space Grotesk", sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.045em;
+  white-space: nowrap;
+}
+
+.v92-trend-value small {
+  margin-left: .02em;
+  color: var(--v92-block-muted);
+  font-size: .5em;
+  letter-spacing: -.01em;
+}
+
+.v92-badge-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+}
+
+.v92-badge-screen {
+  position: absolute;
+  inset: 6px;
+  overflow: hidden;
+  border-radius: 8px;
+  background-color: var(--v92-badge-screen);
+  background-image: radial-gradient(circle, rgba(0, 0, 0, .06) 0 .8px, transparent 1.1px);
+  background-size: 4.5px 4.5px;
+  box-shadow: inset 0 .5px 1px rgba(0, 0, 0, .14);
+}
+
+.v92-badge-title {
+  position: absolute;
+  left: 9px;
+  top: 8px;
+  color: rgba(0, 0, 0, .64);
+  font: 400 11px/1.15 "Space Grotesk v92", sans-serif;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.v92-badge-screen > svg.v92-badge-mark {
+  position: absolute;
+  inset: auto 7px auto auto;
+  top: 6px;
+  width: 18px;
+  height: 18px;
+}
+
+.v92-badge-name {
+  position: absolute;
+  left: 9px;
+  right: 6px;
+  bottom: 8px;
+  color: var(--v92-block-ink);
+  font: 400 15px/1 "Space Grotesk v92", sans-serif;
+  letter-spacing: -.02em;
+}
+
+.v92-cgauge-block,
+.v92-rings-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+}
+
+.v92-cgauge-dots,
+.v92-rings-graphic {
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.v92-cgauge-title,
+.v92-rings-title {
+  left: 12px;
+  top: 12px;
+  color: rgba(0, 0, 0, .64);
+  font: 400 11px/1.15 "Space Grotesk", sans-serif;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.v92-cgauge-value {
+  left: 0;
+  right: 0;
+  top: 84px;
+  color: var(--v92-block-ink);
+  font: 400 40px/.9 "Space Grotesk", sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.045em;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.v92-cgauge-value small {
+  margin-left: .02em;
+  color: var(--v92-block-muted);
+  font-size: .5em;
+  letter-spacing: -.01em;
+}
+
+.v92-cgauge-caption {
+  left: 0;
+  right: 0;
+  top: 128px;
+  color: var(--v92-block-muted);
+  font: 400 12px/1.3 "Hanken Grotesk", "DM Sans", sans-serif;
+  text-align: center;
+}
+
+.v92-cgauge-reset {
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  color: var(--v92-block-muted);
+  font: 400 11px/1.3 "Hanken Grotesk", "DM Sans", sans-serif;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.v92-rings-streak {
+  left: 0;
+  right: 0;
+  top: 79px;
+  color: var(--v92-block-ink);
+  font: 900 26px/.9 "Doto", "Space Mono", monospace;
+  font-variation-settings: "ROND" 100, "wght" 900;
+  letter-spacing: -.02em;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.v92-rings-caption {
+  left: 0;
+  right: 0;
+  top: 107px;
+  color: var(--v92-block-muted);
+  font: 400 10px/1.3 "Hanken Grotesk", "DM Sans", sans-serif;
+  text-align: center;
+}
+
+.v92-rings-legend {
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--v92-block-muted);
+  font: 400 11px/1.2 "Hanken Grotesk", "DM Sans", sans-serif;
+}
+
+.v92-rings-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--v92-block-muted);
+  white-space: nowrap;
+}
+
+.v92-rings-legend-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--v92-ring-color);
+}
+
+.v92-qr-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+}
+
+.v92-qr-code {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+}
+
+.v92-clock-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+}
+
+.v92-clock-title,
+.v92-clock-bird,
+.v92-clock-peak {
+  position: absolute;
+  white-space: nowrap;
+}
+
+.v92-clock-title {
+  left: 12px;
+  top: 12px;
+  color: rgba(0, 0, 0, .64);
+  font: 400 11px/1.15 "Space Grotesk", sans-serif;
+  letter-spacing: .03em;
+}
+
+.v92-clock-bird {
+  right: 12px;
+  top: 11px;
+  color: rgba(0, 0, 0, .8);
+  font: 500 12px/1.3 "Hanken Grotesk", "DM Sans", sans-serif;
+}
+
+.v92-clock-peak {
+  left: 12px;
+  top: 30px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--v92-block-muted);
+  font: 400 12px/1.3 "Hanken Grotesk", "DM Sans", sans-serif;
+}
+
+.v92-clock-peak i {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: #FF5A1F;
+}
+
+.v92-clock-chart {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+.v92-heat-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+}
+
+.v92-heat-title {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  color: rgba(0, 0, 0, .64);
+  font: 400 11px/1.15 "Space Grotesk", sans-serif;
+  letter-spacing: .03em;
+}
+
+.v92-heat-chart {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+.v92-heat-legend {
+  position: absolute;
+  right: 12px;
+  top: 140px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: rgba(0, 0, 0, .36);
+  font: 400 10px/1.3 "Hanken Grotesk", "DM Sans", sans-serif;
+  white-space: nowrap;
+}
+
+.v92-heat-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.v92-heat-streak-label {
+  position: absolute;
+  left: 12px;
+  bottom: 14px;
+  color: var(--v92-block-muted);
+  font: 400 12px/1.3 "Hanken Grotesk", "DM Sans", sans-serif;
+}
+
+.v92-heat-streak-value {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  color: var(--v92-block-ink);
+  font: 400 26px/.9 "Space Grotesk", sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.045em;
+  white-space: nowrap;
+}
+
+.v92-heat-streak-value small {
+  margin-left: .06em;
+  color: var(--v92-block-muted);
+  font-size: .5em;
+  letter-spacing: -.01em;
+}
+
+.v92-bars90-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+}
+
+.v92-bars90-label {
+  position: absolute;
+  left: 12px;
+  right: 88px;
+  top: 12px;
+  color: rgba(0, 0, 0, .65);
+  font: 400 11px/1.15 "Space Grotesk", sans-serif;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.v92-bars90-value {
+  position: absolute;
+  right: 12px;
+  top: 10px;
+  color: var(--v92-block-ink);
+  font: 400 24px/.9 "Space Grotesk", sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.045em;
+  white-space: nowrap;
+}
+
+.v92-bars90-value small {
+  margin-left: .06em;
+  color: var(--v92-block-muted);
+  font-size: .5em;
+  letter-spacing: -.01em;
+}
+
+.v92-bars90-dots {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.v92-modelmix-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+  text-align: left;
+}
+
+.v92-modelmix-title {
+  left: 12px;
+  top: 12px;
+  color: var(--v92-block-muted);
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-weight: 400;
+  letter-spacing: .03em;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.v92-modelcost-title {
+  color: rgba(0, 0, 0, .58);
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 400;
+  letter-spacing: .025em;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.v92-modelcost-value {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  color: var(--v92-block-ink);
+  font-family: "Space Grotesk", sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  letter-spacing: -.055em;
+  line-height: .92;
+  white-space: nowrap;
+}
+
+.v92-modelcost-currency {
+  margin-right: .04em;
+  color: var(--v92-block-muted);
+  font-size: .48em;
+  letter-spacing: -.02em;
+}
+
+.v92-modelcost-footnote {
+  color: var(--v92-block-muted);
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 400;
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.v92-seal-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+}
+
+.v92-seal-ring {
+  position: absolute;
+  inset: 0;
+}
+
+.v92-seal-title,
+.v92-seal-number,
+.v92-seal-caption,
+.v92-seal-edition {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+}
+
+.v92-seal-title {
+  top: 58px;
+  color: rgba(0, 0, 0, .55);
+  font: 400 11px/1.15 "Space Grotesk", sans-serif;
+  text-transform: uppercase;
+}
+
+.v92-seal-number {
+  top: 80px;
+  overflow: hidden;
+  color: var(--v92-block-ink);
+  font: 900 30px/.9 "Doto", "Space Mono", monospace;
+  font-variation-settings: "ROND" 100, "wght" 900;
+  white-space: nowrap;
+}
+
+.v92-seal-caption {
+  top: 116px;
+  color: rgba(0, 0, 0, .55);
+  font: 400 12px/1.3 "DM Sans", sans-serif;
+}
+
+.v92-seal-edition {
+  top: 134px;
+  color: rgba(0, 0, 0, .48);
+  font: 400 11px/1.3 "DM Sans", sans-serif;
+}
+
+/* Intro, Guide, and Mini previews share the board's paper surfaces and type styling. */
+/* Replace the old offset black extrusion with the smaller v9.2 lift. */
+:is(#pboard .pb, .v92-block-preview, #dockscroll .tchip .tv > div, .staxmini .pb)
+  > svg:first-child > path[transform][fill="rgba(0,0,0,.5)"] {
+  fill: rgba(0, 0, 0, .07) !important;
+  transform: translate(1px, 2px);
+}
+
+/* Dark legacy modules become paper components. The rare tier finishes retain
+ * their ink material and animated rank signals. */
+:is(#pboard .pb:not([data-block-key="tier1"]):not([data-block-key="aura"]),
+    #dockscroll .tchip:not([data-block-key="tier1"]):not([data-block-key="aura"]) .tv > div,
+    .staxmini .pb,
+    .v92-block-preview:not([data-block-key="tier1"]):not([data-block-key="aura"]))
+  > svg:first-child > path[fill="#1E1E25"],
+:is(#pboard .pb, .v92-block-preview, #dockscroll .tchip .tv > div, .staxmini .pb)
+  > svg:first-child > path[fill="#111116"] {
+  fill: #fff !important;
+}
+
+/* Certain charts draw their substrate after a defs or decorative layer. */
+:is(#pboard .pb, .v92-block-preview, #dockscroll .tchip .tv > div, .staxmini .pb)
+  > svg:first-child > path[fill="#17171E"] {
+  fill: #fff !important;
+}
+
+/* A STANDARD rank is paper; SWEEP, NEON, and LASER continue to use their
+ * existing distinct finishes and the actual rank label. */
+:is(#pboard .pb[data-block-key="tier1"] > svg:first-child:not(:has(> path[stroke="#C9F24C"])),
+    .v92-block-preview[data-block-key="tier1"] > svg:first-child:not(:has(> path[stroke="#C9F24C"])),
+    #dockscroll .tchip[data-block-key="tier1"] .tv > div > svg:first-child:not(:has(> path[stroke="#C9F24C"])))
+  > path[fill="#1E1E25"] {
+  fill: #fff !important;
+}
+:is(#pboard .pb[data-block-key="tier1"]:has(> svg:first-child > path[fill="#1E1E25"]):not(:has(> svg:first-child > path[stroke="#C9F24C"])),
+    .v92-block-preview[data-block-key="tier1"]:has(> svg:first-child > path[fill="#1E1E25"]):not(:has(> svg:first-child > path[stroke="#C9F24C"])),
+    #dockscroll .tchip[data-block-key="tier1"]:has(.tv > div > svg:first-child > path[fill="#1E1E25"]):not(:has(.tv > div > svg:first-child > path[stroke="#C9F24C"])))
+  :is(.ct.k, .ct.v) {
+  color: var(--v92-block-ink) !important;
+}
+
+/* White cards use the design system's compact display labels and numerals.
+ * This set is intentionally limited to formerly dark cards and the hero. */
+:is(#pboard .pb, .v92-block-preview, #dockscroll .tchip, .staxmini .pb):is(
+    [data-block-key="hero"], [data-block-key="type"],
+    [data-block-key="team"], [data-block-key="social"],
+    [data-block-key="rings"], [data-block-key="ctxring"],
+    [data-block-key="splitring"], [data-block-key="pie"],
+    [data-block-key="modelcost"], [data-block-key="cgauge"],
+    [data-block-key="node"], [data-block-key="dots"],
+    [data-block-key="ratio"], [data-block-key="dial"],
+    [data-block-key="vsavg"], [data-block-key="heat"],
+    [data-block-key="water"],
+    [data-block-key="clock"], [data-block-key="trend"])
+  .ct.k {
+  color: var(--v92-block-muted) !important;
+  font-family: "Space Grotesk", system-ui, sans-serif !important;
+  font-weight: 400 !important;
+  letter-spacing: .03em !important;
+}
+
+:is(#pboard .pb, .v92-block-preview, #dockscroll .tchip, .staxmini .pb):is(
+    [data-block-key="hero"], [data-block-key="type"],
+    [data-block-key="team"], [data-block-key="social"],
+    [data-block-key="rings"], [data-block-key="ctxring"],
+    [data-block-key="splitring"], [data-block-key="pie"],
+    [data-block-key="modelcost"], [data-block-key="cgauge"],
+    [data-block-key="node"], [data-block-key="dots"],
+    [data-block-key="ratio"], [data-block-key="dial"],
+    [data-block-key="vsavg"], [data-block-key="heat"],
+    [data-block-key="water"],
+    [data-block-key="clock"], [data-block-key="trend"])
+  .ct.v {
+  color: var(--v92-block-ink) !important;
+  font-weight: 400 !important;
+  letter-spacing: -.045em !important;
+}
+
+/* Type code uses the designer's dotted Doto face on the paper block. */
+:is(#pboard .pb[data-block-key="type"],
+    .v92-block-preview[data-block-key="type"],
+    #dockscroll .tchip[data-block-key="type"],
+    .staxmini .pb[data-block-key="type"],
+    .v92-type-block) .type-code {
+  font-family: "Doto", monospace !important;
+  font-weight: 900 !important;
+  font-variation-settings: "ROND" 100, "wght" 900;
+  line-height: .9;
+  letter-spacing: -.02em;
+}
+:is(#pboard .pb[data-block-key="type"],
+    .v92-block-preview[data-block-key="type"],
+    #dockscroll .tchip[data-block-key="type"],
+    .staxmini .pb[data-block-key="type"])
+  > .ct:not(.k),
+#dockscroll .tchip[data-block-key="type"] .tv > div > .ct:not(.k) {
+  color: var(--v92-block-ink) !important;
+}
+
+/* Social must be readable after its dark substrate is replaced. */
+:is(#pboard .pb[data-block-key="social"],
+    .v92-block-preview[data-block-key="social"],
+    #dockscroll .tchip[data-block-key="social"])
+  > .ct:last-child,
+#dockscroll .tchip[data-block-key="social"] .tv > div > .ct:last-child {
+  color: var(--v92-block-ink) !important;
+}
+:is(#pboard .pb[data-block-key="social"],
+    .v92-block-preview[data-block-key="social"],
+    #dockscroll .tchip[data-block-key="social"])
+  .ct svg {
+  fill: var(--v92-block-ink) !important;
+}
+
+/* White chart cards use dark secondary text. Preserve all chart geometry,
+ * measured bar lengths, percentages, and segment fills. */
+:is(#pboard .pb, .v92-block-preview, #dockscroll .tchip):is(
+    [data-block-key="rings"], [data-block-key="ctxring"],
+    [data-block-key="splitring"], [data-block-key="pie"],
+    [data-block-key="modelcost"], [data-block-key="cgauge"],
+    [data-block-key="node"], [data-block-key="dots"],
+    [data-block-key="ratio"], [data-block-key="dial"],
+    [data-block-key="vsavg"], [data-block-key="heat"],
+    [data-block-key="clock"], [data-block-key="trend"])
+  [style*="color:rgba(255,255,255"] {
+  color: var(--v92-block-muted) !important;
+}
+
+:is(#pboard .pb, .v92-block-preview, #dockscroll .tchip):is(
+    [data-block-key="rings"], [data-block-key="ctxring"],
+    [data-block-key="cgauge"])
+  svg text[fill="#fff"] {
+  fill: var(--v92-block-ink) !important;
+}
+:is(#pboard .pb, .v92-block-preview, #dockscroll .tchip):is(
+    [data-block-key="rings"], [data-block-key="ctxring"],
+    [data-block-key="cgauge"], [data-block-key="clock"],
+    [data-block-key="node"])
+  svg text[fill^="rgba(255,255,255"] {
+  fill: var(--v92-block-muted) !important;
+}
+:is(#pboard .pb, .v92-block-preview, #dockscroll .tchip):is(
+    [data-block-key="rings"], [data-block-key="ctxring"],
+    [data-block-key="cgauge"])
+  svg :is(circle, path)[stroke^="rgba(255,255,255"] {
+  stroke: rgba(0, 0, 0, .12) !important;
+}
+:is(#pboard .pb, .v92-block-preview, #dockscroll .tchip)[data-block-key="clock"]
+  svg line[stroke^="rgba(255,255,255"] {
+  stroke: rgba(0, 0, 0, .28) !important;
+}
+:is(#pboard .pb, .v92-block-preview, #dockscroll .tchip)[data-block-key="vsavg"]
+  svg rect[fill^="rgba(255,255,255"] {
+  fill: rgba(0, 0, 0, .16) !important;
+}
+:is(#pboard .pb, .v92-block-preview, #dockscroll .tchip)[data-block-key="vsavg"]
+  svg text[fill^="rgba(255,255,255"] {
+  fill: var(--v92-block-muted) !important;
+}
+:is(#pboard .pb, .v92-block-preview, #dockscroll .tchip)[data-block-key="heat"]
+  svg rect[stroke^="rgba(255,255,255"] {
+  fill: rgba(0, 0, 0, .025) !important;
+  stroke: rgba(0, 0, 0, .14) !important;
+}
+:is(#pboard .pb, .v92-block-preview, #dockscroll .tchip)[data-block-key="node"]
+  svg line[stroke^="rgba(255,255,255"] {
+  stroke: rgba(0, 0, 0, .17) !important;
+}
+:is(#pboard .pb, .v92-block-preview, #dockscroll .tchip)[data-block-key="dots"]
+  svg circle[fill="rgba(255,255,255,.13)"] {
+  fill: rgba(0, 0, 0, .09) !important;
+}
+:is(#pboard .pb, .v92-block-preview, #dockscroll .tchip)[data-block-key="pie"]
+  .ct span[style*="color:rgba(255,255,255"] {
+  color: rgba(0, 0, 0, .72) !important;
+}
+:is(#pboard .pb, .v92-block-preview, #dockscroll .tchip)[data-block-key="modelcost"]
+  .ct span[style*="color:rgba(255,255,255"] {
+  color: rgba(0, 0, 0, .72) !important;
+}
+
+.v92-capabilities-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 6%;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+  font-family: "Hanken Grotesk", "DM Sans", sans-serif;
+  text-align: left;
+}
+.v92-capabilities-title {
+  left: 6.3%;
+  top: 6.1%;
+  color: rgba(0, 0, 0, .6);
+  font-weight: 500;
+  letter-spacing: .015em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.v92-capabilities-row {
+  left: 6.3%;
+  right: 5.5%;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.v92-capabilities-initial {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: 88%;
+  aspect-ratio: 1;
+  border-radius: 23%;
+  color: #303030;
+  font-weight: 400;
+  line-height: 1;
+}
+.v92-capabilities-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 5%;
+  overflow: hidden;
+  color: #1b1b1b;
+  font-weight: 500;
+  letter-spacing: -.015em;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.v92-capabilities-value {
+  flex: 0 0 auto;
+  margin-left: 2%;
+  color: #1b1b1b;
+  font-weight: 400;
+  letter-spacing: -.055em;
+  line-height: 1;
+  white-space: nowrap;
+}
+.v92-capabilities-divider {
+  left: 6.3%;
+  right: 5.5%;
+  height: 1px;
+  background: rgba(0, 0, 0, .1);
+}
+
+.v92-stack-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 6%;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+  font-family: "Hanken Grotesk", "DM Sans", sans-serif;
+}
+.v92-stack-title {
+  left: 6.2%;
+  top: 6.2%;
+  color: rgba(0, 0, 0, .62);
+  font-weight: 400;
+  letter-spacing: .03em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.v92-stack-lines {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.v92-stack-lines line {
+  stroke: #d3d3d3;
+  stroke-width: 2;
+}
+.v92-stack-block .v92-stack-name {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  overflow: hidden;
+  color: #626262;
+  font-family: inherit;
+  font-weight: 400;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.v92-stack-name > span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.v92-stack-name:focus-visible {
+  outline: 1px solid #626262;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+.dock .v92-stack-name {
+  pointer-events: none;
+}
+.v92-stack-name-popover {
+  position: fixed;
+  inset: auto;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(340px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 0, 0, .12);
+  border-radius: 8px;
+  background: #fff;
+  color: #1b1b1b;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .12);
+  font: 400 13px/1.4 "Hanken Grotesk", "DM Sans", sans-serif;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+.v92-stack-node {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 23%;
+  color: #303030;
+  font-weight: 400;
+  line-height: 1;
+}
+.v92-stack-hub {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #1b1b1b;
+  color: #fff;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.v92-splitring-block {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--v92-block-shadow);
+  color: var(--v92-block-ink);
+  font-family: "Hanken Grotesk", "DM Sans", sans-serif;
+}
+.v92-splitring-graphic {
+  width: 100%;
+  height: 100%;
+}
+.v92-splitring-title {
+  left: 45%;
+  top: 13%;
+  color: rgba(0, 0, 0, .62);
+  font-weight: 400;
+  letter-spacing: .03em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.v92-splitring-row {
+  right: 6%;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.v92-splitring-label {
+  flex: 0 0 32%;
+  color: rgba(0, 0, 0, .48);
+  font-weight: 400;
+  line-height: 1;
+}
+.v92-splitring-value {
+  flex: 0 0 auto;
+  color: #1b1b1b;
+  font-weight: 400;
+  letter-spacing: -.055em;
+  line-height: .95;
+  white-space: nowrap;
+}
+.v92-splitring-value small {
+  color: rgba(0, 0, 0, .42);
+  font-size: .52em;
+  letter-spacing: -.02em;
+}
+.v92-splitring-row.is-build .v92-splitring-value {
+  color: rgba(0, 0, 0, .48);
+}
+
+/* Thumbnail state: a soft frame and readable lock chip, with the rendered
+ * miniature still tied to the same data as the board block. */
+#dockscroll .tchip .tv {
+  border-radius: 8px;
+  box-shadow: var(--v92-block-shadow);
+}
+/* The shared .cap component style is intended for full-size onboarding cards.
+ * In the pie thumbnail, reset it to a compact, transparent chart caption. */
+#dockscroll .tchip[data-block-key="pie"] .ct.cap {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--v92-muted);
+  outline: 0;
+  box-shadow: none;
+}
+#dockscroll .tchip.on .tv {
+  opacity: .48;
+  filter: saturate(.75);
+}
+#dockscroll .tchip.on::before {
+  inset: -4px;
+  border: 1px solid rgba(0, 0, 0, .16);
+  border-radius: 11px;
+  background: rgba(0, 0, 0, .07);
+}
+#dockscroll .tchip.on::after { display: none; }
+#dockscroll .tchip.lock .tv {
+  opacity: .43;
+  filter: grayscale(1);
+}
+#dockscroll .tchip.lock.action .tv {
+  opacity: .52;
+  filter: grayscale(.35);
+}
+#dockscroll .tchip .tlock {
+  border: 1px solid rgba(0, 0, 0, .08);
+  border-radius: 6px;
+  background: #fff;
+  color: rgba(0, 0, 0, .8);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, .08), 0 4px 6px rgba(0, 0, 0, .04);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+#dockscroll .tchip .tlock svg { fill: rgba(0, 0, 0, .48); }
+#dockscroll .tchip.lock.action .tlock {
+  border-color: rgba(255, 90, 31, .3);
+  color: #a43f19;
+}
+
+/* Find me uses the connected identities; an absent provider stays empty. */
+.v92-social-block { position:absolute; inset:0; padding:12px 15px; border-radius:7px; background:#fff; color:#1b1b1b; box-shadow:var(--v92-block-shadow); font-family:'Hanken Grotesk',sans-serif; }
+.v92-social-label { margin-bottom:9px; color:#7d7d7d; font-size:12px; line-height:1; }
+.v92-social-row { display:flex; align-items:center; gap:9px; min-width:0; margin-top:7px; font-size:14px; line-height:1.15; }
+.v92-social-row svg { flex:none; width:15px; height:15px; }
+.v92-social-row span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.v92-social-row.is-empty { color:#929292; }
