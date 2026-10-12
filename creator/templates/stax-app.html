@@ -3094,8 +3094,10 @@ const CEREMONY_ORDER=['hero','qr','social','team','type','tier1','basic','seal',
 function ceremonyBlocks(P){
   const dataBlocks=window.__TAKU_STAX_DATA__&&Array.isArray(window.__TAKU_STAX_DATA__.blocks)?window.__TAKU_STAX_DATA__.blocks:[];
   const blocks=Array.isArray(P&&P.blocks)&&P.blocks.length?P.blocks:dataBlocks;
+  // Introduce the unlocked starter kit even when the saved board is empty.
+  // P.fullset belongs to layout restoration, which Intro completion preserves.
   return blocks.filter((block)=>{
-    if(!block||!CEREMONY_ORDER.includes(block.key)||!P?.fullset?.includes(block.key)||!blockIsVisible(block.key,P?.pd)||String(block.status||'supported').toLowerCase()==='unsupported')return false;
+    if(!block||!CEREMONY_ORDER.includes(block.key)||!blockIsVisible(block.key,P?.pd)||String(block.status||'supported').toLowerCase()==='unsupported')return false;
     const rk=RK[block.key]||block.key;
     return Boolean(SIZES[block.key]&&typeof R[rk]==='function');
   }).map((block,index)=>({block,index})).sort((left,right)=>{
