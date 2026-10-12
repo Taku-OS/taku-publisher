@@ -24,11 +24,20 @@ export function splitStudioRuntime(html) {
   if (bootstrapStart < 0 || functionStart < 0 || bootstrapEnd < 0 || !bridge || !style) {
     throw new Error('Studio handoff is missing its bootstrap or cloud bridge.');
   }
-  const bootstrap = html.slice(functionStart, bootstrapEnd).trim()
-    .replace('Array.isArray(data.selectedKeys) && data.selectedKeys.length', 'Array.isArray(data.selectedKeys)')
-    .replace('fullset: selected.length ? selected : ["hero", "team", "type"],', 'fullset: selected,')
-    .replace('layout: selected.length ? null : {hero:[2,1],team:[3,0],type:[6,1]},',
-      'layout: Array.isArray(data.studioLayout?.blocks) ? Object.fromEntries(data.studioLayout.blocks.map(block => [block.key, [block.cx, block.cy]])) : null,') + '\n';
+  let bootstrap = html.slice(functionStart, bootstrapEnd).trim()
+    .replace('Array.isArray(data.selectedKeys) && data.selectedKeys.length', 'Array.isArray(data.selectedKeys)');
+  // Standalone previews have no iframe bridge to restore the saved board.
+  // Normalize these fields independently of the website's fallback expression,
+  // and fail explicitly if a future handoff changes their structure.
+  for (const [field, expression] of Object.entries({
+    fullset: 'Array.isArray(data.studioLayout?.blocks) ? data.studioLayout.blocks.map(block => block.key) : selected',
+    layout: 'Array.isArray(data.studioLayout?.blocks) ? Object.fromEntries(data.studioLayout.blocks.map(block => [block.key, [block.cx, block.cy]])) : null',
+  })) {
+    const pattern = new RegExp(`^    ${field}: [^\\n]*,$`, 'gm');
+    if ([...bootstrap.matchAll(pattern)].length !== 1) throw new Error(`Studio bootstrap must declare exactly one ${field} field.`);
+    bootstrap = bootstrap.replace(pattern, `    ${field}: ${expression},`);
+  }
+  bootstrap += '\n';
   let template = html.slice(0, bootstrapStart)
     + '/* __TAKU_STAX_BOOTSTRAP_START__ */\n/* __TAKU_STAX_BOOTSTRAP_END__ */\n'
     + html.slice(bootstrapEnd + 'window.__TAKU_STAX_BOOTSTRAP__();'.length);

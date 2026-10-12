@@ -29,6 +29,52 @@ test('handoff splitting never keeps a generated display model or duplicate injec
   new vm.Script(parts.bridge);
 });
 
+for (const selectionSyntax of ['legacy', 'hasSelectedKeys']) {
+  test(`imported ${selectionSyntax} bootstrap restores saved layouts and distinguishes empty from missing`, () => {
+    let handoff = external
+      .replace('  const hasSelectedKeys = Array.isArray(data.selectedKeys);\n', '')
+      .replace('hasSelectedKeys ? data.selectedKeys : supportedKeys', 'Array.isArray(data.selectedKeys) && data.selectedKeys.length ? data.selectedKeys : supportedKeys')
+      .replace(/^    fullset:.*,$/m, '    fullset: selected.length ? selected : ["hero", "team", "type"],')
+      .replace(/^    layout:.*,$/m, '    layout: selected.length ? null : {hero:[2,1],team:[3,0],type:[6,1]},');
+    if (selectionSyntax === 'hasSelectedKeys') {
+      handoff = handoff
+        .replace('  const selected =', '  const hasSelectedKeys = Array.isArray(data.selectedKeys);\n  const selected =')
+        .replace('Array.isArray(data.selectedKeys) && data.selectedKeys.length ? data.selectedKeys : supportedKeys', 'hasSelectedKeys ? data.selectedKeys : supportedKeys')
+        .replace('selected.length ? selected', 'hasSelectedKeys || selected.length ? selected')
+        .replace('selected.length ? null', 'hasSelectedKeys || selected.length ? null');
+    }
+    const { bootstrap } = splitStudioRuntime(handoff);
+    const savedBlocks = [{ key: 'hero', cx: 4, cy: 3 }, { key: 'team', cx: 1, cy: 1 }];
+    const cases = [
+      { model: { selectedKeys: ['hero', 'team'], studioLayout: { blocks: savedBlocks } }, keys: ['hero', 'team'], layout: { hero: [4, 3], team: [1, 1] } },
+      { model: { studioLayout: { blocks: savedBlocks } }, keys: ['hero', 'team'], layout: { hero: [4, 3], team: [1, 1] } },
+      { model: { selectedKeys: [] }, keys: [], layout: null },
+      { model: { studioLayout: { blocks: [] } }, keys: [], layout: {} },
+      { model: { selectedKeys: [], studioLayout: { blocks: [] } }, keys: [], layout: {} },
+      { model: {}, keys: ['hero', 'team'], layout: null },
+      { model: { blocks: [] }, keys: [], layout: null },
+    ];
+    for (const { model, keys, layout } of cases) {
+      const context = vm.createContext({
+        window: { __TAKU_STAX_DATA__: { blocks: [{ key: 'hero', status: 'supported' }, { key: 'team', status: 'partial' }, { key: 'type', status: 'unsupported' }], ...model } },
+        document: { querySelectorAll: () => [], getElementById: () => null },
+        ART: {}, MASON: {}, FALLBACK_LOGO: '', SIZES: { hero: [4, 2], team: [2, 1], type: [2, 2] },
+        PERSONAS: {}, setPersona() {}, playIntro() {},
+      });
+      new vm.Script(bootstrap + '\nwindow.__TAKU_STAX_BOOTSTRAP__();').runInContext(context);
+      const persona = JSON.parse(JSON.stringify(context.PERSONAS.publisher));
+      assert.deepEqual(persona.fullset, keys);
+      assert.deepEqual(persona.layout, layout);
+    }
+  });
+}
+
+test('handoff import rejects layout declarations it cannot normalize', () => {
+  for (const field of ['fullset', 'layout']) {
+    assert.throws(() => splitStudioRuntime(external.replace(new RegExp(`^    ${field}: .*,$`, 'm'), '')), /must declare exactly one/);
+  }
+});
+
 test('new real-data layouts agree with the v9.2 catalog and cannot invent blocks', () => {
   const available = ['hero', 'type', 'social', 'modelcost', 'clock', 'tools', 'heat', 'pie', 'team', 'basic', 'seal', 'ctxring', 'trend'];
   const blocks = available.map(key => ({ key, status: 'partial', value: { models: [], tools: [{ name: 'Local skill' }] } }));

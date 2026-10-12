@@ -24,18 +24,18 @@
     if(typeof counts==='function')counts();
   }
   function applyLayout(layout){
-    const blocks=layout&&Array.isArray(layout.blocks)?layout.blocks:[];
     if(!layout||!Array.isArray(layout.blocks))return;
+    const blocks=layout.blocks;
     clearBoard();
     blocks.filter((item)=>item&&item.key!=='bracket'&&item.key!=='knock').forEach((item)=>{
       if(!item||typeof item.key!=='string'||typeof place!=='function'||!blockSize(item.key))return;
       const placed=place(item.key,Number(item.cx)||0,Number(item.cy)||0);
       if(placed&&typeof chipRefs==='object'&&chipRefs[placed.key])chipRefs[placed.key].classList.add('on');
     });
-    // Intro completion must rebuild the restored draft, including supported
-    // blocks added after the Publisher's initial selectedKeys were generated.
+    // Intro completion must preserve the restored draft, including an empty
+    // board or blocks added after the initial selectedKeys were generated.
     const persona=PERSONAS[CURP];
-    if(persona&&placedP.length){
+    if(persona){
       persona.fullset=placedP.map(item=>item.key);
       persona.layout=Object.fromEntries(placedP.map(item=>[item.key,[item.cx,item.cy]]));
     }

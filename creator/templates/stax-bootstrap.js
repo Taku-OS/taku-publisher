@@ -11,7 +11,8 @@ window.__TAKU_STAX_BOOTSTRAP__ = function(){
   });
   const byKey = new Map(blocks.map((block) => [block.key, block]));
   const supportedKeys = blocks.filter((block) => block && block.status !== "unsupported").map((block) => block.key);
-  const selected = [...new Set((Array.isArray(data.selectedKeys) ? data.selectedKeys : supportedKeys).map((key) => key === "aura" || key === "tier4" ? "tier1" : key))].filter((key) => byKey.get(key)?.status !== "unsupported" && SIZES[key]);
+  const hasSelectedKeys = Array.isArray(data.selectedKeys);
+  const selected = [...new Set((hasSelectedKeys ? data.selectedKeys : supportedKeys).map((key) => key === "aura" || key === "tier4" ? "tier1" : key))].filter((key) => byKey.get(key)?.status !== "unsupported" && SIZES[key]);
   const locks = {};
   blocks.forEach((block) => {
     if (!block || block.status !== "unsupported" || !SIZES[block.key] || block.key === "aura" || block.key === "tier4") return;
@@ -296,7 +297,7 @@ window.__TAKU_STAX_BOOTSTRAP__ = function(){
     auth: data.auth || {},
     unlockSummary: data.unlockSummary || (data.auth && data.auth.unlockSummary) || {},
     cap: text(data.caption, "Built from local publisher scan. Estimated fields are marked in the dock."),
-    fullset: selected,
+    fullset: Array.isArray(data.studioLayout?.blocks) ? data.studioLayout.blocks.map(block => block.key) : selected,
     layout: Array.isArray(data.studioLayout?.blocks) ? Object.fromEntries(data.studioLayout.blocks.map(block => [block.key, [block.cx, block.cy]])) : null,
     locks,
     blocks,

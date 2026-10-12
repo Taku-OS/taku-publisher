@@ -22,6 +22,11 @@ extracts reusable bootstrap and iframe sources. It normalizes logo references
 to the included `/studio/` asset, Find Me to 2×1,
 and preserves explicit empty selections/layouts; the model generator supplies
 only real available components and maintains the 8×5 grid.
+The importer normalizes bootstrap layout fields independently of the website's
+selection fallback. Saved layout blocks and coordinates are authoritative in
+standalone previews as well as the iframe; empty layouts remain empty, while
+missing layouts use available selections. An unrecognized field structure
+fails import rather than silently losing layout restoration.
 
 Export the runtime with its assets for a website checkout:
 
