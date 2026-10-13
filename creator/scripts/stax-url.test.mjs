@@ -8,6 +8,7 @@ import {
   buildStaxProfilePageUrl,
   buildStaxPublishedLinks,
   buildStaxStudioUrl,
+  resolveStaxStudioUrl,
 } from './stax-url.mjs';
 
 test('builds separate creator profile and Stax card URLs', () => {
@@ -58,4 +59,36 @@ test('publishes explicit profile and Stax links while preserving creator compati
       studioUrl: 'https://taku.ai/studio/stax-card',
     },
   );
+});
+
+test('keeps local Studio on the configured loopback origin and carries the Worker launch ID', () => {
+  const launchContextId = `taku_studio_launch_${'d'.repeat(32)}`;
+  const workerStudioUrl = `https://worker.taku.ai/stax/studio/editor?launch=${launchContextId}&token=do-not-copy#private-fragment`;
+  for (const origin of ['http://localhost:3001', 'http://127.0.0.1:3003', 'http://[::1]:3001']) {
+    assert.equal(
+      resolveStaxStudioUrl(origin, workerStudioUrl),
+      `${origin}/studio/stax-card?launch=${launchContextId}`,
+    );
+  }
+});
+
+test('prefers the returned launch context for local Studio and keeps production Worker URLs', () => {
+  const launchContextId = `taku_studio_launch_${'e'.repeat(32)}`;
+  const workerStudioUrl = 'https://worker.taku.ai/stax/studio/editor?launch=previous';
+  assert.equal(
+    resolveStaxStudioUrl('http://localhost:3001', workerStudioUrl, { launchContextId }),
+    `http://localhost:3001/studio/stax-card?launch=${launchContextId}`,
+  );
+  for (const siteUrl of ['https://taku.ai', 'https://localhost.example.com']) {
+    assert.equal(resolveStaxStudioUrl(siteUrl, workerStudioUrl), workerStudioUrl);
+  }
+});
+
+test('keeps the Studio link local in published results', () => {
+  const launchContextId = `taku_studio_launch_${'f'.repeat(32)}`;
+  const links = buildStaxPublishedLinks('http://localhost:3001', {
+    username: 'alice',
+    studioUrl: `https://worker.taku.ai/stax/studio/editor?launch=${launchContextId}`,
+  });
+  assert.equal(links.studioUrl, `http://localhost:3001/studio/stax-card?launch=${launchContextId}`);
 });

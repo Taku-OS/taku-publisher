@@ -9,8 +9,8 @@ import {
   getBuilderProfileSnapshotForDisplay as getBuilderProfileSnapshotForDisplayCore,
   mergeStaxCreatorPublishPayloadWithExistingCard,
 } from './publish-payload.mjs';
-import { buildStaxPublishedLinks, buildStaxStudioUrl } from './stax-url.mjs';
-import { createStaxStudioRendererPayload } from './editor-renderer.mjs';
+import { buildStaxPublishedLinks, buildStaxStudioUrl, resolveStaxStudioUrl } from './stax-url.mjs';
+import { createStaxStudioRendererPayload, fillStaxStudioLayout } from './editor-renderer.mjs';
 
 const PUBLISH_IMPORT_TIMEOUT_MS = 60000;
 
@@ -101,6 +101,7 @@ export async function saveDraftToTakuStudio({
   try {
     const data = await saveStudioDraftWithRevision(client, studioPayload, {
       issueLaunchContext: true,
+      fillLayout: true,
     });
     const responseData = data?.data && typeof data.data === 'object' && !Array.isArray(data.data)
       ? data.data
@@ -122,7 +123,7 @@ export async function saveDraftToTakuStudio({
       workerUrl,
       endpoint: `${workerUrl}/stax/studio/cards/me`,
       data,
-      studioUrl: workerStudioUrl || buildStaxStudioUrl(siteUrl, { launchContextId }),
+      studioUrl: resolveStaxStudioUrl(siteUrl, workerStudioUrl, { launchContextId }),
       ...(launchContextId ? { launchContextId } : {}),
       ...(accountHint ? { accountHint } : {}),
       draft: cloudDraft,
@@ -306,7 +307,7 @@ export async function publishDraftToTaku({
 async function saveStudioDraftWithRevision(
   client,
   content,
-  { issueLaunchContext = false } = {},
+  { issueLaunchContext = false, fillLayout = false } = {},
 ) {
   let current;
   try {
@@ -315,19 +316,191 @@ async function saveStudioDraftWithRevision(
     if (![404, 405].includes(Number(error?.status))) throw error;
     return await client.saveMyStudioDraft(content);
   }
+  const currentDraft = current?.data?.draft;
+  const mergedContent = mergeRegeneratedStudioDraftContent(content, currentDraft, { fillLayout });
   const supportsRevisionContract = current?.data?.saveContract === 'revision-v1';
   if (!supportsRevisionContract) {
-    return await client.saveMyStudioDraft(content);
+    return await client.saveMyStudioDraft(mergedContent);
   }
   const revision = Number(current?.data?.draft?.revision);
   const expectedRevision = Number.isInteger(revision) && revision > 0
     ? revision
     : null;
   return await client.saveMyStudioDraft({
-    content,
+    content: mergedContent,
     expectedRevision,
     issueLaunchContext,
   });
+}
+
+export function mergeRegeneratedStudioDraftContent(incoming, currentDraft, { fillLayout = false } = {}) {
+  const next = recordValue(incoming);
+  const current = recordValue(recordValue(currentDraft).content);
+  if (!Object.keys(current).length) return incoming;
+
+  const currentCard = recordValue(current.card);
+  const nextCard = recordValue(next.card);
+  const preservedCardSettings = ['primaryAi', 'qrTarget', 'githubUrl', 'twitterUrl', 'websiteUrl']
+    .reduce((settings, key) => {
+      if (currentCard[key] !== undefined && currentCard[key] !== null && currentCard[key] !== '') {
+        settings[key] = currentCard[key];
+      }
+      return settings;
+    }, {});
+  const currentLayout = validStudioLayout(current.studioLayout)
+    || validStudioLayout(current.studioRenderer?.model?.studioLayout);
+  const nextRenderer = recordValue(next.studioRenderer);
+  const currentRenderer = recordValue(current.studioRenderer);
+  const nextModel = recordValue(nextRenderer.model);
+  const currentModel = recordValue(currentRenderer.model);
+  const layoutKeys = currentLayout
+    ? currentLayout.blocks.map((block) => String(block?.key || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+
+  let mergedModel = Object.keys(nextModel).length
+    ? mergeRegeneratedStudioModel(nextModel, currentModel, layoutKeys, currentDraft)
+    : nextModel;
+  const layout = fillLayout && Object.keys(mergedModel).length && currentLayout
+    ? fillStaxStudioLayout({ ...mergedModel, selectedKeys: nextModel.selectedKeys }, currentLayout)
+    : currentLayout;
+  if (layout) {
+    mergedModel = {
+      ...mergedModel,
+      selectedKeys: layout.blocks.map((block) => block.key),
+      studioLayout: layout,
+    };
+  }
+
+  return {
+    ...next,
+    card: {
+      ...nextCard,
+      ...preservedCardSettings,
+    },
+    ...(layout ? { studioLayout: layout } : {}),
+    ...(Object.keys(nextRenderer).length
+      ? {
+          studioRenderer: {
+            ...nextRenderer,
+            model: mergedModel,
+          },
+        }
+      : {}),
+  };
+}
+
+function mergeRegeneratedStudioModel(nextModel, currentModel, layoutKeys, currentDraft) {
+  if (!Object.keys(currentModel).length) {
+    return layoutKeys.length ? { ...nextModel, selectedKeys: layoutKeys } : nextModel;
+  }
+  const currentCard = recordValue(recordValue(currentDraft).content).card;
+  const preservedPrimaryAi = currentCard?.primaryAi;
+  const preservedQrTarget = currentCard?.qrTarget;
+  const preservedSocial = currentCard?.githubUrl || currentCard?.twitterUrl;
+  const currentBlocks = blockMap(currentModel.blocks);
+  const nextBlocks = Array.isArray(nextModel.blocks)
+    ? nextModel.blocks.map((block) => {
+        const nextBlock = recordValue(block);
+        const key = String(nextBlock.key || '').trim().toLowerCase();
+        const currentBlock = currentBlocks.get(key);
+        if (
+          currentBlock
+          && ((key === 'team' && preservedPrimaryAi)
+            || (key === 'qr' && preservedQrTarget)
+            || (key === 'social' && preservedSocial))
+        ) {
+          return currentBlock;
+        }
+        return currentBlock && !studioBlockAvailable(nextBlock) && studioBlockAvailable(currentBlock)
+          ? currentBlock
+          : block;
+      })
+    : nextModel.blocks;
+  if (Array.isArray(nextBlocks)) {
+    const nextKeys = new Set(nextBlocks.map(block => block?.key));
+    for (const key of layoutKeys) {
+      const currentBlock = currentBlocks.get(key);
+      if (!nextKeys.has(key) && studioBlockAvailable(currentBlock) && currentBlock) nextBlocks.push(currentBlock);
+    }
+  }
+  const wasPublished = recordValue(currentDraft).status === 'published'
+    || Number(recordValue(currentDraft).lastPublishedRevision) > 0
+    || recordValue(currentModel.publishedStax).published === true;
+  const durableIdentity = wasPublished
+    ? preservePublishedIdentity(nextModel, currentModel)
+    : {};
+
+  return {
+    ...nextModel,
+    ...durableIdentity,
+    ...(Array.isArray(nextBlocks) ? { blocks: nextBlocks } : {}),
+    ...(layoutKeys.length
+      ? { selectedKeys: layoutKeys }
+      : Array.isArray(currentModel.selectedKeys)
+        ? { selectedKeys: currentModel.selectedKeys }
+        : {}),
+    ...(preservedPrimaryAi
+      ? {
+          team: currentModel.team,
+          teamIcon: currentModel.teamIcon,
+          teamOptions: currentModel.teamOptions,
+        }
+      : {}),
+    ...(preservedQrTarget
+      ? {
+          qrTarget: currentModel.qrTarget,
+          qrOptions: currentModel.qrOptions,
+        }
+      : {}),
+  };
+}
+
+function preservePublishedIdentity(nextModel, currentModel) {
+  const result = {};
+  const placeholder = new Set(['', '@BUILDER', 'PRIVATE DRAFT', 'LOCAL DRAFT', 'SIGNED IN DRAFT', 'SYNCING TAKU', 'STAX PREVIEW', 'UNMINTED', 'PENDING']);
+  for (const key of ['handle', 'cardHandle', 'serial', 'cardSerial', 'staxCardPageUrl']) {
+    const nextValue = String(nextModel[key] ?? '').trim().toUpperCase();
+    const currentValue = currentModel[key];
+    if (placeholder.has(nextValue) && currentValue !== undefined && currentValue !== null && currentValue !== '') {
+      result[key] = currentValue;
+    }
+  }
+  if (
+    recordValue(currentModel.publishedStax).published === true
+    && recordValue(nextModel.publishedStax).published !== true
+  ) {
+    result.publishedStax = currentModel.publishedStax;
+  }
+  return result;
+}
+
+function validStudioLayout(value) {
+  const layout = recordValue(value);
+  return layout.schemaVersion === 'taku.stax.studio-layout.v1' && Array.isArray(layout.blocks)
+    ? layout
+    : null;
+}
+
+function blockMap(value) {
+  const map = new Map();
+  if (!Array.isArray(value)) return map;
+  for (const block of value) {
+    const entry = recordValue(block);
+    const key = String(entry.key || '').trim().toLowerCase();
+    if (key) map.set(key, block);
+  }
+  return map;
+}
+
+function studioBlockAvailable(value) {
+  const block = recordValue(value);
+  const status = String(block.status || '').trim().toLowerCase();
+  if (block.supported === false || block.available === false) return false;
+  return !status || ['supported', 'partial', 'available', 'ready'].includes(status);
+}
+
+function recordValue(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
 export function createStudioDraftPayload(publishPayload) {

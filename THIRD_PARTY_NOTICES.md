@@ -5,16 +5,19 @@ Publisher. It does not change the license of Taku-owned source code or assets.
 
 ## Fonts
 
-The font files under `creator/assets/fonts/` are distributed under the SIL Open
+The font files under `creator/assets/fonts/` and `creator/assets/studio/fonts/` are distributed under the SIL Open
 Font License, Version 1.1. The complete license text is included at
 `creator/assets/fonts/OFL-1.1.txt` and must remain with redistributed copies.
 
 | Family | Bundled files | Copyright | Upstream |
 | --- | --- | --- | --- |
 | DM Sans | `dm-sans-latin.woff2` | Copyright 2014 The DM Sans Project Authors | <https://github.com/googlefonts/dm-fonts> |
+| Doto | `studio/fonts/doto-variable.woff2` | Copyright 2024-2024 The Doto Project Authors | <https://github.com/oliverlalan/Doto> |
+| Hanken Grotesk | `studio/fonts/hanken-grotesk-v92.woff2` | Copyright 2021 The Hanken Grotesk Project Authors | <https://github.com/marcologous/hanken-grotesk> |
 | Instrument Serif | `instrument-serif-latin.woff2`, `instrument-serif-italic-latin.woff2` | Copyright 2022 The Instrument Serif Project Authors | <https://github.com/Instrument/instrument-serif> |
 | Pixelify Sans | `pixelify-sans-bold-latin.ttf` | Copyright 2021 The Pixelify Sans Project Authors | <https://github.com/eifetx/Pixelify-Sans> |
 | Space Grotesk | `space-grotesk-latin.woff2` | Copyright 2020 The Space Grotesk Project Authors | <https://github.com/floriankarsten/space-grotesk> |
+| Space Grotesk (v9.2) | `studio/fonts/space-grotesk-v92.woff2` | Copyright 2020 The Space Grotesk Project Authors | <https://github.com/floriankarsten/space-grotesk> |
 | Space Mono | `space-mono-regular-latin.woff2`, `space-mono-bold-latin.woff2` | Copyright 2016 The Space Mono Project Authors | <https://github.com/googlefonts/spacemono> |
 
 These notices apply to the font software itself. Documents, screenshots, and
