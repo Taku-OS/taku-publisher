@@ -88,7 +88,9 @@ export async function checkAuthFlow(requestId?: string, env = process.env): Prom
     }
     return jsonOutput('authenticated', { ...base, account_hint: state.account_hint ?? null, message: 'Sign-in is complete. Resume the original command.' });
   }
-  return jsonOutput(status, { ...base, error_code: state.error_code ?? null }, { requiresAction: true, actionType: 'restart_authorization' });
+  return jsonOutput(status, { ...base, error_code: state.error_code ?? null,
+    ...(state.error_code === 'auth_redeem_failed' ? { http_status: state.http_status ?? null, server_error: state.server_error ?? null } : {}),
+  }, { requiresAction: true, actionType: 'restart_authorization' });
 }
 export async function startAuthFlow(options: AuthFlowOptions, env = process.env): Promise<JsonObject> {
   return withLock(env, async () => {
