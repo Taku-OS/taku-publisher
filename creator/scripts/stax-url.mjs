@@ -1,4 +1,4 @@
-import { DEFAULT_SITE_URL, trimUrl } from './publish-config.mjs';
+import { DEFAULT_SITE_URL, isLocalSiteUrl, trimUrl } from './publish-config.mjs';
 import { cleanText } from './privacy.mjs';
 export { STAX_CREATOR_PUBLISH_CONTRACT_VERSION } from './publish-config.mjs';
 
@@ -52,6 +52,21 @@ export function buildStaxStudioUrl(siteUrl, options = {}) {
   return url.toString();
 }
 
+export function resolveStaxStudioUrl(siteUrl, workerStudioUrl, options = {}) {
+  if (!isLocalSiteUrl(siteUrl)) {
+    return workerStudioUrl || buildStaxStudioUrl(siteUrl, options);
+  }
+  // A local frontend must keep using the configured origin even when its
+  // real-data Worker returns a production editor URL. Carry only the launch ID.
+  let launchContextId = options.launchContextId || options.launch_context_id;
+  if (!launchContextId && workerStudioUrl) {
+    try {
+      launchContextId = new URL(workerStudioUrl).searchParams.get('launch');
+    } catch {}
+  }
+  return buildStaxStudioUrl(siteUrl, { launchContextId });
+}
+
 export function buildStaxChallengeReviewUrl(siteUrl, options = {}) {
   const url = new URL('/stax', `${normalizeStaxPublicSiteOrigin(siteUrl)}/`);
   url.searchParams.set('review', '1');
@@ -74,7 +89,7 @@ export function buildStaxPublishedLinks(siteUrl, resultData) {
   const staxCardImageUrl = slug
     ? buildStaxOgImageUrl(siteUrl, slug)
     : resultData?.staxCardImageUrl || resultData?.card?.staxCardImageUrl;
-  const studioUrl = resultData?.studioUrl || resultData?.studio_url || buildStaxStudioUrl(siteUrl);
+  const studioUrl = resolveStaxStudioUrl(siteUrl, resultData?.studioUrl || resultData?.studio_url);
   return {
     ...(slug ? { slug } : {}),
     ...(profilePageUrl ? { profilePageUrl, creatorPageUrl: profilePageUrl } : {}),

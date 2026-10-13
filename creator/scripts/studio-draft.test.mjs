@@ -76,7 +76,7 @@ test('saving a Studio draft uploads the exact Publisher renderer without publish
   await new Promise((resolve) => server.listen(0, loopback, resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
 
-  const result = await saveDraftToTakuStudio({
+  const saveOptions = {
     draft: {
       personaV2: {
         code: 'EILW',
@@ -101,7 +101,8 @@ test('saving a Studio draft uploads the exact Publisher renderer without publish
         privacy: { publicSummaryOnly: true },
       }),
     },
-  });
+  };
+  const result = await saveDraftToTakuStudio(saveOptions);
 
   assert.equal(result.ok, true, JSON.stringify(result));
   assert.equal(
@@ -115,6 +116,21 @@ test('saving a Studio draft uploads the exact Publisher renderer without publish
   assert.equal(savedPayload.content.studioRenderer.renderer, 'publisher-stax-app');
   assert.equal(savedPayload.content.studioRenderer.model.handle, '@cloud-builder');
   assert.deepEqual(calls, [
+    'GET /stax/profile',
+    'GET /stax/studio/cards/me',
+    'PUT /stax/studio/cards/me',
+  ]);
+
+  const localResult = await saveDraftToTakuStudio({
+    ...saveOptions,
+    siteUrl: 'http://localhost:3001',
+  });
+  assert.equal(localResult.ok, true, JSON.stringify(localResult));
+  assert.equal(
+    localResult.studioUrl,
+    `http://localhost:3001/studio/stax-card?launch=taku_studio_launch_${'a'.repeat(32)}`,
+  );
+  assert.deepEqual(calls.slice(3), [
     'GET /stax/profile',
     'GET /stax/studio/cards/me',
     'PUT /stax/studio/cards/me',

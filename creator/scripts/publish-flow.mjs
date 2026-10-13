@@ -9,7 +9,7 @@ import {
   getBuilderProfileSnapshotForDisplay as getBuilderProfileSnapshotForDisplayCore,
   mergeStaxCreatorPublishPayloadWithExistingCard,
 } from './publish-payload.mjs';
-import { buildStaxPublishedLinks, buildStaxStudioUrl } from './stax-url.mjs';
+import { buildStaxPublishedLinks, buildStaxStudioUrl, resolveStaxStudioUrl } from './stax-url.mjs';
 import { createStaxStudioRendererPayload, fillStaxStudioLayout } from './editor-renderer.mjs';
 
 const PUBLISH_IMPORT_TIMEOUT_MS = 60000;
@@ -123,7 +123,7 @@ export async function saveDraftToTakuStudio({
       workerUrl,
       endpoint: `${workerUrl}/stax/studio/cards/me`,
       data,
-      studioUrl: workerStudioUrl || buildStaxStudioUrl(siteUrl, { launchContextId }),
+      studioUrl: resolveStaxStudioUrl(siteUrl, workerStudioUrl, { launchContextId }),
       ...(launchContextId ? { launchContextId } : {}),
       ...(accountHint ? { accountHint } : {}),
       draft: cloudDraft,
