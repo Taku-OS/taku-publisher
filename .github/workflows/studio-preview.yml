@@ -1,0 +1,28 @@
+name: Studio-preview test plugin
+on:
+  push:
+    branches: [codex/stax-site-preview-plugin]
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: node --test scripts/studio-preview-channel.test.mjs
+      - run: npm run build:adapters
+      - run: node --test packages/publisher-runtime/test/auth-flow-race.test.mjs packages/publisher-runtime/test/sites-commands.test.mjs packages/publisher-runtime/test/sites-core.test.mjs packages/publisher-runtime/test/sites-publish.test.mjs
+      - run: node scripts/build-studio-preview.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: taku-studio-preview-${{ github.sha }}
+          path: dist/studio-preview/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
