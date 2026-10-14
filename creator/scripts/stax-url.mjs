@@ -49,11 +49,13 @@ export function buildStaxStudioUrl(siteUrl, options = {}) {
     240,
   );
   if (launchContextId) url.searchParams.set('launch', launchContextId);
+  if (options.challengeHandoff === true) url.searchParams.set('afterPublish', 'challenge');
   return url.toString();
 }
 
 export function resolveStaxStudioUrl(siteUrl, workerStudioUrl, options = {}) {
-  if (!isLocalSiteUrl(siteUrl)) {
+  const previewOrigin = String(siteUrl || '').replace(/\/+$/, '') === 'https://codex-stax-page-taku-landing-page.takuos.workers.dev';
+  if (!isLocalSiteUrl(siteUrl) && !previewOrigin) {
     return workerStudioUrl || buildStaxStudioUrl(siteUrl, options);
   }
   // A local frontend must keep using the configured origin even when its

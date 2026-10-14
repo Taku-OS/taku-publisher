@@ -54,7 +54,7 @@ function mergeDraftWithTakuProfile(draft, profileResult = {}) {
       : {}),
     stats: {
       ...(draft?.stats || {}),
-      creatorProfileSynced: true,
+      creatorProfileSynced: Object.keys(staxProfile).length > 0,
     },
   };
 }
@@ -78,6 +78,14 @@ export async function saveDraftToTakuStudio({
       })
     : null;
   if (profile?.requires_action) return profile;
+  if (process.env.TAKU_STAX_REQUIRE_ACCOUNT_PROFILE === '1'
+      && (!profile?.ok || !profile.staxProfile || !Object.keys(profile.staxProfile).length)) {
+    const status = Number(profile?.status) || 503;
+    return { ok: false, status, needsAuth: status === 401 || status === 403,
+      action_type: 'retry_account_profile_sync',
+      error: 'Your Taku account profile could not be loaded. Retry to generate a Card with your account information.',
+      data: {} };
+  }
   const cloudDraft = profile?.ok ? mergeDraftWithTakuProfile(draft, profile) : draft;
   const publishContext = profile?.ok
     ? withTakuCreatorProfileIdentity(context, profile.profile)

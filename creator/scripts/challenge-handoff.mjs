@@ -141,10 +141,10 @@ export function challengeCloudStudioResult(cloudResult, state, publisher = null)
   const view = publicChallengeHandoffState(state, publisher);
   const selectionPending = view.status === 'waiting_for_selection';
   return { ...cloudResult, ...view, challengeSkills: view.candidates,
-    primaryAction: 'open_stax_challenge_review',
+    primaryAction: 'open_stax_card_editor',
     message: selectionPending
-      ? 'The private Card is ready on the Stax Challenge Review page. Choose one local Skill here in the current host, or skip; public release requires Taku Web confirmation.'
-      : 'The private Card is ready on the Stax Challenge Review page. Continue the existing selected Skill only if requested; public release requires Taku Web confirmation.' };
+      ? 'Your Card is ready in the editor. Publish it to continue to the Stax Challenge. Local Skill preparation is optional and starts only when requested.'
+      : 'Your Card is ready in the editor. Publish it to continue to the Stax Challenge. Continue the existing selected Skill only if requested; public release requires Taku Web confirmation.' };
 }
 
 export async function selectChallengeSkill(draft, candidateId) {

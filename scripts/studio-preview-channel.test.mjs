@@ -6,8 +6,8 @@ import os from 'node:os';
 import { configureStudioPreview, PREVIEW_WORKER, PREVIEW_SITE, PREVIEW_PLUGIN, PREVIEW_SITES_SKILL } from './studio-preview-channel.mjs';
 import { buildStudioPreview } from './build-studio-preview.mjs';
 
-test('test channel refuses production/staging endpoints and external credential arguments', () => {
-  for (const args of [ ['--worker-url', 'https://worker.taku.ai'], ['--worker-url=https://taku-workers-staging.takuos.workers.dev'], ['--site-url', 'https://taku.ai'], ['--auth-site-url', 'https://auth.taku.ai'], ['--bearer-token', 'fixture'], ['--token-env', 'ANOTHER_TOKEN'] ]) {
+test('preview channel refuses isolated/staging endpoints and external credential arguments', () => {
+  for (const args of [ ['--worker-url', 'https://taku-workers-studio-preview.takuos.workers.dev'], ['--worker-url=https://taku-workers-staging.takuos.workers.dev'], ['--site-url', 'https://taku.ai'], ['--auth-site-url', 'https://auth.taku.ai'], ['--bearer-token', 'fixture'], ['--token-env', 'ANOTHER_TOKEN'] ]) {
     assert.throws(() => configureStudioPreview(args, {}, '/fixture'), /refused|another environment/);
   }
 });
@@ -15,9 +15,9 @@ test('fixed test URLs and every session source are isolated without modifying HO
   const env = { HOME: '/unchanged', TAKU_BEARER_TOKEN: 'fixture', SUPABASE_ACCESS_TOKEN: 'fixture', TAKU_HOME: '/production', TAKU_PUBLISHER_SESSION_PATH: '/production/session.json' };
   configureStudioPreview(['--worker-url', PREVIEW_WORKER, '--site-url', PREVIEW_SITE], env, '/fixture');
   assert.equal(env.HOME, '/unchanged'); assert.equal(env.TAKU_BEARER_TOKEN, undefined); assert.equal(env.SUPABASE_ACCESS_TOKEN, undefined);
-  assert.equal(env.TAKU_PUBLISHER_HOME, '/fixture/.taku/studio-preview/publisher');
-  assert.equal(env.TAKU_SESSION_PATH, '/fixture/.taku/studio-preview/desktop-disabled/session.json');
-  assert.equal(env.TAKU_PUBLISHER_SESSION_PATH, '/fixture/.taku/studio-preview/publisher/session.json');
+  assert.equal(env.TAKU_PUBLISHER_HOME, '/fixture/.taku/studio-preview-production/publisher');
+  assert.equal(env.TAKU_SESSION_PATH, '/fixture/.taku/studio-preview-production/desktop-disabled/session.json');
+  assert.equal(env.TAKU_PUBLISHER_SESSION_PATH, '/fixture/.taku/studio-preview-production/publisher/session.json');
   assert.equal(env.TAKU_AUTH_SITE_URL, PREVIEW_SITE);
 });
 test('all adapters retain Sites and use distinct identities; generated test rewriting leaves base adapters intact', async () => {

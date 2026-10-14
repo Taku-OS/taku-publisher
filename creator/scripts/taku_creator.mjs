@@ -72,7 +72,7 @@ import {
   selectDisplayedTools,
 } from './draft.mjs';
 import { publishDraftToTaku, saveDraftToTakuStudio } from './publish-flow.mjs';
-import { buildStaxChallengeReviewUrl } from './stax-url.mjs';
+import { buildStaxChallengeReviewUrl, buildStaxStudioUrl } from './stax-url.mjs';
 import {
   createPrivateInventory,
   publicItem,
@@ -266,7 +266,7 @@ async function scan(parsed, options = {}) {
       creatorMetricsSources: personaSignals.external?.sources || [],
       githubMetricsEnabled: includeGitHubMetrics,
       promptStyleEnabled: includePromptStyle,
-      creatorProfileSynced: Boolean(creatorProfile),
+      creatorProfileSynced: Boolean(staxProfile),
       creatorProfileWarning: creatorProfileResult?.warning,
       defaultAiClient: aiIdentity.defaultClient,
       availableAiClients: aiIdentity.options.map((item) => item.id),
@@ -565,14 +565,16 @@ async function saveDraftResultToCloudStudio(parsed, draftResult) {
     candidates: challengeCandidatesFromCreationChoices(draftResult.creationChoices), workerUrl, siteUrl,
     allowCustomWorkerUrl: hasFlag(parsed, 'allow-custom-worker-url'),
   });
-  const reviewUrl = buildStaxChallengeReviewUrl(siteUrl, {
-    launchContextId: saved.launchContextId,
+  const reviewUrl = buildStaxChallengeReviewUrl(siteUrl);
+  const editorUrl = buildStaxStudioUrl(siteUrl, {
+    launchContextId: saved.launchContextId, challengeHandoff: true,
   });
   return challengeCloudStudioResult({
     ...cloudResult,
-    studioUrl: cloudResult.editorUrl,
-    editorUrl: reviewUrl,
-    primaryUrl: reviewUrl,
+    studioUrl: editorUrl,
+    editorUrl,
+    primaryUrl: editorUrl,
+    challengeUrl: reviewUrl,
   }, handoff, await challengePublisherState(handoff));
 }
 

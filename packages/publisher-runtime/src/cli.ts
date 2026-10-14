@@ -193,9 +193,30 @@ export async function dispatch(args: ParsedArguments): Promise<JsonObject> {
   }
 }
 
-async function authorizeForCommand(options: AuthFlowOptions, wait = false): Promise<void> {
+async function authorizeForCommand(options: AuthFlowOptions, wait = false, autoContinue = false): Promise<void> {
   if (wait) { await loginWithBrowser(options); return; }
-  const result = await startAuthFlow(options);
+  let result = await startAuthFlow(options);
+  if (autoContinue) {
+    // Reuse the detached receiver, including a pending request from an interrupted
+    // command. The live caller resumes only after the saved grant is validated.
+    if (result.status === 'awaiting_authorization') process.stderr.write(`${JSON.stringify({
+      ...result, message: 'Complete sign-in in your browser. Card generation will continue automatically.',
+      action_type: 'complete_browser_authorization',
+    })}\n`);
+    while (result.status === 'awaiting_authorization') {
+      if (Date.now() >= Date.parse(String(result.expires_at))) throw new PublisherError(
+        'Browser authorization expired. Run the Card command again.', 'auth_timeout', result,
+      );
+      await new Promise(resolve => setTimeout(resolve, 500));
+      result = await checkAuthFlow(String(result.request_id));
+    }
+    if (result.status !== 'authenticated') throw new PublisherError(
+      'Browser authorization did not complete. Retry the Card command.',
+      String(result.status || 'authorization_failed'), result,
+    );
+    process.stderr.write(`${JSON.stringify({ status: 'authenticated' })}\n`);
+    return;
+  }
   if (result.status !== 'authenticated') throw new PublisherError('Complete sign-in, then say continue.', 'authorization_deferred', result);
 }
 
@@ -1392,7 +1413,7 @@ async function runCreatorCommand(command: string, creatorArgs: string[]): Promis
         siteUrl: creatorAuthorizationSiteUrl(effectiveCreatorArgs),
         openBrowser: !creatorArgs.includes('--no-open-browser'),
         intent: command === 'center-unpublish' ? 'creator_center_unpublish' : centerScope[command] ? 'creator_center' : 'publish_stax_card',
-      }, creatorArgs.includes('--wait-for-auth'));
+      }, creatorArgs.includes('--wait-for-auth'), cloudStudio && ['draft', 'editor'].includes(command));
       auth = await resolveAuth({ allowDesktopSession: !strictPublisherBinding });
       if (creatorAuthorizationRequired(auth, requiredScopes)) throw new PublisherError(
         'Taku authorization did not grant the requested Creator access.',
@@ -1441,7 +1462,7 @@ async function runCreatorCommand(command: string, creatorArgs: string[]): Promis
       const savedMessage = accountHint
         ? `The private Card was saved to Taku account ${accountHint}.`
         : 'The private Card was saved to the current Taku account.';
-      payload.message = `${savedMessage} Open the Stax Challenge Review editorUrl. ${STAX_CHALLENGE_SELECTION_GUIDANCE}`;
+      payload.message = `${savedMessage} Open editorUrl to edit your Card, then publish to continue to the Stax Challenge. ${STAX_CHALLENGE_SELECTION_GUIDANCE}`;
     } else {
       payload.message = accountHint
         ? `The private Studio draft was saved to Taku account ${accountHint}. Open editorUrl to review it.`

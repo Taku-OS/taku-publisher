@@ -29,11 +29,11 @@ export async function buildStudioPreview({ root = repository, commit, sourceDirt
     if (manifest.name !== 'taku-publisher') throw new Error('Unexpected adapter identity.');
     manifest.name = PREVIEW_PLUGIN;
     manifest.version = `${manifest.version}-studio-preview.${commit.slice(0, 12)}`;
-    manifest.description = 'Studio-preview testing: isolated Card and Site publishing.';
+    manifest.description = 'Studio preview: Card and Site publishing with your Taku account.';
     if (Array.isArray(manifest.skills)) manifest.skills = manifest.skills.map(value => value.replace(/taku-publisher/g, PREVIEW_PLUGIN).replace(/taku-sites/g, PREVIEW_SITES_SKILL));
     if (manifest.interface) {
       manifest.interface.displayName = 'Taku Studio Preview';
-      manifest.interface.shortDescription = 'Test Cards and Sites with the isolated backend.';
+      manifest.interface.shortDescription = 'Test Cards and Sites with your Taku account.';
       manifest.interface.defaultPrompt = [`Use $${PREVIEW_PLUGIN} or $${PREVIEW_SITES_SKILL} to test publishing in studio-preview.`];
     }
     await writeJson(manifestFile, manifest);
@@ -67,7 +67,7 @@ async function rewriteSkill(skill, oldName, newName, version) {
   text = text.replace(/\$taku-publisher\b/g, `$${PREVIEW_PLUGIN}`).replace(/\$taku-sites\b/g, `$${PREVIEW_SITES_SKILL}`);
   const frontmatterEnd = text.indexOf('\n---', 4);
   if (frontmatterEnd < 0) throw new Error('Invalid Skill frontmatter.');
-  text = text.slice(0, frontmatterEnd + 4) + `\n\nThis is the studio-preview test channel. Always use this Skill's bundled\n\`scripts/taku-publisher.mjs\`; its backend and login are isolated. The test\nwebsite is ${PREVIEW_SITE}. Sign in with a confirmed test account through\n${PREVIEW_SITE}/studio-preview/login, then repeat the original command.\n` + text.slice(frontmatterEnd + 4);
+  text = text.slice(0, frontmatterEnd + 4) + `\n\nThis is the studio-preview test channel. Always use this Skill's bundled\n\`scripts/taku-publisher.mjs\`; it uses production Taku accounts and APIs. The preview\nwebsite is ${PREVIEW_SITE}. Sign in with your existing Taku account through\n${PREVIEW_SITE}/studio-preview/login, authorization resumes the Card command automatically.\n` + text.slice(frontmatterEnd + 4);
   await fs.writeFile(skillFile, text);
   await writeJson(path.join(skill, 'publisher-version.json'), { name: newName, version, channel: 'studio-preview' });
   try {
@@ -85,7 +85,7 @@ async function rewriteSkill(skill, oldName, newName, version) {
     ['node_modules/@taku/publisher-runtime/dist/constants.js', "export const DEFAULT_WORKER_URL = 'https://worker.taku.ai';", `export const DEFAULT_WORKER_URL = '${PREVIEW_WORKER}';`],
     ['node_modules/@taku/publisher-runtime/dist/browser-auth.js', "export const DEFAULT_SITE_URL = 'https://taku.ai';", `export const DEFAULT_SITE_URL = '${PREVIEW_SITE}';`],
     ['node_modules/@taku/publisher-runtime/dist/browser-auth.js', '/profile?${query}', '/stax?${query}'],
-    // Test Publisher sessions never consume or renew the production Desktop identity.
+    // Preview Publisher sessions do not consume or renew Desktop credentials.
     ['node_modules/@taku/publisher-runtime/dist/auth.js', 'if (options.allowDesktopSession === false)', 'if (true /* studio-preview: Desktop fallback disabled */)'],
     ['node_modules/@taku/publisher-runtime/dist/auth.js', 'export async function refreshSession(session, options = {}) {', 'export async function refreshSession(session, options = {}) {\n    return null; /* studio-preview: Desktop refresh disabled */'],
   ];

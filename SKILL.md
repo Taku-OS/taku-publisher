@@ -14,7 +14,7 @@ In every host shell call, always change into the directory that contains this `S
 This skill has seven product surfaces:
 
 - Project import flow: discover recent Codex, Claude Code, Cursor, and OpenCode workspaces from bounded local metadata, let the creator select one exact project, assess it locally, and route it to existing Skill publishing, SubApp migration, bounded Skill generation, or reference-only handling.
-- Stax Card Challenge flow: this is the default for requests to create, make, or generate a Stax Card. Authorize the creator, generate the private Card draft, and open the Stax Challenge Review page through the Challenge handoff.
+- Stax Card Challenge flow: this is the default for requests to create, make, or generate a Stax Card. Authorize the creator, generate the Card, and open the editable Studio. The creator publishes there before continuing to the Stax Challenge.
 - Creator profile flow: use this when the creator explicitly asks for an AI Builder Profile, public creator page, Studio, or profile editing. Authorize and confirm the Taku account first, then scan local AI tooling and behavior, save an owner-scoped private profile draft, and open the stable Worker-hosted Studio URL.
 - Creator Center flow: list and search the signed-in creator's Taku items, read trusted server-side stats, inspect one owned item, and edit the listing metadata of a private draft.
 - Marketplace consumer flow: search and inspect public community Apps, Skills, Tools, and Bundles; show an install preflight and safely install one compatible confirmed Skill into the selected Agent Skills host.
@@ -62,20 +62,13 @@ Project import, Creator Center, SubApp, and explicit Creator Profile or Studio
 requests keep their existing routes.
 
 Run `creator-draft --json --editor --challenge-handoff` with the requested
-workspace and usage window. Open the exact returned `editorUrl`; it is the Stax
-Challenge Review page, not the Studio editor. If the host cannot open it, return
-that exact URL instead. Show the Card URL and `challengeSkills` together. Before
-asking the creator to choose one candidate or skip, explain that the choice
-prepares one Skill for review and publishing, and that publishing an eligible
-Skill or creating a Taku App can help complete the Stax Challenge and qualify
-for campaign rewards. Point to the Challenge page for eligibility and reward
-terms; never invent an amount, deadline, or guaranteed reward. Make clear that
-choosing a candidate does not publish it and that final public release still
-requires the creator's confirmation. Selection happens here in the current
-Codex, Claude Code or Cursor Agent, not through a browser-to-local bridge.
-Candidates are suggestions, not proof of ownership, publication rights or
-safety. Confirm the creator owns or has the right to publish the selected Skill
-before preparation or upload.
+workspace and usage window. Open the exact returned `editorUrl`; it is the
+editable Stax Card Studio. The creator edits and explicitly publishes the Card
+there; publication opens the Stax Challenge Review page for entry and ranking.
+Lead with the editor link and a short Card summary. Do not require local Skill
+selection or list the installed Skills to finish Card generation. Local Skill
+candidates are optional follow-up work when the creator asks to publish one.
+Final public release requires the creator's confirmation in the editor.
 
 Use the exact `challengeDraftPath` from that result in subsequent calls; never
 choose the latest draft globally or substitute another source path:
@@ -113,7 +106,15 @@ preparation starts and does not publish anything or delete remote drafts.
 
 ### Browser authorization in Codex and Claude Code
 
-- Login is a two-turn workflow by default. Run the original business command.
+- Stax Card generation and cloud `creator-editor` automatically wait for browser
+  authorization and resume in the same command. Keep the yielding shell session
+  running, report that sign-in continues generation automatically, and collect
+  the final `editorUrl`. Do not end the turn or ask the user to say "continue".
+  The wait is bounded by the receiver expiry. Never scan before `authenticated`.
+- The two-turn rules below apply to other business commands. An interrupted Card
+  command can be rerun with the same arguments; reuse its pending authorization.
+
+- Other business commands use a two-turn login workflow by default. Run the original business command.
   If it returns `awaiting_authorization`, the independent local receiver is
   running and the business command has exited before scanning or uploading.
   Show `authorization_url` and say: "Complete sign-in in your external browser,
@@ -615,7 +616,7 @@ Default to `creator-draft --json --editor --challenge-handoff` for Stax Card gen
 
 Only use `creator-scan --compact` when the creator explicitly asks for a text-only scan/report, says they do not want a preview/editor, or asks for debugging metrics. Keep the compact host result as the default so local paths and scan previews stay out of the model context. If the request could reasonably mean "generate something I can review", use `creator-draft --json --editor`, not `creator-scan`.
 
-After `creator-draft --json --editor --challenge-handoff`, the CLI must save the owner-scoped private draft and return the exact Stax Challenge Review `editorUrl`. After an explicit ordinary Creator Profile or Studio request, `creator-draft --json --editor` returns the stable Worker-hosted Studio URL. Treat a result without `editorUrl` as a failed draft unless the user explicitly asked for scan-only output. The launch value is an opaque one-time credential; never display or log it as an account token.
+After `creator-draft --json --editor --challenge-handoff`, the CLI returns the editable Studio `editorUrl`. The creator edits and publishes there; publication then opens the Stax Challenge Review. Saving the intermediate owner-scoped draft is internal state, not the final user result. After an explicit ordinary Creator Profile or Studio request, `creator-draft --json --editor` returns the stable Worker-hosted Studio URL. Treat a result without `editorUrl` as a failed draft unless the user explicitly asked for scan-only output. The launch value is an opaque one-time credential; never display or log it as an account token.
 
 `--editor` returns an editor handoff; it does not itself launch a browser.
 When `editor_open_required` or `next_action: open_editor_url` is returned, open
@@ -641,7 +642,7 @@ For creator profile scans:
 - The Worker-hosted cloud Studio is the normal review surface while the LP Studio route is unavailable. Its one-time launch handoff must become an HttpOnly owner-scoped Studio session and immediately redirect to the fixed editor URL.
 - Normally omit `--no-open-browser` so the CLI can launch authorization automatically. If no browser is visible, use the URL printed by that same live command with the host's available browser-opening mechanism, and present the clickable URL if opening is unavailable. Do not start duplicate creator commands merely to get another URL, and do not just poll while the user has no authorization page. Use `--no-open-browser` only for an explicit no-launch request or a host-managed browser fallback. The existing command resumes automatically after authorization; return its actual `editorUrl`, not an assumed Studio address.
 
-When responding after `creator-draft --editor`, lead with the generated public-facing summary: persona code/title, short persona description, whether tools/works are selected, the masked `publisherAccountHint`, and the cloud Studio URL. Say naturally that authorization completed before scanning and the private draft belongs to that account. Keep scan counts secondary and omit local paths unless the creator asks for technical details.
+When responding after `creator-draft --editor`, lead with the generated public-facing summary: persona code/title, short persona description, whether tools/works are selected, the masked `publisherAccountHint`, and the cloud Studio URL. Say that the Card is ready to edit and belongs to that Taku account; publishing from the editor continues to the Stax Challenge. Keep scan counts secondary and omit local paths unless the creator asks for technical details.
 
 ## Creator Center Flow
 
