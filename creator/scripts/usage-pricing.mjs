@@ -1,5 +1,5 @@
 export const ESTIMATED_COST_SCHEMA = 'taku.creator.estimated-cost.v1';
-export const PRICE_TABLE_UPDATED_AT = '2026-07-30';
+export const PRICE_TABLE_UPDATED_AT = '2026-10-15';
 export const ESTIMATED_COST_BASIS = 'monthly-market-api-price-equivalent';
 const TOKENS_PER_MILLION = 1_000_000;
 
@@ -17,6 +17,11 @@ const PRICE_RULES = [
 
   // OpenAI standard API list prices. These are replacement-cost equivalents for
   // local client usage, not Codex subscription charges or an official bill.
+  // GPT-6 reference prices verified against UniAPI and OpenRouter on 2026-10-15.
+  { id: 'openai-gpt-6.1-sol', provider: 'OpenAI', model: 'gpt-6.1-sol', patterns: [/^(?:openai[-_:/\s]*)?gpt[-_.\s]*6[._-]?1[-_.\s]*sol(?:[-_.\s]*\d{4}[-_.]\d{2}[-_.]\d{2})?$/i], input: 2, cacheWrite: 2.5, cacheRead: 0.1, output: 10 },
+  { id: 'openai-gpt-6-sol', provider: 'OpenAI', model: 'gpt-6-sol', patterns: [/^(?:openai[-_:/\s]*)?gpt[-_.\s]*6[-_.\s]*sol(?:[-_.\s]*\d{4}[-_.]\d{2}[-_.]\d{2})?$/i], input: 2, cacheWrite: 2.5, cacheRead: 0.2, output: 10 },
+  { id: 'openai-gpt-6-luna', provider: 'OpenAI', model: 'gpt-6-luna', patterns: [/^(?:openai[-_:/\s]*)?gpt[-_.\s]*6[-_.\s]*luna(?:[-_.\s]*\d{4}[-_.]\d{2}[-_.]\d{2})?$/i], input: 0.1, cacheWrite: 0.125, cacheRead: 0.01, output: 0.5 },
+  { id: 'openai-gpt-6-astra', provider: 'OpenAI', model: 'gpt-6-astra', patterns: [/^(?:openai[-_:/\s]*)?gpt[-_.\s]*6[-_.\s]*astra(?:[-_.\s]*\d{4}[-_.]\d{2}[-_.]\d{2})?$/i], input: 10, cacheWrite: 12.5, cacheRead: 1, output: 50 },
   { id: 'openai-gpt-5.6-sol', provider: 'OpenAI', model: 'gpt-5.6-sol', patterns: [/^(?:openai[-_:/\s]*)?gpt[-_.\s]*5\.?6[-_.\s]*sol(?:[-_.\s]*\d{4}[-_.]\d{2}[-_.]\d{2})?$/i], input: 5, cacheWrite: 6.25, cacheRead: 0.5, output: 30 },
   { id: 'openai-gpt-5.6-terra', provider: 'OpenAI', model: 'gpt-5.6-terra', patterns: [/^(?:openai[-_:/\s]*)?gpt[-_.\s]*5\.?6[-_.\s]*terra(?:[-_.\s]*\d{4}[-_.]\d{2}[-_.]\d{2})?$/i], input: 2, cacheWrite: 2.5, cacheRead: 0.2, output: 12 },
   { id: 'openai-gpt-5.6-luna', provider: 'OpenAI', model: 'gpt-5.6-luna', patterns: [/^(?:openai[-_:/\s]*)?gpt[-_.\s]*5\.?6[-_.\s]*luna(?:[-_.\s]*\d{4}[-_.]\d{2}[-_.]\d{2})?$/i], input: 0.2, cacheWrite: 0.25, cacheRead: 0.02, output: 1.2 },

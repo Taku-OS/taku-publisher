@@ -25,7 +25,7 @@ test('matches GPT-5.6 variants exactly at current standard API list prices', () 
       ['gpt-5.6-luna', 0.2, 0.02, 1.2],
     ],
   );
-  assert.equal(PRICE_TABLE_UPDATED_AT, '2026-07-30');
+  assert.equal(PRICE_TABLE_UPDATED_AT, '2026-10-15');
 });
 
 test('does not silently price unknown GPT-5 family variants as GPT-5', () => {
