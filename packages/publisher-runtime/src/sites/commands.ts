@@ -126,6 +126,23 @@ export async function runSiteCommand(args: SiteCommandArguments): Promise<JsonOb
     const projectId = required(args, 'project-id');
     return jsonOutput('sites_status', { identity: session as JsonObject, site: await client.get(`/v1/sites/${encodeURIComponent(projectId)}`) as JsonObject });
   }
+  if (args.command === 'sites-preview') {
+    const { startSitePreview } = await import('./preview.js');
+    const projectRoot = path.resolve(required(args, 'project'));
+    const rawPort = optional(args, 'port');
+    if (rawPort && (!/^[0-9]{4,5}$/.test(rawPort) || Number(rawPort) < 1024 || Number(rawPort) > 65535))
+      throw new PublisherError('Preview port must be between 1024 and 65535.', 'sites_preview_invalid_port');
+    const artifact = await core.buildArtifact(projectRoot, { projectId: 'prj_pending_cli', builtAt: new Date().toISOString() });
+    await core.validateArtifact(projectRoot, artifact);
+    const preview = await startSitePreview({ core, artifact, client: await sitesClient(args), sdkBytes: await browserSdkBytes(), port: rawPort ? Number(rawPort) : undefined });
+    const stop = () => { void preview.stop().catch(() => { process.exitCode = 1; }); };
+    process.once('SIGINT', stop); process.once('SIGTERM', stop);
+    return jsonOutput('sites_preview_ready', { url: preview.url, expires_at: new Date(preview.expiresAt).toISOString(),
+      pid: preview.pid, build_id: artifact.buildId, manifest_digest: artifact.manifestDigest,
+      private: true, loopback_only: true, published: false,
+      storage: 'unavailable; browser-local drafts remain available',
+      stop: 'Ctrl+C in this foreground process; no public URL is created.' });
+  }
   if (args.command === 'sites-publish') return publishSite(args, core);
   throw new PublisherError(`Unknown Sites command: ${args.command}`, 'unknown_command');
 }

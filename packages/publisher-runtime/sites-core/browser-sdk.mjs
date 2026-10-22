@@ -1,6 +1,21 @@
+// packages/contracts/src/text.ts
+var SITE_TEXT_PATH = "/__taku/integrations/text/generate";
+function parseTextRequest(value) {
+  if (!record(value) || Object.keys(value).some((key) => !["prompt", "maxOutputTokens"].includes(key)) || typeof value.prompt !== "string" || !value.prompt.trim() || new TextEncoder().encode(value.prompt).length > 32768)
+    return null;
+  const maxOutputTokens = Object.hasOwn(value, "maxOutputTokens") ? value.maxOutputTokens : 4096;
+  return Number.isSafeInteger(maxOutputTokens) && maxOutputTokens >= 1 && maxOutputTokens <= 8192 ? { prompt: value.prompt, maxOutputTokens } : null;
+}
+function parseTextResult(value) {
+  return record(value) && Object.keys(value).length === 2 && typeof value.text === "string" && Boolean(value.text.trim()) && new TextEncoder().encode(value.text).length <= 1024 * 1024 && (value.finishReason === "stop" || value.finishReason === "length") ? { text: value.text, finishReason: value.finishReason } : null;
+}
+function record(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 // packages/contracts/src/image-model-structured-parameters.ts
 var bytes = (value) => new TextEncoder().encode(value).byteLength;
-var record = (value) => !!value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+var record2 = (value) => !!value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 var safe = (value) => typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER;
 var integer = (value, maximum) => typeof value === "number" && Number.isSafeInteger(value) && value >= 1 && value <= maximum;
 function isImageModelParameterName(name) {
@@ -20,7 +35,7 @@ function isImageModelParameterName(name) {
 function validImageModelStructuredSchema(value) {
   const budget = { nodes: 0 };
   const visit = (node, depth) => {
-    if (depth > 6 || ++budget.nodes > 256 || !record(node) || !Object.hasOwn(node, "type") || Object.hasOwn(node, "nullable") && typeof node.nullable !== "boolean")
+    if (depth > 6 || ++budget.nodes > 256 || !record2(node) || !Object.hasOwn(node, "type") || Object.hasOwn(node, "nullable") && typeof node.nullable !== "boolean")
       return false;
     const typeKeys = {
       object: ["properties", "required"],
@@ -38,7 +53,7 @@ function validImageModelStructuredSchema(value) {
       return false;
     switch (node.type) {
       case "object": {
-        if (!record(node.properties))
+        if (!record2(node.properties))
           return false;
         const entries = Object.entries(node.properties);
         if (entries.length < 1 || entries.length > 64)
@@ -68,7 +83,7 @@ function validImageModelStructuredSchema(value) {
         return false;
     }
   };
-  return record(value) && value.type === "object" && value.nullable !== true && visit(value, 1);
+  return record2(value) && value.type === "object" && value.nullable !== true && visit(value, 1);
 }
 function validImageModelStructuredValue(value) {
   const budget = { nodes: 0 };
@@ -89,12 +104,12 @@ function validImageModelStructuredValue(value) {
           return false;
       return true;
     }
-    if (!record(node))
+    if (!record2(node))
       return false;
     const entries = Object.entries(node);
     return entries.length <= 64 && entries.every(([name, child]) => isImageModelParameterName(name) && visit(child, depth + 1));
   };
-  return record(value) && visit(value, 1) && bytes(JSON.stringify(value)) <= 16384;
+  return record2(value) && visit(value, 1) && bytes(JSON.stringify(value)) <= 16384;
 }
 function structuredValueMatchesSchema(schema, value) {
   if (!validImageModelStructuredSchema(schema) || !validImageModelStructuredValue(value))
@@ -106,7 +121,7 @@ function structuredValueMatchesSchema(schema, value) {
       return s.nullable === true;
     switch (s.type) {
       case "object":
-        return record(node) && (s.required ?? []).every((name) => Object.hasOwn(node, name)) && Object.entries(node).every(([name, child]) => Object.hasOwn(s.properties ?? {}, name) && visit(s.properties?.[name], child));
+        return record2(node) && (s.required ?? []).every((name) => Object.hasOwn(node, name)) && Object.entries(node).every(([name, child]) => Object.hasOwn(s.properties ?? {}, name) && visit(s.properties?.[name], child));
       case "array":
         return Array.isArray(node) && typeof s.maxItems === "number" && node.length <= s.maxItems && node.every((child) => visit(s.items, child));
       case "string":
@@ -121,7 +136,7 @@ function structuredValueMatchesSchema(schema, value) {
   return visit(schema, value);
 }
 function imageModelParameterValuesEqual(left, right) {
-  if (!record(left) || !record(right))
+  if (!record2(left) || !record2(right))
     return left === right;
   if (!validImageModelStructuredValue(left) || !validImageModelStructuredValue(right))
     return false;
@@ -130,7 +145,7 @@ function imageModelParameterValuesEqual(left, right) {
       return true;
     if (Array.isArray(a) || Array.isArray(b))
       return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((entry, index) => equal(entry, b[index]));
-    if (!record(a) || !record(b))
+    if (!record2(a) || !record2(b))
       return false;
     const keys = Object.keys(a);
     return keys.length === Object.keys(b).length && keys.every((key) => Object.hasOwn(b, key) && equal(a[key], b[key]));
@@ -173,7 +188,7 @@ var REASONS = [
 ];
 var bytes2 = (value) => new TextEncoder().encode(value).byteLength;
 var bounded = (value, max) => typeof value === "string" && bytes2(value) <= max;
-var record2 = (value) => !!value && typeof value === "object" && !Array.isArray(value);
+var record3 = (value) => !!value && typeof value === "object" && !Array.isArray(value);
 var keys = (value, required, optional = []) => required.every((key) => Object.hasOwn(value, key)) && Object.keys(value).every((key) => required.includes(key) || optional.includes(key));
 var integer2 = (value, min, max) => typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= max;
 var finite = (value) => typeof value === "number" && Number.isFinite(value);
@@ -183,7 +198,7 @@ var unavailable = () => {
   throw new ImageModelCatalogError(503, "image_model_catalog_unavailable");
 };
 function parseImageModelQuery(value) {
-  if (!record2(value) || !keys(value, ["operation"], ["query", "cursor", "limit"]) || !isImageOperation(value.operation) || value.query !== undefined && !bounded(value.query, 128) || value.cursor !== undefined && !cursor(value.cursor) || value.limit !== undefined && !integer2(value.limit, 1, 100)) {
+  if (!record3(value) || !keys(value, ["operation"], ["query", "cursor", "limit"]) || !isImageOperation(value.operation) || value.query !== undefined && !bounded(value.query, 128) || value.cursor !== undefined && !cursor(value.cursor) || value.limit !== undefined && !integer2(value.limit, 1, 100)) {
     throw new ImageModelCatalogError(400, "invalid_image_model_catalog_query");
   }
   return {
@@ -195,7 +210,7 @@ function parseImageModelQuery(value) {
 }
 function validSizeConstraints(value, parameter, feature) {
   const grid = feature === IMAGE_MODEL_SIZE_FEATURE_V2 || feature === IMAGE_MODEL_INPUT_FEATURE_V1 || feature === IMAGE_MODEL_INPUT_FEATURE_V2 || feature === IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1 || feature === IMAGE_MODEL_STRUCTURED_FEATURE_V1 || (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1);
-  if (!record2(value) || !keys(value, [
+  if (!record3(value) || !keys(value, [
     "minWidth",
     "maxWidth",
     "minHeight",
@@ -244,13 +259,13 @@ function validAspectRatioValue(value, minimum, maximum) {
   return width >= minimum * height && width <= maximum * height;
 }
 function validParameter(value, name, outputs, feature) {
-  if (record2(value) && value.type === "aspect-ratio") {
+  if (record3(value) && value.type === "aspect-ratio") {
     return (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1) && keys(value, ["type", "minimum", "maximum"], ["required", "default"]) && (value.required === undefined || typeof value.required === "boolean") && !["sync_mode", "enable_safety_checker", "limit_generations", "num_images"].includes(name) && finite(value.minimum) && finite(value.maximum) && value.minimum >= 1 / 99999 && value.maximum <= 99999 && value.minimum <= value.maximum && (!Object.hasOwn(value, "default") || validAspectRatioValue(value.default, value.minimum, value.maximum));
   }
-  if (record2(value) && (value.type === "object" || Object.hasOwn(value, "structuredSchema"))) {
+  if (record3(value) && (value.type === "object" || Object.hasOwn(value, "structuredSchema"))) {
     return (feature === IMAGE_MODEL_STRUCTURED_FEATURE_V1 || (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1)) && value.type === "object" && keys(value, ["type", "structuredSchema"], ["required", "default"]) && (value.required === undefined || typeof value.required === "boolean") && !["sync_mode", "enable_safety_checker", "limit_generations", "num_images"].includes(name) && validImageModelStructuredSchema(value.structuredSchema) && (!Object.hasOwn(value, "default") || structuredValueMatchesSchema(value.structuredSchema, value.default));
   }
-  if (!record2(value) || !keys(value, ["type"], [
+  if (!record3(value) || !keys(value, ["type"], [
     "values",
     "minimum",
     "maximum",
@@ -300,7 +315,7 @@ function validParameter(value, name, outputs, feature) {
     case "integer":
       return finite(fallback) && (value.type !== "integer" || Number.isSafeInteger(fallback)) && (!Array.isArray(numericChoices) || numericChoices.includes(fallback)) && (!finite(value.minimum) || fallback >= value.minimum) && (!finite(value.maximum) || fallback <= value.maximum);
     case "size":
-      return record2(fallback) && keys(fallback, ["width", "height"]) && integer2(fallback.width, 1, 4096) && integer2(fallback.height, 1, 4096) && fallback.width * fallback.height <= 8 * 1024 * 1024 && (!finite(value.minimum) || fallback.width >= value.minimum && fallback.height >= value.minimum) && (!finite(value.maximum) || fallback.width <= value.maximum && fallback.height <= value.maximum) && (!Object.hasOwn(value, "sizeConstraints") || sizeWithinConstraints({ width: fallback.width, height: fallback.height }, value.sizeConstraints));
+      return record3(fallback) && keys(fallback, ["width", "height"]) && integer2(fallback.width, 1, 4096) && integer2(fallback.height, 1, 4096) && fallback.width * fallback.height <= 8 * 1024 * 1024 && (!finite(value.minimum) || fallback.width >= value.minimum && fallback.height >= value.minimum) && (!finite(value.maximum) || fallback.width <= value.maximum && fallback.height <= value.maximum) && (!Object.hasOwn(value, "sizeConstraints") || sizeWithinConstraints({ width: fallback.width, height: fallback.height }, value.sizeConstraints));
     default:
       return false;
   }
@@ -309,7 +324,7 @@ function validModel(value, operation, feature) {
   const generationFeature = feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1;
   const inputFeature = feature === IMAGE_MODEL_INPUT_FEATURE_V1 || feature === IMAGE_MODEL_INPUT_FEATURE_V2 || feature === IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1 || feature === IMAGE_MODEL_STRUCTURED_FEATURE_V1 || (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1);
   const referenceFeature = feature === IMAGE_MODEL_INPUT_FEATURE_V2 || feature === IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1 || feature === IMAGE_MODEL_STRUCTURED_FEATURE_V1 || (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1);
-  if (!record2(value) || !keys(value, [
+  if (!record3(value) || !keys(value, [
     "id",
     "displayName",
     "operations",
@@ -319,17 +334,17 @@ function validModel(value, operation, feature) {
     "parameters",
     "maximumInputs",
     "maximumOutputs"
-  ], inputFeature ? ["inputContract"] : []) || !bounded(value.id, 96) || !/^[a-z][a-z0-9.-]{0,95}$/.test(value.id) || !bounded(value.displayName, 256) || !value.displayName.trim() || !Array.isArray(value.operations) || value.operations.length !== 1 || value.operations[0] !== operation || !bounded(value.parameterSchemaVersion, 128) || !bounded(value.priceVersion, 128) || !integer2(value.maximumInputs, operation === "media.image.edit" ? 1 : 0, operation === "media.image.edit" ? referenceFeature ? 17 : 16 : generationFeature ? 16 : 0) || !integer2(value.maximumOutputs, 1, (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1) && value.id === "muse-image" && value.parameterSchemaVersion === `muse-image-${operation === "media.image.edit" ? "edit" : "generate"}-v2-2026-10-09` ? 10 : 4) || !record2(value.availability) || !keys(value.availability, SURFACES))
+  ], inputFeature ? ["inputContract"] : []) || !bounded(value.id, 96) || !/^[a-z][a-z0-9.-]{0,95}$/.test(value.id) || !bounded(value.displayName, 256) || !value.displayName.trim() || !Array.isArray(value.operations) || value.operations.length !== 1 || value.operations[0] !== operation || !bounded(value.parameterSchemaVersion, 128) || !bounded(value.priceVersion, 128) || !integer2(value.maximumInputs, operation === "media.image.edit" ? 1 : 0, operation === "media.image.edit" ? referenceFeature ? 17 : 16 : generationFeature ? 16 : 0) || !integer2(value.maximumOutputs, 1, (feature === IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1 || feature === IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1) && value.id === "muse-image" && value.parameterSchemaVersion === `muse-image-${operation === "media.image.edit" ? "edit" : "generate"}-v2-2026-10-09` ? 10 : 4) || !record3(value.availability) || !keys(value.availability, SURFACES))
     return false;
   let referenceMask = false;
   let generationReferences = false;
   if (Object.hasOwn(value, "inputContract")) {
     const contract = value.inputContract;
-    if (!record2(contract) || !Array.isArray(contract.roles))
+    if (!record3(contract) || !Array.isArray(contract.roles))
       return false;
     if (contract.schema === "taku.image-input-contract.v3") {
       const policy = contract.generationReferences;
-      if (!generationFeature || operation !== "media.image.generate" || contract.sameDimensions !== false || contract.roles.length !== 1 || contract.roles[0] !== "reference" || !keys(contract, ["schema", "roles", "sameDimensions", "generationReferences"]) || !record2(policy) || !keys(policy, ["minimumReferences", "maximumReferences"]) || policy.minimumReferences !== 0 || !integer2(policy.maximumReferences, 1, 16) || value.maximumInputs !== policy.maximumReferences)
+      if (!generationFeature || operation !== "media.image.generate" || contract.sameDimensions !== false || contract.roles.length !== 1 || contract.roles[0] !== "reference" || !keys(contract, ["schema", "roles", "sameDimensions", "generationReferences"]) || !record3(policy) || !keys(policy, ["minimumReferences", "maximumReferences"]) || policy.minimumReferences !== 0 || !integer2(policy.maximumReferences, 1, 16) || value.maximumInputs !== policy.maximumReferences)
         return false;
       generationReferences = true;
     } else {
@@ -340,7 +355,7 @@ function validModel(value, operation, feature) {
           return false;
       } else {
         const policy = contract.referenceMask;
-        if (!referenceFeature || contract.schema !== "taku.image-input-contract.v2" || contract.sameDimensions !== false || value.maximumInputs !== 17 || !keys(contract, ["schema", "roles", "sameDimensions", "referenceMask"]) || !record2(policy) || !keys(policy, ["minimumSources", "maximumSources", "maskParameter", "maskMatchesFirstSource"]) || policy.minimumSources !== 1 || policy.maximumSources !== 16 || policy.maskParameter !== "mask_input" || policy.maskMatchesFirstSource !== true)
+        if (!referenceFeature || contract.schema !== "taku.image-input-contract.v2" || contract.sameDimensions !== false || value.maximumInputs !== 17 || !keys(contract, ["schema", "roles", "sameDimensions", "referenceMask"]) || !record3(policy) || !keys(policy, ["minimumSources", "maximumSources", "maskParameter", "maskMatchesFirstSource"]) || policy.minimumSources !== 1 || policy.maximumSources !== 16 || policy.maskParameter !== "mask_input" || policy.maskMatchesFirstSource !== true)
           return false;
         referenceMask = true;
       }
@@ -353,7 +368,7 @@ function validModel(value, operation, feature) {
   let ready = false;
   for (const surface of SURFACES) {
     const state = value.availability[surface];
-    if (!record2(state) || !keys(state, ["status"], ["reason"]))
+    if (!record3(state) || !keys(state, ["status"], ["reason"]))
       return false;
     if (state.status === "ready") {
       if (state.reason !== undefined)
@@ -362,23 +377,23 @@ function validModel(value, operation, feature) {
     } else if (!["unavailable", "deprecated"].includes(String(state.status)) || !REASONS.includes(String(state.reason)))
       return false;
   }
-  if (ready && (!value.parameterSchemaVersion || !value.priceVersion || !record2(value.parameters)))
+  if (ready && (!value.parameterSchemaVersion || !value.priceVersion || !record3(value.parameters)))
     return false;
   if (value.parameters === null) {
     if (referenceMask) {
       const availability = value.availability;
       return !value.parameterSchemaVersion && !value.priceVersion && SURFACES.every((surface) => {
         const state = availability[surface];
-        return record2(state) && state.status === "unavailable" && state.reason === "provider_contract_unavailable";
+        return record3(state) && state.status === "unavailable" && state.reason === "provider_contract_unavailable";
       });
     }
     return !ready;
   }
-  if (!record2(value.parameters) || Object.keys(value.parameters).length > 64)
+  if (!record3(value.parameters) || Object.keys(value.parameters).length > 64)
     return false;
   if (referenceMask) {
     const selector = value.parameters.mask_input;
-    if (!record2(selector) || !keys(selector, ["type", "minimum", "maximum"], ["required"]) || selector.type !== "integer" || selector.minimum !== 2 || selector.maximum !== 17 || selector.required === true)
+    if (!record3(selector) || !keys(selector, ["type", "minimum", "maximum"], ["required"]) || selector.type !== "integer" || selector.minimum !== 2 || selector.maximum !== 17 || selector.required === true)
       return false;
   }
   for (const [name, parameter] of Object.entries(value.parameters)) {
@@ -388,7 +403,7 @@ function validModel(value, operation, feature) {
   return true;
 }
 function parseImageModelCatalog(value, operation, limit, feature = IMAGE_MODEL_SIZE_FEATURE_V1) {
-  if (![IMAGE_MODEL_SIZE_FEATURE_V1, IMAGE_MODEL_SIZE_FEATURE_V2, IMAGE_MODEL_INPUT_FEATURE_V1, IMAGE_MODEL_INPUT_FEATURE_V2, IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1, IMAGE_MODEL_STRUCTURED_FEATURE_V1, IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1, IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1].includes(feature) || !record2(value) || !keys(value, [
+  if (![IMAGE_MODEL_SIZE_FEATURE_V1, IMAGE_MODEL_SIZE_FEATURE_V2, IMAGE_MODEL_INPUT_FEATURE_V1, IMAGE_MODEL_INPUT_FEATURE_V2, IMAGE_MODEL_INTEGER_VALUES_FEATURE_V1, IMAGE_MODEL_STRUCTURED_FEATURE_V1, IMAGE_MODEL_ASPECT_RATIO_FEATURE_V1, IMAGE_MODEL_GENERATION_REFERENCES_FEATURE_V1].includes(feature) || !record3(value) || !keys(value, [
     "schema",
     "catalogVersion",
     "observedAt",
@@ -408,16 +423,27 @@ function parseImageModelCatalog(value, operation, limit, feature = IMAGE_MODEL_S
 }
 
 // packages/contracts/src/image-model-reader.ts
-async function withImageModelDeadline(read, parent) {
+class ImageModelDeadlineError extends ImageModelCatalogError {
+  constructor() {
+    super(503, "image_model_catalog_unavailable");
+  }
+}
+var IMAGE_MODEL_DEADLINE_MS = 1e4;
+var IMAGE_QUOTE_CLIENT_DEADLINE_MS = 40000;
+async function withImageModelDeadline(read, parent, timeoutMs = IMAGE_MODEL_DEADLINE_MS) {
   const controller = new AbortController;
+  let timedOut = false;
   const cancel = () => controller.abort();
   parent?.addEventListener("abort", cancel, { once: true });
   if (parent?.aborted)
     cancel();
-  const timer = setTimeout(cancel, 1e4);
+  const timer = setTimeout(() => {
+    timedOut = true;
+    cancel();
+  }, timeoutMs);
   let rejectAbort;
   const aborted = new Promise((_, reject) => {
-    rejectAbort = () => reject(new ImageModelCatalogError(503, "image_model_catalog_unavailable"));
+    rejectAbort = () => reject(timedOut ? new ImageModelDeadlineError : new ImageModelCatalogError(503, "image_model_catalog_unavailable"));
     controller.signal.addEventListener("abort", rejectAbort, { once: true });
     if (controller.signal.aborted)
       rejectAbort();
@@ -481,6 +507,7 @@ async function readImageModelJson(response, signal) {
 
 // packages/contracts/src/image-executions.ts
 var IMAGE_EXECUTION_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+var IMAGE_EXECUTION_ID = /^imx_[0-9a-f]{32}$/;
 var IMAGE_EXECUTION_REQUEST_ID = /^[A-Za-z0-9._:-]{8,128}$/;
 var IMAGE_EXECUTION_MAX_BYTES = 128 * 1024;
 var IMAGE_EXECUTION_ERRORS = new Set([
@@ -618,7 +645,7 @@ function parseImageExecution(v, operation, binding = {}) {
     "next_action",
     "quote",
     "model_receipt"
-  ], ["error_code"]) || v.schema_version !== "taku.image-model-execution.v1" || !bounded2(v.execution_id, IMAGE_EXECUTION_UUID) || !bounded2(v.request_id, IMAGE_EXECUTION_REQUEST_ID) || !model(v.model) || v.operation !== operation || !isImageOperation(operation) || binding.executionId !== undefined && v.execution_id !== binding.executionId || binding.requestId !== undefined && v.request_id !== binding.requestId || typeof v.status !== "string" || ![
+  ], ["error_code"]) || v.schema_version !== "taku.image-model-execution.v1" || !bounded2(v.execution_id, IMAGE_EXECUTION_ID) || !bounded2(v.request_id, IMAGE_EXECUTION_REQUEST_ID) || !model(v.model) || v.operation !== operation || !isImageOperation(operation) || binding.executionId !== undefined && v.execution_id !== binding.executionId || binding.requestId !== undefined && v.request_id !== binding.requestId || typeof v.status !== "string" || ![
     "pending_quote",
     "quoted",
     "submission_requested",
@@ -674,7 +701,7 @@ function readyOutput(v, operation, now) {
   return typeof v.content_type === "string" && ["image/png", "image/jpeg", "image/webp"].includes(v.content_type) && integer3(v.byte_length, 1, (operation === "media.image.edit" ? 64 : 25) * 1024 * 1024) && time(v.asset_expires_at) && Date.parse(v.asset_expires_at) > now && Date.parse(v.asset_expires_at) <= now + 30 * 86400000;
 }
 function parseImageOutputs(v, operation, executionId, now = Date.now()) {
-  if (!object(v) || !exact(v, ["schema_version", "execution_id", "request_id", "output_count", "outputs"]) || v.schema_version !== "taku.image-model-outputs.v1" || v.execution_id !== executionId || !bounded2(v.request_id, IMAGE_EXECUTION_REQUEST_ID) || !integer3(v.output_count, 1, 16) || !Array.isArray(v.outputs) || v.outputs.length !== v.output_count)
+  if (!object(v) || !exact(v, ["schema_version", "execution_id", "request_id", "output_count", "outputs"]) || v.schema_version !== "taku.image-model-outputs.v1" || !bounded2(v.execution_id, IMAGE_EXECUTION_ID) || v.execution_id !== executionId || !bounded2(v.request_id, IMAGE_EXECUTION_REQUEST_ID) || !integer3(v.output_count, 1, 16) || !Array.isArray(v.outputs) || v.outputs.length !== v.output_count)
     return invalid();
   for (const [index, item] of v.outputs.entries()) {
     if (!object(item) || item.output_index !== index || !integer3(item.output_index, 0, 15))
@@ -693,7 +720,7 @@ function parseImageOutputs(v, operation, executionId, now = Date.now()) {
 }
 function parseImageDownload(v, operation, executionId, index, now = Date.now(), trustedOrigin) {
   const base = ["schema_version", "execution_id", "request_id", "output_index", "state"];
-  if (!object(v) || v.schema_version !== "taku.image-model-download.v1" || v.execution_id !== executionId || !bounded2(v.request_id, IMAGE_EXECUTION_REQUEST_ID) || v.output_index !== index || !integer3(index, 0, 15))
+  if (!object(v) || v.schema_version !== "taku.image-model-download.v1" || !bounded2(v.execution_id, IMAGE_EXECUTION_ID) || v.execution_id !== executionId || !bounded2(v.request_id, IMAGE_EXECUTION_REQUEST_ID) || v.output_index !== index || !integer3(index, 0, 15))
     return invalid();
   if (v.state === "pending" || v.state === "copying") {
     if (!exact(v, base))
@@ -839,7 +866,7 @@ async function readImageExecutionJson(response, signal, maxBytes = IMAGE_EXECUTI
 function createImageExecutionSdk(invoke) {
   const base = (op) => `/__taku/media/images/v2/${imageExecutionKind(op)}`;
   const execution = (op, id) => {
-    if (typeof id !== "string" || !IMAGE_EXECUTION_UUID.test(id))
+    if (typeof id !== "string" || !IMAGE_EXECUTION_ID.test(id))
       throw new Error("invalid_image_execution_id");
     return `${base(op)}/executions/${id}`;
   };
@@ -1124,6 +1151,25 @@ function createTakuSitesClient(options = {}) {
         await request("/__taku/auth/logout", { method: "POST" });
       }
     },
+    text: {
+      async generate(prompt, options2 = {}) {
+        const input = parseTextRequest({ prompt, ...options2.maxOutputTokens === undefined ? {} : { maxOutputTokens: options2.maxOutputTokens } });
+        if (!input)
+          throw new Error("invalid_text_request");
+        const requestId = options2.requestId ?? crypto.randomUUID();
+        if (!/^[A-Za-z0-9._:~-]{16,128}$/.test(requestId))
+          throw new Error("invalid_request_id");
+        const result = parseTextResult(await request(SITE_TEXT_PATH, {
+          method: "POST",
+          headers: { "Idempotency-Key": requestId },
+          body: JSON.stringify(input),
+          signal: options2.signal ? AbortSignal.any([options2.signal, AbortSignal.timeout(90000)]) : AbortSignal.timeout(90000)
+        }, 2 * 1024 * 1024));
+        if (!result)
+          throw new Error("invalid_platform_response");
+        return result;
+      }
+    },
     integration: {
       async call(name, operation, input, options2 = {}) {
         const integration = capabilityName(name);
@@ -1155,7 +1201,7 @@ function createTakuSitesClient(options = {}) {
             throw IMAGE_EXECUTION_ERRORS.has(error.code) ? error : new TakuSitesRequestError(503, "image_model_unavailable", error.retryAfter, error.requestId);
           throw new Error("invalid_platform_response");
         }
-      }, options2.signal).catch((error) => {
+      }, options2.signal, method === "POST" && path.endsWith("/quotes") ? IMAGE_QUOTE_CLIENT_DEADLINE_MS : undefined).catch((error) => {
         if (error instanceof ImageModelCatalogError)
           throw new TakuSitesRequestError(503, "image_model_unavailable");
         throw error;

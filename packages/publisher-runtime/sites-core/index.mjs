@@ -1312,10 +1312,10 @@ Defaulting to 2020, but this will stop working in the future.`);
   return options;
 }
 function pushComment(options, array) {
-  return function(block, text, start, end, startLoc, endLoc) {
+  return function(block, text2, start, end, startLoc, endLoc) {
     var comment = {
       type: block ? "Block" : "Line",
-      value: text,
+      value: text2,
       start,
       end
     };
@@ -6450,6 +6450,13 @@ function siteSdkContractError(source, kind, manifest) {
       continue;
     const route = parts.slice(1).join(".");
     const args = node.arguments;
+    if (route.startsWith("text.")) {
+      if (route !== "text.generate")
+        return "SITE_SDK_OPERATION_UNSUPPORTED";
+      const declared = manifest.integrations.find((item) => item.name === "text");
+      if (manifest.auth.mode !== "required" || !scopes.has("text.generate") || !declared?.scopes.includes("text.generate") || !declared.operations.includes("generate"))
+        return "SITE_SDK_CAPABILITY_UNDECLARED";
+    }
     if (route.startsWith("media.")) {
       if (IMAGE_EXECUTION_METHODS.has(route)) {
         const requested = literal2(args[0]);
@@ -6478,6 +6485,10 @@ function siteSdkContractError(source, kind, manifest) {
       const operation = literal2(args[1]);
       if (!name || !operation)
         continue;
+      if (name === "text" && operation !== "generate")
+        return "SITE_SDK_OPERATION_UNSUPPORTED";
+      if (name === "text" && (manifest.auth.mode !== "required" || !scopes.has("text.generate") || !manifest.integrations.find((item) => item.name === "text")?.scopes.includes("text.generate")))
+        return "SITE_SDK_CAPABILITY_UNDECLARED";
       if (name === "airbnb" && !AIRBNB_OPERATIONS.has(operation))
         return "SITE_SDK_OPERATION_UNSUPPORTED";
       const declaration = manifest.integrations.find((item) => item.name === name);
@@ -6695,23 +6706,23 @@ async function openSource(root, file) {
   }
 }
 function detectedType(bytes3) {
-  const text = (start, end) => String.fromCharCode(...bytes3.subarray(start, end));
+  const text2 = (start, end) => String.fromCharCode(...bytes3.subarray(start, end));
   const starts = (signature) => signature.every((value, index) => bytes3[index] === value);
-  if (bytes3.length >= 24 && starts([137, 80, 78, 71, 13, 10, 26, 10]) && text(12, 16) === "IHDR")
+  if (bytes3.length >= 24 && starts([137, 80, 78, 71, 13, 10, 26, 10]) && text2(12, 16) === "IHDR")
     return "image/png";
   if (bytes3[0] === 255 && bytes3[1] === 216 && bytes3[2] === 255)
     return "image/jpeg";
-  if (bytes3.length >= 12 && text(0, 4) === "RIFF" && text(8, 12) === "WEBP")
+  if (bytes3.length >= 12 && text2(0, 4) === "RIFF" && text2(8, 12) === "WEBP")
     return "image/webp";
-  if (["GIF87a", "GIF89a"].includes(text(0, 6)))
+  if (["GIF87a", "GIF89a"].includes(text2(0, 6)))
     return "image/gif";
-  if (bytes3.length >= 16 && text(4, 8) === "ftyp") {
+  if (bytes3.length >= 16 && text2(4, 8) === "ftyp") {
     const boxSize = new DataView(bytes3.buffer, bytes3.byteOffset, bytes3.byteLength).getUint32(0);
     if (boxSize < 16)
       return null;
-    const brands = [text(8, 12)];
+    const brands = [text2(8, 12)];
     for (let i2 = 16;i2 + 4 <= Math.min(bytes3.length, boxSize); i2 += 4)
-      brands.push(text(i2, i2 + 4));
+      brands.push(text2(i2, i2 + 4));
     if (brands.some((brand) => ["avif", "avis"].includes(brand)))
       return "image/avif";
     if (brands.some((brand) => [
@@ -6732,7 +6743,7 @@ function detectedType(bytes3) {
   }
   if (starts([26, 69, 223, 163])) {
     for (let i2 = 4;i2 + 7 <= bytes3.length; i2++)
-      if (bytes3[i2] === 66 && bytes3[i2 + 1] === 130 && bytes3[i2 + 2] === 132 && text(i2 + 3, i2 + 7) === "webm")
+      if (bytes3[i2] === 66 && bytes3[i2 + 1] === 130 && bytes3[i2 + 2] === 132 && text2(i2 + 3, i2 + 7) === "webm")
         return "video/webm";
   }
   return null;
@@ -7070,22 +7081,32 @@ function assertArtifactFileName(name) {
   }
 }
 function assertNoObviousCredential(bytes3) {
-  const text = new TextDecoder().decode(bytes3);
-  if (/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:sk_(?:live|test)_|sk-proj-|sk-lf-|gh[pousr]_|github_pat_)[A-Za-z0-9_-]{16,}|\bAKIA[A-Z0-9]{16}\b|(?:postgres(?:ql)?|mysql|libsql):\/\/[^\s"']+:[^\s"'@]+@/i.test(text) || /["']?(?:[A-Z_]*(?:SECRET|PASSWORD|PASSWD|PRIVATE_KEY)|TURSO_AUTH_TOKEN|SUPABASE_SERVICE_ROLE_KEY)["']?\s*[:=]\s*["'][^"'\r\n]{8,}["']/i.test(text)) {
+  const text2 = new TextDecoder().decode(bytes3);
+  if (/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:sk_(?:live|test)_|sk-proj-|sk-lf-|gh[pousr]_|github_pat_)[A-Za-z0-9_-]{16,}|\bAKIA[A-Z0-9]{16}\b|(?:postgres(?:ql)?|mysql|libsql):\/\/[^\s"']+:[^\s"'@]+@/i.test(text2) || /["']?(?:[A-Z_]*(?:SECRET|PASSWORD|PASSWD|PRIVATE_KEY)|TURSO_AUTH_TOKEN|SUPABASE_SERVICE_ROLE_KEY)["']?\s*[:=]\s*["'][^"'\r\n]{8,}["']/i.test(text2)) {
     throw new SiteArtifactBuildError("CREDENTIAL_IN_ARTIFACT");
   }
 }
 // ../contracts/src/image-model-reader.ts
-async function withImageModelDeadline(read, parent) {
+class ImageModelDeadlineError extends ImageModelCatalogError {
+  constructor() {
+    super(503, "image_model_catalog_unavailable");
+  }
+}
+var IMAGE_MODEL_DEADLINE_MS = 1e4;
+async function withImageModelDeadline(read, parent, timeoutMs = IMAGE_MODEL_DEADLINE_MS) {
   const controller = new AbortController;
+  let timedOut = false;
   const cancel = () => controller.abort();
   parent?.addEventListener("abort", cancel, { once: true });
   if (parent?.aborted)
     cancel();
-  const timer = setTimeout(cancel, 1e4);
+  const timer = setTimeout(() => {
+    timedOut = true;
+    cancel();
+  }, timeoutMs);
   let rejectAbort;
   const aborted = new Promise((_, reject) => {
-    rejectAbort = () => reject(new ImageModelCatalogError(503, "image_model_catalog_unavailable"));
+    rejectAbort = () => reject(timedOut ? new ImageModelDeadlineError : new ImageModelCatalogError(503, "image_model_catalog_unavailable"));
     controller.signal.addEventListener("abort", rejectAbort, { once: true });
     if (controller.signal.aborted)
       rejectAbort();

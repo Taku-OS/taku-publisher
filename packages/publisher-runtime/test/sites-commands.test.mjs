@@ -336,7 +336,7 @@ async function withSitesSession(t) {
   return root;
 }
 
-test('Site template validates and builds locally; Publisher no longer offers a preview command', async (t) => {
+test('Site template validates and builds locally; private preview rejects invalid listener ports', async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), 'publisher-sites-command-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const project = path.join(root, 'site');
@@ -348,7 +348,7 @@ test('Site template validates and builds locally; Publisher no longer offers a p
   assert.equal(built.status, 'sites_built');
   assert.equal(built.object_count, 2);
   assert.equal(built.artifact_digest, null);
-  await assert.rejects(dispatch(args('sites-preview', { project })), (error) => error.code === 'unknown_command');
+  await assert.rejects(dispatch(args('sites-preview', { project, port: '1' })), (error) => error.code === 'sites_preview_invalid_port');
 });
 
 test('local validate/build reports quota-managed material choices without cloud identity', async t => {
