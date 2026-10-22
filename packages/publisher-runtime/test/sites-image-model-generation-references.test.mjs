@@ -12,7 +12,7 @@ import { generationReferenceCatalog } from './fixtures/image-model-generation-re
 
 const { core } = await loadSitesCore();
 const ids = Array.from({ length: 17 }, (_, index) => `min_${(index + 1).toString(16).padStart(32, '0')}`);
-const executionId = '00000000-0000-4000-8000-000000000061';
+const executionId = 'imx_00000000000040008000000000000061';
 const requestId = 'publisher-generation-reference-test-001';
 const quoteId = 'imq_00000000-0000-4000-8000-000000000062';
 const choice = { operation: 'media.image.generate', model: 'reference-generation-fixture',

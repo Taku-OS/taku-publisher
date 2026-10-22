@@ -165,7 +165,8 @@ export class SitesHttpClient {
     method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown,
     idempotencyKey?: string, uploadToken?: string, retried = false, materialPartHash?: string,
   ): Promise<Record<string, unknown>> {
-    if (!/^\/v1\/sites(?:\/|$)/.test(path)) {
+    const ownerPreview = method === 'POST' && ['/v1/sites-preview/sessions', '/v1/sites-preview/auth/start'].includes(path);
+    if (!ownerPreview && !/^\/v1\/sites(?:\/|$)/.test(path)) {
       throw new PublisherError('Invalid Sites API path.', 'sites_invalid_api_path');
     }
     const url = new URL(path, this.workerUrl);

@@ -117,7 +117,7 @@ test('actual CLI-exported SDK preserves structured discovery, nested quote ident
   const output = path.join(root, 'sdk.mjs');
   assert.equal((await dispatch(args('sites-sdk-export', { output }))).status, 'sites_sdk_exported');
   const { createTakuSitesClient } = await import(pathToFileURL(output).href);
-  const executionId = '00000000-0000-4000-8000-000000000071';
+  const executionId = 'imx_00000000000040008000000000000071';
   const requestId = 'structured-publisher-original-001';
   const parameters = { num_images: 1, structured_prompt: structuredImagePrompt() };
   const input = { schema_version: 'taku.managed-media-request.v2', model: 'test-structured-image',
@@ -125,7 +125,7 @@ test('actual CLI-exported SDK preserves structured discovery, nested quote ident
   const execution = { schema_version: 'taku.image-model-execution.v1', execution_id: executionId,
     request_id: requestId, model: input.model, operation: 'media.image.generate', status: 'quoted',
     terminal: false, cancellable: true, next_action: 'submit', model_receipt: null,
-    quote: { schema: 'taku.image-model-quote.v1', quoteId: `imq_${executionId}`, model: input.model,
+    quote: { schema: 'taku.image-model-quote.v1', quoteId: 'imq_00000000-0000-4000-8000-000000000072', model: input.model,
       operation: 'media.image.generate', parameterSchemaVersion: input.parameter_schema_version,
       normalizedParameters: structuredClone(parameters), priceVersion: 'fixture-only-price.v1',
       credits: '1.000000', expiresAt: new Date(Date.now() + 60000).toISOString() } };

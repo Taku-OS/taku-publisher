@@ -1,6 +1,6 @@
 # Running and testing in your own harness
 
-Publisher has no preview. Use your usual tools: a dev server, unit tests, a browser, and `wrangler dev` or Miniflare if you want to run the Worker.
+Use your usual tools for local UI tests. A reviewed developer checkout with its locked native runtime dependencies can run `sites-preview --project <abs-dir> --json` in the foreground. It creates a same-machine loopback preview for at most 30 minutes, uses owner approval/PKCE, and keeps credentials outside the Site. Portable Skills do not bundle Miniflare/workerd; report `sites_preview_runtime_unavailable` rather than installing arbitrary code or publishing as a fallback. The current private gateway does not provide cloud storage or migrations. Candidate text still requires the deployed control-plane/Proxy rollout and an eligible account. A successful loopback listener does not prove paid generation or cloud isolation. Stop with Ctrl+C.
 
 ## What you can check locally
 
