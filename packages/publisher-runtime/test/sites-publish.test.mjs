@@ -14,7 +14,7 @@ function args(command, flags = {}) {
   return { command, flags: new Map(Object.entries(flags)), rest: [] };
 }
 
-for (const scenario of ['legacy', 'permanent', 'temporary', 'reuse', 'mismatch']) test(`non-TTY ${scenario} publish preserves confirmation and verifies separate material receipts`, async (t) => {
+for (const scenario of ['legacy', 'permanent', 'temporary', 'reuse', 'mismatch', 'auto-retry']) test(`non-TTY ${scenario} publish preserves confirmation and verifies separate material receipts`, async (t) => {
   const withMaterials = scenario !== 'legacy';
   const retention = scenario === 'temporary' ? 'temporary' : 'permanent';
   const root = await mkdtemp(path.join(tmpdir(), 'publisher-sites-publish-'));
@@ -61,6 +61,7 @@ for (const scenario of ['legacy', 'permanent', 'temporary', 'reuse', 'mismatch']
   const materialParts = new Map();
   let materialReady = scenario === 'reuse';
   let failLastMaterialPart = withMaterials && !materialReady;
+  const transientFailures = new Set();
   const materialReceipt = () => ({ assetId: `ast_${'b'.repeat(32)}`, state: materialReady ? 'ready' : 'uploading',
     retention, visibility: 'public', contentType: 'video/mp4', byteLength: 8 * 1024 * 1024 + 24,
     sha256: scenario === 'mismatch' ? '0'.repeat(64) : artifact?.descriptor.assetManifest?.files[0].sha256,
@@ -122,6 +123,11 @@ for (const scenario of ['legacy', 'permanent', 'temporary', 'reuse', 'mismatch']
     if (withMaterials && pathname === materialBase && method === 'POST') {
       assert.equal(request.headers.authorization, 'Bearer taku_pub_test_site_session');
       assert.equal(bytes.length, 0, 'confirmed metadata must not be resubmitted or overridden');
+      if (scenario === 'auto-retry' && !transientFailures.has('start')) {
+        transientFailures.add('start');
+        response.setHeader('Retry-After', '1');
+        return send(503, { error: 'SITE_ASSET_BUSY', retryable: true });
+      }
       return send(materialReady ? 200 : 202, materialReceipt());
     }
     if (withMaterials && pathname.startsWith(`${materialBase}/parts/`) && method === 'PUT') {
@@ -130,7 +136,15 @@ for (const scenario of ['legacy', 'permanent', 'temporary', 'reuse', 'mismatch']
       assert.equal(bytes.length, partNumber === 1 ? 8 * 1024 * 1024 : 24);
       assert.equal(request.headers['content-length'], String(bytes.length));
       assert.equal(request.headers['x-taku-asset-part-sha256'], createHash('sha256').update(bytes).digest('hex'));
-      if (partNumber === 2 && failLastMaterialPart) { failLastMaterialPart = false; return send(503, { error: 'temporary' }); }
+      if (partNumber === 2 && failLastMaterialPart) {
+        failLastMaterialPart = false;
+        if (scenario === 'auto-retry') {
+          transientFailures.add('part');
+          response.setHeader('Retry-After', '1');
+          return send(503, { error: 'SITE_ASSET_LEASE_CONFLICT', retryable: true });
+        }
+        return send(503, { error: 'temporary' });
+      }
       if (materialParts.has(partNumber)) assert.deepEqual(bytes, materialParts.get(partNumber));
       materialParts.set(partNumber, bytes);
       return send(200, { assetId: materialReceipt().assetId, partNumber, status: 'uploaded' });
@@ -138,6 +152,11 @@ for (const scenario of ['legacy', 'permanent', 'temporary', 'reuse', 'mismatch']
     if (withMaterials && pathname === `${materialBase}/complete` && method === 'POST') {
       assert.equal(bytes.length, 0);
       if (materialParts.size !== 2) return send(409, { error: 'SITE_ASSET_INCOMPLETE' });
+      if (scenario === 'auto-retry' && !transientFailures.has('complete')) {
+        transientFailures.add('complete');
+        response.setHeader('Retry-After', '1');
+        return send(503, { error: 'SITE_ASSET_BUSY', retryable: true });
+      }
       assert.equal(createHash('sha256').update(Buffer.concat([...materialParts.values()])).digest('hex'), artifact.descriptor.assetManifest.files[0].sha256);
       materialReady = true;
       return send(200, materialReceipt());
@@ -187,13 +206,15 @@ for (const scenario of ['legacy', 'permanent', 'temporary', 'reuse', 'mismatch']
     assert.equal(writes.filter(write => write.pathname.endsWith('/publish-requests')).length, 1);
     return;
   }
-  if (withMaterials && scenario !== 'reuse') await assert.rejects(dispatch(args('sites-publish', flags)), { code: 'sites_api_error' });
+  if (withMaterials && scenario !== 'reuse' && scenario !== 'auto-retry') await assert.rejects(dispatch(args('sites-publish', flags)), { code: 'sites_api_error' });
   const result = await dispatch(args('sites-publish', flags));
   assert.equal(result.status, 'sites_published');
   assert.equal(result.ready, true);
   assert.equal(result.url, 'https://chosen-site.taku.site');
   assert.equal(uploaded.size, artifact.objects.length);
   assert.equal(writes.filter(write => write.pathname.endsWith('/publish-requests')).length, 1);
+  assert.equal(writes.filter(write => write.pathname === '/v1/sites' && write.method === 'POST').length, 1);
+  if (scenario === 'auto-retry') assert.deepEqual([...transientFailures], ['start', 'part', 'complete']);
   assert.ok(writes.filter(write => write.pathname.includes('/objects/')).every(write => write.authorization === `Bearer ${uploadToken}`));
   assert.ok(writes.filter(write => write.method !== 'PUT').every(write => write.authorization === 'Bearer taku_pub_test_site_session'));
   assert.equal(JSON.stringify(result).includes(uploadToken), false);
