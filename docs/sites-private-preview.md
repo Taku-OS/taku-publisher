@@ -16,4 +16,6 @@ Text requires the companion CON-96 Workers and Proxy changes, the internal candi
 
 The pinned Miniflare version matches the current Sites platform's Wrangler runtime. Its alpha package omits upstream declaration-only workspace packages; the narrow Node adapter is locally typed and validated with an actual workerd test instead of disabling TypeScript checking for the project. It is loaded only for `sites-preview`.
 
+This development command needs the reviewed checkout and its installed locked native dependencies. Portable plugin bundles do not include platform-specific Miniflare/workerd binaries and fail explicitly with `sites_preview_runtime_unavailable` before creating a control-plane session. The source checkout's real-workerd tests and portable package smoke tests cover these separate cases. No automatic download or arbitrary host-package fallback is performed.
+
 Check with `npm run test:sites-preview`. The workerd/HTTP test uses a fake control plane and does not prove live owner approval or paid generation.

@@ -43,11 +43,19 @@ try {
     assert.equal(models.error.code, 'sites_login_required');
     const invalidModels = run(cli, ['sites-image-models', '--operation', 'media.image.generate', '--surface', 'subapp', '--json'], skill, temporary, { fail: true });
     assert.equal(invalidModels.error.code, 'sites_image_model_query_invalid');
-    const removed = run(cli, ['sites-preview', '--json'], skill, temporary, { fail: true });
-    assert.equal(removed.error.code, 'unknown_command');
     const project = path.join(temporary, `project-${target.replaceAll(path.sep, '-')}`);
     const initialized = run(cli, ['sites-init', '--project', project, '--json'], skill, temporary);
     assert.equal(initialized.status, 'sites_project_created');
+    const preview = run(cli, ['sites-preview', '--project', project, '--json'], skill, temporary, { fail: true });
+    assert.equal(preview.error.code, 'sites_login_required');
+    // Portable Skills do not ship platform-specific workerd binaries. Fail
+    // clearly before contacting the control plane instead of loading a host
+    // runtime from an unrelated checkout or silently serving untrusted code.
+    const { startSitePreview } = await import(pathToFileURL(path.join(skill, 'node_modules/@taku/publisher-runtime/dist/sites/preview.js')).href);
+    await assert.rejects(startSitePreview({
+      core: {}, artifact: { descriptor: { siteManifest: { storage: { migrations: false } } }, objects: [] },
+      client: { workerUrl: 'https://fixture.invalid', post: () => { throw new Error('unexpected network'); } },
+    }), error => error.code === 'sites_preview_runtime_unavailable');
     await fs.writeFile(path.join(project, 'dist', 'assets', 'index.html'),
       '<!doctype html><html lang="en"><title>Agent-built Site</title><main><h1>Agent-built Site</h1><button id="hello">Hello</button></main><script type="module" src="/app.mjs"></script></html>');
     await fs.writeFile(path.join(project, 'dist', 'assets', 'app.mjs'),
@@ -66,7 +74,7 @@ try {
         assert.equal(request.headers.get('Idempotency-Key'), imageRequestId);
         assert.deepEqual(await request.clone().json(), { request: imageRequest });
         return Response.json({ schema_version: 'taku.image-model-execution.v1',
-          execution_id: '00000000-0000-4000-8000-000000000041', request_id: imageRequestId,
+          execution_id: 'imx_00000000000040008000000000000041', request_id: imageRequestId,
           model: 'nano-banana-pro', operation: 'media.image.generate', status: 'quoted', terminal: false,
           cancellable: true, next_action: 'submit', model_receipt: null,
           quote: { schema: 'taku.image-model-quote.v1', quoteId: 'imq_00000000-0000-4000-8000-000000000042',

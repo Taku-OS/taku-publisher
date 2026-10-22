@@ -6,7 +6,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 // Miniflare's alpha package omits several declaration-only workspace packages.
 // Keep this narrow Node adapter typed locally; the real workerd test covers it.
-const { Miniflare, Log, LogLevel } = createRequire(import.meta.url)('miniflare') as {
+type PreviewRuntimeModule = {
   Miniflare: new (options: unknown) => { ready: Promise<URL>; dispatchFetch(url: string, init: RequestInit): Promise<Response>; dispose(): Promise<void> };
   Log: new (level: number) => unknown; LogLevel: { NONE: number };
 };
@@ -159,6 +159,10 @@ export async function startSitePreview(options: PreviewOptions) {
 }
 
 async function createWorkerRuntime(worker: string, assets: string): Promise<Runtime> {
+  let installed: PreviewRuntimeModule;
+  try { installed = createRequire(import.meta.url)('miniflare') as PreviewRuntimeModule; }
+  catch { throw new PublisherError('This distribution has no installed private-preview runtime. Use the reviewed developer checkout with its locked dependencies.', 'sites_preview_runtime_unavailable'); }
+  const { Miniflare, Log, LogLevel } = installed;
   const mf = new Miniflare({ host: '127.0.0.1', port: 0, cf: false, telemetry: { enabled: false }, log: new Log(LogLevel.NONE),
     workers: [{ config: { name: 'site-preview', type: 'worker', compatibilityDate: '2026-08-01',
       manifest: { mainModule: 'worker.mjs', modules: { 'worker.mjs': { type: 'esm', contents: worker } } },

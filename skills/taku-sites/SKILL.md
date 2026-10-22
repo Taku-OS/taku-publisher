@@ -5,7 +5,7 @@ description: Use when a user wants to build or update a Taku Site on a taku.site
 
 # Build and publish a Taku Site
 
-You build, run, and test the Site with your own tools. The bundled CLI only does what needs Taku: sign-in and identity, the live capability catalog, the browser SDK file, packaging and contract validation, subdomain availability, and publishing. It does not generate, host, or preview the Site.
+You build, run, and test the Site with your own tools. The bundled CLI provides sign-in and identity, the live capability catalog, the browser SDK file, packaging and contract validation, subdomain availability, and publishing. The reviewed developer checkout also supports a bounded private loopback preview with installed locked Miniflare/workerd dependencies. Portable Skills do not bundle those native binaries; `sites_preview_runtime_unavailable` means that runtime is missing. Do not install arbitrary packages, bypass access gates, or publish as a fallback. It does not generate the Site.
 
 Run every CLI command from **this Skill's directory**: `cd <directory-containing-this-SKILL.md> && node scripts/taku-publisher.mjs <command> --json ...`. Read the JSON `status`, `requires_action`, and `action_type`; exit code 0 alone does not mean success. Do not assume a global CLI or a Publisher checkout.
 
