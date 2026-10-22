@@ -9,7 +9,7 @@ import * as http from 'node:http';
 import test from 'node:test';
 const exec = promisify(execFile);
 const cli = new URL('../dist/bin/taku-publisher.js', import.meta.url).pathname;
-async function fixture(t, scopes = ['creator.profile.read', 'creator.studio-draft.write'], tokens = {}) {
+async function fixture(t, scopes = ['creator.profile.read', 'creator.studio-draft.write'], tokens = {}, rejection) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'taku-detached-auth-'));
   const env = { ...process.env, TAKU_PUBLISHER_HOME: root, TAKU_PUBLISHER_SESSION_PATH: path.join(root, 'session.json'), TAKU_BEARER_TOKEN: '', TAKU_PUBLISH_TOKEN: '' };
   const exchanges = [];
@@ -17,6 +17,7 @@ async function fixture(t, scopes = ['creator.profile.read', 'creator.studio-draf
     let body = ''; for await (const chunk of req) body += chunk;
     exchanges.push(JSON.parse(body));
     res.setHeader('Content-Type', 'application/json');
+    if (rejection) { res.statusCode = rejection.status; res.end(JSON.stringify({ error: rejection.error })); return; }
     res.end(JSON.stringify({ token: 'private-test-token', expiresIn: 3600, scopes, accountHint: 'te***@example.test', ...tokens }));
   });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
@@ -83,6 +84,24 @@ test('insufficient scopes are not reported as authenticated', async t => {
   const result = await completed(run, pending.request_id);
   assert.equal(result.status, 'authorization_failed');
   assert.equal(result.error_code, 'auth_scope_missing');
+});
+test('failed exchange preserves safe diagnostics without saving server text or authorization secrets', async t => {
+  for (const [error, expected] of [['Local auth code expired', 'local_auth_code_expired'],
+    ['SITES_NOT_AVAILABLE', 'SITES_NOT_AVAILABLE'],
+    ['private-server-token do not expose', 'authorization_exchange_rejected']]) {
+    const { root, run, start, exchanges } = await fixture(t, [], {}, { status: 401, error });
+    const pending = await start();
+    await confirm(pending);
+    const result = await completed(run, pending.request_id);
+    assert.equal(result.status, 'authorization_failed');
+    assert.equal(result.http_status, 401);
+    assert.equal(result.server_error, expected);
+    const state = await fs.readFile(path.join(root, 'auth-flow/state.json'), 'utf8');
+    for (const secret of [...(error === expected ? [] : [error]), 'one-time-test-code', exchanges[0].codeVerifier]) {
+      assert.equal(state.includes(secret), false);
+      assert.equal(JSON.stringify(result).includes(secret), false);
+    }
+  }
 });
 test('publish-tool authorization requires and preserves the dedicated Flowchart token', async t => {
   const { root, run, workerUrl } = await fixture(t, ['publisher.drafts.write'], {

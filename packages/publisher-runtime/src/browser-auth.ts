@@ -239,7 +239,23 @@ async function redeemLocalCode(options: {
     });
     const payload = await response.json() as unknown;
     if (!isRecord(payload)) throw new PublisherError('Taku Web returned an invalid authorization response.', 'invalid_auth_response');
-    if (!response.ok) throw new PublisherError(String(payload.error ?? `Authorization failed with HTTP ${response.status}`), 'auth_redeem_failed');
+    if (!response.ok) {
+      // Only persist known protocol errors; arbitrary server text can contain credentials.
+      const reasons: Record<string, string> = {
+        'Unsupported auth intent': 'unsupported_auth_intent',
+        'Missing local auth code': 'missing_local_auth_code',
+        'Local auth code expired': 'local_auth_code_expired',
+        'Invalid local auth code': 'invalid_local_auth_code',
+        'Invalid JSON body': 'invalid_json_body',
+        'SITES_NOT_AVAILABLE': 'SITES_NOT_AVAILABLE',
+        'PUBLISHER_AUTH_UNAVAILABLE': 'PUBLISHER_AUTH_UNAVAILABLE',
+        'PUBLISHER_IDENTITY_UNAVAILABLE': 'PUBLISHER_IDENTITY_UNAVAILABLE',
+      };
+      throw new PublisherError('Taku rejected the authorization exchange.', 'auth_redeem_failed', {
+        http_status: response.status,
+        server_error: typeof payload.error === 'string' ? reasons[payload.error] ?? 'authorization_exchange_rejected' : 'authorization_exchange_rejected',
+      });
+    }
     return payload;
   } catch (error) {
     if (error instanceof PublisherError) throw error;
