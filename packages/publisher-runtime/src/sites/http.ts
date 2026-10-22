@@ -35,6 +35,14 @@ export async function resolveSitesAuth(env: NodeJS.ProcessEnv = process.env, opt
 
 export type SitesFetch = typeof fetch;
 
+const MATERIAL_RETRY_BUDGET_MS = 10 * 60_000;
+const MATERIAL_MAX_ATTEMPTS = 8;
+type RetryRuntime = {
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+  random?: () => number;
+};
+
 export class SitesHttpClient {
   readonly workerUrl: string;
 
@@ -44,6 +52,7 @@ export class SitesHttpClient {
     private readonly fetcher: SitesFetch = fetch,
     allowCustomWorkerUrl = false,
     private readonly renew?: (expectedToken: string) => Promise<string>,
+    private readonly retryRuntime: RetryRuntime = {},
   ) {
     this.workerUrl = validateWorkerUrl(workerUrl, allowCustomWorkerUrl);
     const origin = new URL(this.workerUrl);
@@ -151,7 +160,7 @@ export class SitesHttpClient {
     if (bytes.length < 1 || bytes.length > 8 * 1024 * 1024) {
       throw new PublisherError('Invalid material part size.', 'sites_material_part_invalid');
     }
-    return this.request('PUT', path, bytes, undefined, undefined, false, createHash('sha256').update(bytes).digest('hex'));
+    return this.request('PUT', path, bytes, undefined, undefined, createHash('sha256').update(bytes).digest('hex'));
   }
 
   async putObject(path: string, bytes: Buffer, uploadToken: string): Promise<Record<string, unknown>> {
@@ -163,7 +172,7 @@ export class SitesHttpClient {
 
   private async request(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown,
-    idempotencyKey?: string, uploadToken?: string, retried = false, materialPartHash?: string,
+    idempotencyKey?: string, uploadToken?: string, materialPartHash?: string,
   ): Promise<Record<string, unknown>> {
     if (!/^\/v1\/sites(?:\/|$)/.test(path)) {
       throw new PublisherError('Invalid Sites API path.', 'sites_invalid_api_path');
@@ -186,36 +195,82 @@ export class SitesHttpClient {
       headers['Content-Length'] = String(payload.byteLength);
       if (materialPartHash) headers['X-Taku-Asset-Part-Sha256'] = materialPartHash;
     }
-    let response: Response;
-    try {
-      response = await this.fetcher(url, {
-        method, headers, body: payload as unknown as BodyInit | undefined,
-        redirect: 'error', signal: AbortSignal.timeout(30_000),
-      });
-    } catch {
-      throw new PublisherError('Could not reach Taku Sites. Retry the same command.', 'sites_network_unavailable');
+    // These fixed operations replay the same confirmed upload + ordinal (and
+    // part number/hash). Confirmation, Site creation and finalize are excluded.
+    const material = !uploadToken && (
+      (method === 'POST' && body === undefined && /^\/v1\/sites\/prj_[a-z0-9_]+\/artifact-uploads\/[a-f0-9-]{36}\/assets\/(?:0|[1-9]\d{0,2})(?:\/complete)?$/.test(path)) ||
+      (method === 'PUT' && !!materialPartHash && /^\/v1\/sites\/prj_[a-z0-9_]+\/artifact-uploads\/[a-f0-9-]{36}\/assets\/(?:0|[1-9]\d{0,2})\/parts\/[1-9]\d*$/.test(path))
+    );
+    const now = this.retryRuntime.now ?? Date.now;
+    const sleep = this.retryRuntime.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)));
+    const random = this.retryRuntime.random ?? Math.random;
+    const deadline = now() + MATERIAL_RETRY_BUDGET_MS;
+    let attempts = 0;
+    let renewed = false;
+    const retry = async (response?: Response): Promise<boolean> => {
+      if (!material || attempts >= MATERIAL_MAX_ATTEMPTS) return false;
+      const backoff = Math.min(30_000, 1_000 * 2 ** (attempts - 1));
+      const delay = Math.max(backoff + Math.floor(random() * backoff / 4), retryAfterMs(response, now()));
+      // Never shorten Retry-After to fit the budget; retain the checkpoint and
+      // return the last failure if there is no time left for another request.
+      if (now() + delay + 1_000 >= deadline) return false;
+      await sleep(delay);
+      return now() < deadline;
+    };
+    while (true) {
+      attempts++;
+      headers.Authorization = `Bearer ${uploadToken ?? this.publisherToken}`;
+      let response: Response;
+      let value: unknown;
+      let summary: string;
+      try {
+        response = await this.fetcher(url, {
+          method, headers, body: payload as unknown as BodyInit | undefined,
+          redirect: 'error', signal: AbortSignal.timeout(material ? Math.max(1, Math.min(30_000, deadline - now())) : 30_000),
+        });
+        ({ value, summary } = await readBoundedResponse(response));
+      } catch {
+        if (await retry()) continue;
+        throw new PublisherError('Could not reach Taku Sites. Retry the same command.', 'sites_network_unavailable');
+      }
+      if (response.status === 401 && !renewed && !uploadToken && this.renew &&
+        (!material || (attempts < MATERIAL_MAX_ATTEMPTS && now() < deadline))) {
+        this.publisherToken = await this.renew(this.publisherToken);
+        if (!this.publisherToken.startsWith('taku_pub_')) throw new PublisherError('Publisher renewal failed.', 'sites_login_required');
+        renewed = true;
+        if (!material || now() < deadline) continue;
+      }
+      const retryable = isRecord(value) && (
+        (response.status === 503 && ['SITE_ASSET_BUSY', 'SITE_ASSET_LEASE_CONFLICT', 'SITE_ASSET_PROVIDER_UNAVAILABLE'].includes(String(value.error))) ||
+        (response.status === 409 && value.error === 'SITE_ASSET_LEASE_CONFLICT')
+      );
+      if (retryable && await retry(response)) continue;
+      if (!response.ok) {
+        const details = responseErrorDetails(response, value, summary);
+        const code = details.server_error;
+        const actionable = response.status === 401 ? ' Sign in again with sites-login.' : '';
+        const eligibility = response.status === 404 ? ' Check the target, account access and the CLI version.' : '';
+        const paywall = (response.status === 403 && code === 'SITE_LIMIT_REACHED') ||
+          (response.status === 409 && code === 'SITE_STORAGE_LIMIT_REACHED');
+        const guidance = paywall ? ' The same project and build are retained. Free capacity or review plans, then retry the same command; publication requires a valid confirmation.' : '';
+        throw new PublisherError(`Taku Sites returned ${code}.${actionable}${eligibility}${guidance}`, 'sites_api_error', {
+          ...details, ...(material && retryable ? { retryable: true, retry_attempts: attempts,
+            retry_after_seconds: Math.ceil(retryAfterMs(response, now()) / 1_000) } : {}),
+          ...(paywall ? { upgrade_url: 'https://taku.ai/pricing', project_preserved: true } : {}),
+        });
+      }
+      if (!isRecord(value)) throw new PublisherError('Taku Sites returned an invalid response.', 'sites_invalid_response');
+      return value;
     }
-    const { value, summary } = await readBoundedResponse(response);
-    if (response.status === 401 && !retried && !uploadToken && this.renew) {
-      this.publisherToken = await this.renew(this.publisherToken);
-      if (!this.publisherToken.startsWith('taku_pub_')) throw new PublisherError('Publisher renewal failed.', 'sites_login_required');
-      return this.request(method, path, body, idempotencyKey, undefined, true, materialPartHash);
-    }
-    if (!response.ok) {
-      const details = responseErrorDetails(response, value, summary);
-      const code = details.server_error;
-      const actionable = response.status === 401 ? ' Sign in again with sites-login.' : '';
-      const eligibility = response.status === 404 ? ' Check the target, account access and the CLI version.' : '';
-      const paywall = (response.status === 403 && code === 'SITE_LIMIT_REACHED') ||
-        (response.status === 409 && code === 'SITE_STORAGE_LIMIT_REACHED');
-      const guidance = paywall ? ' The same project and build are retained. Free capacity or review plans, then retry the same command; publication requires a valid confirmation.' : '';
-      throw new PublisherError(`Taku Sites returned ${code}.${actionable}${eligibility}${guidance}`, 'sites_api_error', {
-        ...details, ...(paywall ? { upgrade_url: 'https://taku.ai/pricing', project_preserved: true } : {}),
-      });
-    }
-    if (!isRecord(value)) throw new PublisherError('Taku Sites returned an invalid response.', 'sites_invalid_response');
-    return value;
   }
+}
+
+function retryAfterMs(response: Response | undefined, now: number): number {
+  const raw = response?.headers.get('Retry-After')?.trim();
+  if (!raw) return 0;
+  if (/^\d+$/.test(raw)) return Number(raw) * 1_000;
+  const date = Date.parse(raw);
+  return Number.isFinite(date) ? Math.max(0, date - now) : 0;
 }
 
 const IMAGE_MODEL_ERROR_CODES = new Set([
