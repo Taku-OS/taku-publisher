@@ -2191,7 +2191,8 @@ Commands:
   sites-assets-resolve --asset-id <asset-id> (metadata only)
   sites-assets-download --asset-id <asset-id> --output <new-local-file> (verified owner download; no overwrite)
   sites-assets-delete --asset-id <asset-id> --confirm-asset-id <same-id>
-  sites-publish --project <dir> [--slug <user-chosen-subdomain>|--project-id <owned-id>] [--confirm-target <exact-hostname-or-id>] [--wait-seconds 60]
+  sites-publish --project <dir> [--slug <user-chosen-subdomain>|--project-id <owned-id>] --listing public|private [--confirm-target <exact-hostname-or-id>] [--wait-seconds 60]
+  sites-listing --project-id <owned-id> --listing public|private (Marketplace discovery only; the Site URL stays public)
   marketplace-search, marketplace-show, marketplace-open
   marketplace-install --host codex|claude-code|cursor|opencode|gemini-cli|agent-skills --item-id <id> [--confirm-item-id <same-id>]
   subapp-assess --source <absolute-path|github-url> [--source-ref <ref>] [--service-catalog-url <trusted-url>] [--service-mappings <reviewed-json>] [--assessment-review <bound-review-json>] [developer: --converter-bin <path>]

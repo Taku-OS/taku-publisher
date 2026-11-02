@@ -57,6 +57,7 @@ for (const scenario of ['legacy', 'permanent', 'temporary', 'reuse', 'mismatch',
   let artifact;
   let publishSelection;
   let finalized = false;
+  let directory = { version: 0, listingIntent: 'unlisted', effectiveVisibility: 'unlisted', canList: true };
   let failFirstPut = true;
   const materialParts = new Map();
   let materialReady = scenario === 'reuse';
@@ -173,7 +174,14 @@ for (const scenario of ['legacy', 'permanent', 'temporary', 'reuse', 'mismatch',
     if (pathname === `/v1/sites/${projectId}` && method === 'GET') return send(200, {
       projectId, hostname: 'chosen-site.taku.site', status: finalized ? 'active' : 'provisioning',
       currentReleaseId: finalized ? artifact.releaseId : null,
+      directory,
     });
+    if (pathname === `/v1/sites/${projectId}/directory` && method === 'PATCH') {
+      assert.equal(finalized, true, 'listing must wait for the confirmed release');
+      assert.deepEqual(JSON.parse(bytes.toString()), { expectedVersion: 0, listingIntent: 'listed' });
+      directory = { version: 1, listingIntent: 'listed', effectiveVisibility: 'listed', canList: true };
+      return send(200, { directory });
+    }
     return send(404, { error: 'unexpected_route' });
   });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
@@ -182,7 +190,7 @@ for (const scenario of ['legacy', 'permanent', 'temporary', 'reuse', 'mismatch',
   const who = await dispatch(args('sites-whoami', { 'worker-url': worker }));
   assert.equal(who.status, 'sites_identity');
   assert.equal(who.identity.userId, 'owner-1');
-  const flags = { project, slug: 'chosen-site', 'worker-url': worker, 'wait-seconds': '0' };
+  const flags = { project, slug: 'chosen-site', 'worker-url': worker, 'wait-seconds': '0', listing: 'public' };
   await assert.rejects(dispatch(args('sites-publish', { ...flags, slug: 'taken-site' })), { code: 'sites_slug_unavailable' });
   assert.equal(writes.length, 0);
   const pending = await dispatch(args('sites-publish', flags));
@@ -211,6 +219,8 @@ for (const scenario of ['legacy', 'permanent', 'temporary', 'reuse', 'mismatch',
   assert.equal(result.status, 'sites_published');
   assert.equal(result.ready, true);
   assert.equal(result.url, 'https://chosen-site.taku.site');
+  assert.equal(result.marketplace.status, 'listed');
+  assert.equal(writes.filter(write => write.method === 'PATCH').length, 1);
   assert.equal(uploaded.size, artifact.objects.length);
   assert.equal(writes.filter(write => write.pathname.endsWith('/publish-requests')).length, 1);
   assert.equal(writes.filter(write => write.pathname === '/v1/sites' && write.method === 'POST').length, 1);
@@ -228,7 +238,8 @@ for (const scenario of ['legacy', 'permanent', 'temporary', 'reuse', 'mismatch',
   }
 });
 
-async function recoveryFixture(t, { existing = false, lostCreateResponse = false, interruption = 'upload', retention } = {}) {
+async function recoveryFixture(t, { existing = false, lostCreateResponse = false, interruption = 'upload', retention,
+  listing = 'private', initiallyListed = false } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'publisher-sites-recovery-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const previousHome = process.env.TAKU_PUBLISHER_HOME;
@@ -256,19 +267,22 @@ async function recoveryFixture(t, { existing = false, lostCreateResponse = false
   const requests = [];
   const confirmations = [];
   const observedArtifacts = new Map();
-  const state = { userId: 'owner-1', created: existing, active: false,
+  const state = { userId: 'owner-1', created: existing, active: initiallyListed,
     failUpload: !lostCreateResponse && interruption === 'upload', failRequestRead: false,
     failObject: interruption === 'object', failMaterial: interruption === 'material',
     loseUploadResponse: interruption === 'upload-response', failCancel: false,
     readyOnCancel: false, cancellationNotCommitted: false, failUploadRead: false,
-    record: null, artifact: null, uploads: new Map() };
+    record: null, artifact: null, uploads: new Map(), keepProvisioning: false, failListing: interruption === 'listing',
+    directory: initiallyListed
+      ? { version: 7, listingIntent: 'listed', effectiveVisibility: 'listed', canList: true }
+      : { version: 0, listingIntent: 'unlisted', effectiveVisibility: 'unlisted', canList: true } };
   const server = createServer(async (request, response) => {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const bytes = Buffer.concat(chunks);
     const pathname = new URL(request.url, 'http://127.0.0.1').pathname;
     const method = request.method;
-    const body = method === 'POST' && bytes.length ? JSON.parse(bytes.toString()) : null;
+    const body = (method === 'POST' || method === 'PATCH') && bytes.length ? JSON.parse(bytes.toString()) : null;
     requests.push({ method, pathname, body, key: request.headers['idempotency-key'] });
     const send = (status, value) => {
       response.writeHead(status, { 'Content-Type': 'application/json' });
@@ -307,8 +321,17 @@ async function recoveryFixture(t, { existing = false, lostCreateResponse = false
     }
     if (method === 'GET' && pathname === `/v1/sites/${projectId}`) return send(state.created ? 200 : 404, {
       projectId, hostname, status: state.active ? 'active' : 'provisioning',
-      currentReleaseId: state.active ? state.artifact.releaseId : null,
+      currentReleaseId: state.active ? (state.artifact?.releaseId ?? 'release_previous') : null,
+      directory: state.directory,
     });
+    if (method === 'PATCH' && pathname === `/v1/sites/${projectId}/directory`) {
+      if (body.listingIntent === 'listed') assert.equal(state.active, true, 'listing must wait for the confirmed release');
+      if (state.failListing) return send(503, { error: 'DIRECTORY_UNAVAILABLE' });
+      assert.equal(body.expectedVersion, state.directory.version);
+      state.directory = { version: state.directory.version + 1, listingIntent: body.listingIntent,
+        effectiveVisibility: body.listingIntent, canList: true };
+      return send(200, { directory: state.directory });
+    }
     if (method === 'POST' && pathname === `/v1/sites/${projectId}/artifact-uploads`) {
       const descriptorKey = JSON.stringify(sortJson(body.descriptor));
       if (!observedArtifacts.has(descriptorKey)) {
@@ -379,7 +402,7 @@ async function recoveryFixture(t, { existing = false, lostCreateResponse = false
         partBytes: 8 * 1024 * 1024, partCount: 1 });
     }
     if (method === 'POST' && pathname.endsWith('/finalize')) {
-      state.active = true;
+      state.active = !state.keepProvisioning;
       upload.status = 'ready';
       return send(200, { uploadId: upload.uploadId, status: 'ready' });
     }
@@ -387,7 +410,7 @@ async function recoveryFixture(t, { existing = false, lostCreateResponse = false
   });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   t.after(() => new Promise(resolve => server.close(resolve)));
-  const flags = { project, 'worker-url': `http://127.0.0.1:${server.address().port}`, 'wait-seconds': '0',
+  const flags = { project, listing, 'worker-url': `http://127.0.0.1:${server.address().port}`, 'wait-seconds': '0',
     ...(existing ? { 'project-id': projectId } : { slug: 'recovery-site' }) };
   const publish = extra => dispatch(args('sites-publish', { ...flags, ...extra }));
   const checkpointText = async () => {
@@ -395,8 +418,161 @@ async function recoveryFixture(t, { existing = false, lostCreateResponse = false
     return readFile(path.join(root, 'sites/checkpoints', files[0]), 'utf8');
   };
   await assert.rejects(publish({ 'confirm-target': existing ? projectId : hostname }), { code: 'sites_api_error' });
-  return { project, projectId, hostname, publish, checkpointText, state, requests, confirmations };
+  return { project, projectId, hostname, publish, checkpointText, state, requests, confirmations,
+    list: choice => dispatch(args('sites-listing', { 'project-id': projectId, listing: choice, 'worker-url': flags['worker-url'] })) };
 }
+
+test('Marketplace answer is required before any publish write, even with a confirmed target', async t => {
+  const { project, projectId, publish, requests } = await recoveryFixture(t);
+  await rm(path.join(path.dirname(project), 'sites/checkpoints'), { recursive: true, force: true });
+  const before = requests.filter(request => request.method !== 'GET').length;
+  const result = await publish({ listing: undefined, slug: undefined, 'project-id': projectId, 'confirm-target': projectId });
+  assert.equal(result.status, 'needs_input');
+  assert.equal(result.action_type, 'ask_user_for_marketplace_listing');
+  assert.match(result.question, /more people can discover/);
+  assert.equal(requests.filter(request => request.method !== 'GET').length, before);
+  await assert.rejects(publish({ listing: 'yes' }), { code: 'sites_listing_invalid' });
+});
+
+test('pending publish keeps its answer and lists only after the release becomes active', async t => {
+  const { publish, checkpointText, state, requests } = await recoveryFixture(t, { listing: 'public' });
+  state.keepProvisioning = true;
+  const pending = await publish({ listing: undefined });
+  assert.equal(pending.status, 'sites_publishing');
+  assert.deepEqual(pending.marketplace, { choice: 'public', status: 'pending' });
+  assert.equal(JSON.parse(await checkpointText()).marketplaceChoice, 'public');
+  assert.equal(requests.filter(request => request.method === 'PATCH').length, 0);
+  state.active = true;
+  assert.equal((await publish({ listing: undefined })).marketplace.status, 'listed');
+  assert.equal(requests.filter(request => request.method === 'PATCH').length, 1);
+});
+
+test('listing failure preserves a live Site and can be retried without creating or uploading again', async t => {
+  const { publish, checkpointText, state, requests, list } = await recoveryFixture(t, { listing: 'public' });
+  state.failListing = true;
+  const result = await publish({ listing: undefined });
+  assert.equal(result.status, 'sites_published');
+  assert.equal(result.ready, true);
+  assert.equal(result.action_type, 'retry_site_listing');
+  assert.equal(result.marketplace.status, 'failed');
+  assert.equal(result.marketplace.error.server_error, 'DIRECTORY_UNAVAILABLE');
+  assert.equal(JSON.parse(await checkpointText()).marketplaceChoice, 'public');
+  const writesBefore = requests.filter(request => request.method === 'POST' || request.method === 'PUT').length;
+  state.failListing = false;
+  assert.equal((await list('public')).marketplace.status, 'listed');
+  assert.equal(requests.filter(request => request.method === 'POST' || request.method === 'PUT').length, writesBefore);
+});
+
+test('declining Marketplace can unlist an existing Site and does not change its hosting or visitor auth', async t => {
+  const { publish, state, requests } = await recoveryFixture(t, { existing: true, initiallyListed: true });
+  const result = await publish({});
+  assert.equal(result.ready, true);
+  assert.deepEqual(result.marketplace, { choice: 'private', status: 'unlisted', listing_intent: 'unlisted', effective_visibility: 'unlisted' });
+  assert.equal(state.active, true);
+  assert.equal(requests.filter(request => request.method === 'PATCH').length, 1);
+  assert.equal(requests.filter(request => /freeze|auth|management/.test(request.pathname)).length, 0);
+});
+
+test('private unlists before uploading and stays unlisted when a timed-out release activates in the background', async t => {
+  const { publish, checkpointText, state, requests } = await recoveryFixture(t, { existing: true, initiallyListed: true });
+  assert.equal(state.directory.listingIntent, 'unlisted');
+  state.keepProvisioning = true;
+  const pending = await publish({ listing: undefined });
+  assert.equal(pending.status, 'sites_publishing');
+  assert.equal(pending.ready, false);
+  assert.deepEqual(pending.marketplace, {
+    choice: 'private', status: 'unlisted', listing_intent: 'unlisted', effective_visibility: 'unlisted',
+  });
+  assert.equal(JSON.parse(await checkpointText()).marketplaceChoice, 'private');
+  const unlistIndex = requests.findIndex(request => request.method === 'PATCH');
+  const uploadIndex = requests.findIndex(request => request.method === 'POST' && request.pathname.endsWith('/artifact-uploads'));
+  const finalizeIndex = requests.findIndex(request => request.method === 'POST' && request.pathname.endsWith('/finalize'));
+  assert.ok(unlistIndex >= 0 && unlistIndex < uploadIndex && uploadIndex < finalizeIndex);
+  assert.deepEqual(requests[unlistIndex].body, { expectedVersion: 7, listingIntent: 'unlisted' });
+  const requestCount = requests.length;
+  state.active = true;
+  assert.equal(state.directory.effectiveVisibility, 'unlisted', 'background activation needs no CLI retry to stay unlisted');
+  assert.equal(requests.length, requestCount);
+  const result = await publish({ listing: undefined });
+  assert.equal(result.ready, true);
+  assert.deepEqual(result.marketplace, pending.marketplace);
+  assert.equal(requests.filter(request => request.method === 'PATCH').length, 1);
+  assert.equal(requests.filter(request => request.pathname.endsWith('/finalize')).length, 1);
+});
+
+test('private unlisting failure blocks the first upload and preserves its choice for retry', async t => {
+  const { publish, checkpointText, state, requests, confirmations } = await recoveryFixture(t, {
+    existing: true, initiallyListed: true, interruption: 'listing',
+  });
+  assert.equal(state.directory.effectiveVisibility, 'listed');
+  assert.equal(requests.filter(request => request.pathname.includes('/artifact-uploads')).length, 0);
+  assert.equal(state.uploads.size, 0);
+  const saved = await checkpointText();
+  assert.equal(JSON.parse(saved).marketplaceChoice, 'private');
+  await assert.rejects(publish({ listing: undefined }), error => error.code === 'sites_api_error'
+    && error.details.http_status === 503 && error.details.server_error === 'DIRECTORY_UNAVAILABLE');
+  assert.equal(await checkpointText(), saved);
+  assert.equal(requests.filter(request => request.pathname.includes('/artifact-uploads')).length, 0);
+  state.failListing = false;
+  const result = await publish({ listing: undefined });
+  assert.equal(result.ready, true);
+  assert.equal(result.marketplace.status, 'unlisted');
+  assert.equal(confirmations.length, 1);
+  assert.equal(state.uploads.size, 1);
+  const uploadIndex = requests.findIndex(request => request.pathname.endsWith('/artifact-uploads'));
+  assert.ok(requests.slice(0, uploadIndex).some(request => request.method === 'PATCH'));
+});
+
+for (const interruption of ['object', 'upload-response']) test(`private unlisting failure blocks resuming an interrupted ${interruption} upload`, async t => {
+  const { publish, checkpointText, state, requests } = await recoveryFixture(t, {
+    existing: true, initiallyListed: true, interruption,
+  });
+  state.directory = { version: 9, listingIntent: 'listed', effectiveVisibility: 'listed', canList: true };
+  state.failListing = true;
+  const saved = await checkpointText();
+  const before = requests.length;
+  await assert.rejects(publish({ listing: undefined }), { code: 'sites_api_error' });
+  assert.equal(await checkpointText(), saved);
+  assert.equal(requests.slice(before).filter(request => request.pathname.includes('/artifact-uploads')).length, 0);
+  assert.equal([...state.uploads.values()][0].status, 'initiated');
+  state.failListing = false;
+  const result = await publish({ listing: undefined });
+  assert.equal(result.ready, true);
+  assert.equal(result.marketplace.status, 'unlisted');
+  assert.equal(state.uploads.size, 1);
+  assert.equal([...state.uploads.values()][0].status, 'ready');
+});
+
+test('a retry cannot silently change the saved Marketplace answer', async t => {
+  const { publish, checkpointText, requests } = await recoveryFixture(t, { listing: 'public' });
+  const before = await checkpointText();
+  const count = requests.filter(request => request.method !== 'GET').length;
+  await assert.rejects(publish({ listing: 'private' }), { code: 'sites_listing_changed' });
+  assert.equal(await checkpointText(), before);
+  assert.equal(requests.filter(request => request.method !== 'GET').length, count);
+});
+
+test('unavailable Marketplace directory does not undo a successful Site publication or claim it was listed', async t => {
+  const { publish, state, requests } = await recoveryFixture(t, { listing: 'public' });
+  state.directory = undefined;
+  const result = await publish({ listing: undefined });
+  assert.equal(result.status, 'sites_published');
+  assert.equal(result.ready, true);
+  assert.equal(result.marketplace.status, 'failed');
+  assert.equal(result.marketplace.error.code, 'sites_directory_unavailable');
+  assert.equal(requests.filter(request => request.method === 'PATCH').length, 0);
+});
+
+test('legacy checkpoints finish their original publish without inventing Marketplace consent', async t => {
+  const { project, publish, checkpointText, requests } = await recoveryFixture(t);
+  const directory = path.join(path.dirname(project), 'sites/checkpoints');
+  const legacy = JSON.parse(await checkpointText());
+  delete legacy.marketplaceChoice;
+  await writeFile(path.join(directory, (await readdir(directory))[0]), JSON.stringify(legacy));
+  const result = await publish({ listing: undefined });
+  assert.deepEqual(result.marketplace, { status: 'unchanged' });
+  assert.equal(requests.filter(request => request.method === 'PATCH').length, 0);
+});
 
 for (const lostCreateResponse of [false, true]) test(`reset retains allocated Free first Site when create response ${lostCreateResponse ? 'is lost' : 'arrives'}`, async t => {
   const fixture = await recoveryFixture(t, { lostCreateResponse });
