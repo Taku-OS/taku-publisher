@@ -127,6 +127,10 @@ export class SitesHttpClient {
     return this.request('POST', path);
   }
 
+  async patch(path: string, body: unknown): Promise<Record<string, unknown>> {
+    return this.request('PATCH', path, body);
+  }
+
   async delete(path: string): Promise<Record<string, unknown>> {
     return this.request('DELETE', path);
   }
@@ -171,7 +175,7 @@ export class SitesHttpClient {
   }
 
   private async request(
-    method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown,
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown,
     idempotencyKey?: string, uploadToken?: string, materialPartHash?: string,
   ): Promise<Record<string, unknown>> {
     if (!/^\/v1\/sites(?:\/|$)/.test(path)) {
@@ -186,7 +190,7 @@ export class SitesHttpClient {
       Accept: 'application/json',
     };
     let payload: Buffer | undefined;
-    if (method === 'POST' && body !== undefined) {
+    if ((method === 'POST' || method === 'PATCH') && body !== undefined) {
       headers['Content-Type'] = 'application/json';
       payload = Buffer.from(JSON.stringify(body ?? {}));
       if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;

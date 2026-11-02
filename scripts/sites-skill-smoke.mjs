@@ -28,6 +28,10 @@ try {
     await fs.cp(source, skill, { recursive: true });
     const instructions = await fs.readFile(path.join(skill, 'SKILL.md'), 'utf8');
     assert.match(instructions, /^---\nname: taku-sites\n/m);
+    assert.match(instructions, /Marketplace discovery — mandatory/);
+    assert.match(instructions, /more people can discover it/);
+    assert.match(instructions, /wait for their explicit yes\/no/);
+    assert.match(instructions, /sites-listing --project-id/);
     for (const notice of ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md']) {
       await fs.access(path.join(skill, notice));
     }
@@ -39,6 +43,8 @@ try {
     // The capability catalog is live-only: without a Sites session it must fail clearly, not fall back.
     const contract = run(cli, ['sites-contract', '--json'], skill, temporary, { fail: true });
     assert.equal(contract.error.code, 'sites_login_required');
+    const listing = run(cli, ['sites-listing', '--project-id', 'prj_listing_fixture', '--listing', 'public', '--json'], skill, temporary, { fail: true });
+    assert.equal(listing.error.code, 'sites_login_required');
     const models = run(cli, ['sites-image-models', '--operation', 'media.image.generate', '--json'], skill, temporary, { fail: true });
     assert.equal(models.error.code, 'sites_login_required');
     const invalidModels = run(cli, ['sites-image-models', '--operation', 'media.image.generate', '--surface', 'subapp', '--json'], skill, temporary, { fail: true });

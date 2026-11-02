@@ -8,6 +8,7 @@ import { atomicWriteJson, jsonOutput, PublisherError } from '../util.js';
 import type { BuiltSiteArtifact, SiteMaterialFile, SitesCore } from './core.js';
 import { resolveSitesAuth, SitesHttpClient } from './http.js';
 import type { SiteCommandArguments } from './commands.js';
+import { marketplaceChoice, marketplaceFailure, updateMarketplaceListing, type MarketplaceChoice } from './marketplace.js';
 
 type PublishTarget = { kind: 'new'; slug: string; hostname: string } | { kind: 'existing'; projectId: string; hostname: string };
 type Checkpoint = {
@@ -29,11 +30,13 @@ type Checkpoint = {
   artifactDigest?: string;
   uploadDescriptor?: BuiltSiteArtifact['descriptor'];
   uploadedOrdinals?: number[];
+  marketplaceChoice?: MarketplaceChoice;
 };
 
 const PLACEHOLDER_ID = 'prj_pending_cli';
 
 export async function publishSite(args: SiteCommandArguments, core: SitesCore): Promise<JsonObject> {
+  const requestedListing = marketplaceChoice(args.flags.get('listing'));
   const root = path.resolve(required(args, 'project'));
   const workerUrl = optional(args, 'worker-url') ?? DEFAULT_WORKER_URL;
   const allowCustomWorkerUrl = bool(args, 'allow-custom-worker-url');
@@ -113,8 +116,28 @@ export async function publishSite(args: SiteCommandArguments, core: SitesCore): 
   }
   const previousCheckpoint = checkpoint;
   if (needsConfirmation) checkpoint = null;
+  if (checkpoint && requestedListing !== undefined && requestedListing !== checkpoint.marketplaceChoice) {
+    throw new PublisherError('Marketplace choice differs from the saved publish. Ask the user again and use --reset with a new target confirmation, or use sites-listing for the existing Site.', 'sites_listing_changed');
+  }
   if (!checkpoint) {
     const exactTarget = target.kind === 'new' ? target.hostname : target.projectId;
+    let listing = requestedListing;
+    if (listing === undefined && process.stdin.isTTY) {
+      const answer = (await prompt('Your Site URL is public. Also list it on the Taku Marketplace so more people can discover it? [yes/no]: ')).toLowerCase();
+      if (answer === 'yes' || answer === 'y') listing = 'public';
+      if (answer === 'no' || answer === 'n') listing = 'private';
+    }
+    if (listing === undefined) {
+      return jsonOutput('needs_input', {
+        required: 'marketplace_listing', confirm_target: exactTarget, target,
+        build_id: prebuild.buildId, content_digest: prebuild.contentDigest,
+        object_count: prebuild.objects.length, total_bytes: prebuild.totalBytes,
+        ...materialSummary(prebuild),
+        question: 'Your Site URL is public. Do you also want to list it on the Taku Marketplace so more people can discover it?',
+        choices: ['public', 'private'],
+        instruction: 'Ask the user explicitly. Pass --listing public for yes or --listing private for no, together with their exact target confirmation. Private only excludes Marketplace discovery; it does not make the Site URL private.',
+      }, { requiresAction: true, actionType: 'ask_user_for_marketplace_listing' });
+    }
     const approved = optional(args, 'confirm-target') === exactTarget ||
       (process.stdin.isTTY && await confirmInteractively(target, prebuild));
     if (!approved) {
@@ -122,8 +145,9 @@ export async function publishSite(args: SiteCommandArguments, core: SitesCore): 
         required: 'confirm_target', confirm_target: exactTarget,
         target, build_id: prebuild.buildId, content_digest: prebuild.contentDigest,
         object_count: prebuild.objects.length, total_bytes: prebuild.totalBytes,
+        marketplace_choice: listing,
         ...materialSummary(prebuild),
-        instruction: 'Show this exact target and build summary to the user. Rerun with --confirm-target only after their explicit confirmation.',
+        instruction: 'Show this exact target, build summary and Marketplace choice to the user. Rerun with the same --listing and --confirm-target only after their explicit confirmation.',
       }, { requiresAction: true, actionType: 'ask_user_to_confirm_site_publish' });
     }
     if (previousCheckpoint && (previousCheckpoint.uploadId || (boundProjectId && previousCheckpoint.artifactDigest))) {
@@ -137,6 +161,7 @@ export async function publishSite(args: SiteCommandArguments, core: SitesCore): 
       confirmKey: `sites-confirm-${randomUUID()}`,
       createKey: `sites-create-${randomUUID()}`,
       uploadKey: `sites-upload-${randomUUID()}`,
+      marketplaceChoice: listing,
       ...(target.kind === 'existing' ? { projectId: target.projectId } : {}),
     };
     await saveCheckpoint(checkpointPath, checkpoint);
@@ -168,6 +193,15 @@ export async function publishSite(args: SiteCommandArguments, core: SitesCore): 
       checkpoint.projectId = requiredString(site, 'projectId');
     } else checkpoint.projectId = target.projectId;
     await saveCheckpoint(checkpointPath, checkpoint);
+  }
+  let marketplace: JsonObject = { status: 'unchanged' };
+  if (checkpoint.marketplaceChoice === 'private') {
+    // Finalization can activate the release after this CLI stops waiting.
+    // Confirm exclusion before creating or resuming its upload on every attempt.
+    marketplace = await updateMarketplaceListing(client, checkpoint.projectId, 'private');
+    if (marketplace.status !== 'unlisted') {
+      throw new PublisherError('Marketplace unlisting was not confirmed. Retry the same publish before uploading.', 'sites_listing_not_confirmed');
+    }
   }
   const artifact = await core.buildArtifact(project.projectRoot, {
     projectId: checkpoint.projectId, builtAt: checkpoint.builtAt,
@@ -246,12 +280,20 @@ export async function publishSite(args: SiteCommandArguments, core: SitesCore): 
   do {
     site = await client.get(`/v1/sites/${checkpoint.projectId}`);
     if (site.status === 'active' && site.currentReleaseId === artifact.releaseId) {
-      await rm(checkpointPath, { force: true });
+      if (checkpoint.marketplaceChoice === 'public') {
+        try { marketplace = await updateMarketplaceListing(client, checkpoint.projectId, 'public', site); }
+        catch (error) { marketplace = marketplaceFailure('public', error); }
+      }
+      const listingFailed = marketplace.status === 'failed';
+      if (!listingFailed) await rm(checkpointPath, { force: true });
       return jsonOutput('sites_published', {
         project_id: checkpoint.projectId, publish_request_id: checkpoint.publishRequestId,
         upload_id: checkpoint.uploadId, release_id: artifact.releaseId,
         url: `https://${target.hostname}`, ready: true,
-      });
+        marketplace,
+        ...(listingFailed ? { next_command: `sites-listing --project-id ${checkpoint.projectId} --listing ${checkpoint.marketplaceChoice}`,
+          instruction: 'The Site is live, but Marketplace listing was not confirmed. Report both outcomes and retry only the listing; do not republish the Site.' } : {}),
+      }, listingFailed ? { requiresAction: true, actionType: 'retry_site_listing' } : {});
     }
     if (Date.now() >= deadline) break;
     await new Promise(resolve => setTimeout(resolve, Math.min(2_000, deadline - Date.now())));
@@ -260,7 +302,9 @@ export async function publishSite(args: SiteCommandArguments, core: SitesCore): 
     project_id: checkpoint.projectId, publish_request_id: checkpoint.publishRequestId,
     upload_id: checkpoint.uploadId, release_id: artifact.releaseId,
     url: `https://${target.hostname}`, ready: false, site_status: String(site.status ?? 'unknown'),
+    marketplace: checkpoint.marketplaceChoice === 'public' ? { choice: 'public', status: 'pending' } : marketplace,
     next_command: `sites-status --project-id ${checkpoint.projectId}`,
+    ...(checkpoint.marketplaceChoice === 'public' ? { instruction: 'After checking status, rerun the original sites-publish command to finish the saved Marketplace choice once the release is active.' } : {}),
   }, { requiresAction: true, actionType: 'check_site_status' });
 }
 
@@ -430,6 +474,10 @@ async function loadCheckpoint(file: string): Promise<Checkpoint | null> {
   }
   if (!value || typeof value !== 'object' || (value as Checkpoint).version !== 1) {
     throw new PublisherError('Saved Site publish checkpoint is invalid.', 'sites_checkpoint_invalid');
+  }
+  const savedListing = (value as Checkpoint).marketplaceChoice;
+  if (savedListing !== undefined && savedListing !== 'public' && savedListing !== 'private') {
+    throw new PublisherError('Saved Marketplace choice is invalid.', 'sites_checkpoint_invalid');
   }
   return value as Checkpoint;
 }

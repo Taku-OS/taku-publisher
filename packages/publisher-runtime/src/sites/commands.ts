@@ -7,6 +7,7 @@ import { browserSdkBytes, loadSitesCore, type ImageModelQuery, type SitesCore } 
 import { resolveSitesAuth, SitesHttpClient } from './http.js';
 import { materialSummary, publishSite } from './publish.js';
 import { downloadOwnerMaterial } from './material-download.js';
+import { marketplaceChoice, updateMarketplaceListing } from './marketplace.js';
 
 export type SiteCommandArguments = {
   command: string;
@@ -53,7 +54,7 @@ export async function runSiteCommand(args: SiteCommandArguments): Promise<JsonOb
         inference: false, runtime_permission_required: true,
       },
       workflow: ['sites-login', 'sites-whoami', 'sites-contract', 'build_and_test_in_harness', 'sites-validate', 'sites-publish'],
-      publish_rule: 'The user enters one exact subdomain or chooses an owned projectId and confirms the exact target.',
+      publish_rule: 'Confirm the exact target and explicitly ask whether to also list on the Taku Marketplace so more people can discover the Site. The Site URL is already public; Marketplace discovery is a separate choice.',
     });
   }
   if (args.command === 'sites-init') {
@@ -127,6 +128,14 @@ export async function runSiteCommand(args: SiteCommandArguments): Promise<JsonOb
     return jsonOutput('sites_status', { identity: session as JsonObject, site: await client.get(`/v1/sites/${encodeURIComponent(projectId)}`) as JsonObject });
   }
   if (args.command === 'sites-publish') return publishSite(args, core);
+  if (args.command === 'sites-listing') {
+    const choice = marketplaceChoice(args.flags.get('listing'));
+    if (!choice) throw new PublisherError('Ask the user and pass --listing public or --listing private.', 'sites_listing_required');
+    const projectId = required(args, 'project-id');
+    if (!/^prj_[a-z0-9][a-z0-9_]{2,62}$/.test(projectId)) throw new PublisherError('Use an exact owned Site project ID.', 'sites_project_id_invalid');
+    const marketplace = await updateMarketplaceListing(await sitesClient(args), projectId, choice);
+    return jsonOutput('sites_listing_updated', { project_id: projectId, marketplace });
+  }
   throw new PublisherError(`Unknown Sites command: ${args.command}`, 'unknown_command');
 }
 
