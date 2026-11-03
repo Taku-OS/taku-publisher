@@ -51,7 +51,7 @@ test('actual exported Publisher SDK quotes ten Muse outputs and recovers without
     const input = { schema_version: 'taku.managed-media-request.v2', model: 'muse-image',
       parameter_schema_version: schema, prompt: 'Preserve ten outputs', parameters,
       ...(operation === 'media.image.edit' ? { input_ids: [`min_${'a'.repeat(32)}`] } : {}) };
-    const executionId = '00000000-0000-4000-8000-000000000004';
+    const executionId = 'imx_00000000000040008000000000000004';
     const execution = { schema_version: 'taku.image-model-execution.v1', execution_id: executionId,
       request_id: 'req_muse_original', model: 'muse-image', operation, status: 'quoted', terminal: false,
       cancellable: true, next_action: 'submit', model_receipt: null,

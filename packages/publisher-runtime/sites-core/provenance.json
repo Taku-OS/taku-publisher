@@ -1,11 +1,11 @@
 {
   "sourceRepository": "Taku-OS/taku-sites-platform",
-  "sourceCommit": "92e630ab536e9b4d60548ad9b19c8856e9533c26",
+  "sourceCommit": "b8917f616bb680c116a43d1ffb3aebe2ca25607f",
   "entrypoint": "index.mjs",
-  "sha256": "073cfb5cd1beefda87631787af9c2c5ce569f31f138b6b626f8e6b953d8d294b",
+  "sha256": "276cf2f7835b80f7199c0c87c29047a4a2c8442db2ca3253feda1c6f326b20bf",
   "contractVersion": "taku.sites.cli.v1",
   "thirdParty": [
     "acorn@8.18.0"
   ],
-  "browserSdkSha256": "cc595b37482190c0fa1ccd55c6e018c16f1c7e90f160e295c2010d43d2d61242"
+  "browserSdkSha256": "da5b942c844ce4fdd7a3aced8b32e864ca1fdefefec7cea0d58aef70dfb694a9"
 }

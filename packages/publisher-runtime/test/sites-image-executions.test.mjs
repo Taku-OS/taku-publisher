@@ -6,7 +6,8 @@ import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { dispatch } from '../dist/cli.js';
 
-const executionId = '00000000-0000-4000-8000-000000000041';
+const executionId = 'imx_00000000000040008000000000000041';
+const supplierJobId = '00000000-0000-4000-8000-000000000044';
 const quoteId = 'imq_00000000-0000-4000-8000-000000000042';
 const requestId = 'publisher-image-test-001';
 const methods = ['quoteImageRequest', 'submitImageRequest', 'getImageExecution',
@@ -212,7 +213,7 @@ function fixture(operation) {
     ] };
   const link = { schema_version: 'taku.image-model-download.v1', execution_id: executionId,
     request_id: requestId, output_index: 1, state: 'ready',
-    url: `https://ai-proxy.taku.ai/media/assets/images/${executionId}/1/content?ticket=fixture.${'a'.repeat(43)}`,
+    url: `https://ai-proxy.taku.ai/media/assets/images/${supplierJobId}/1/content?ticket=fixture.${'a'.repeat(43)}`,
     content_type: 'image/webp', byte_length: 2048,
     expires_at: new Date(Date.now() + 60_000).toISOString(), asset_expires_at: assetExpiry };
   return { request, execution, outputs, link };
@@ -248,7 +249,7 @@ for (const [operation, kind] of [['media.image.generate', 'generate'], ['media.i
     assert.deepEqual(outputs.outputs.map(output => [output.output_index, output.content_type, output.byte_length]),
       [[0, 'image/png', 1024], [1, 'image/webp', 2048]]);
     const link = await client.media.getImageOutputLink(operation, executionId, 1);
-    assert.equal(link.url, `https://ai-proxy.taku.ai/media/assets/images/${executionId}/1/content?ticket=fixture.${'a'.repeat(43)}`);
+    assert.equal(link.url, `https://ai-proxy.taku.ai/media/assets/images/${supplierJobId}/1/content?ticket=fixture.${'a'.repeat(43)}`);
     assert.equal(link.output_index, 1);
     assert.equal(link.asset_expires_at, value.link.asset_expires_at);
     const base = `https://fixture.taku.site/__taku/media/images/v2/${kind}`;
@@ -297,6 +298,9 @@ test('exported v2 SDK rejects forged authority, input IDs and task identifiers b
   await assert.rejects(client.media.quoteImageRequest('media.image.generate', request, { requestId: '../bad' }), /invalid_request_id/);
   await assert.rejects(client.media.findImageExecution('media.image.generate', '../bad'), /invalid_request_id/);
   await assert.rejects(client.media.getImageExecution('media.image.generate', '../bad'), /invalid_image_execution_id/);
+  for (const id of [supplierJobId, quoteId, `imx_${'A'.repeat(32)}`, `${executionId}/submit`]) {
+    await assert.rejects(client.media.getImageExecution('media.image.generate', id), /invalid_image_execution_id/);
+  }
   await assert.rejects(client.media.submitImageRequest('media.image.generate', executionId, 'bad'), /invalid_image_quote_id/);
   await assert.rejects(client.media.getImageOutputLink('media.image.generate', executionId, 16), /invalid_image_output_index/);
   const controller = new AbortController(); controller.abort();

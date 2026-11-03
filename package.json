@@ -61,7 +61,8 @@
     "build:native": "node scripts/build-adapters.mjs --publisher-only && node scripts/build-marketplace-release.mjs --publisher-only",
     "smoke:native": "node scripts/native-release-smoke.mjs && node scripts/publisher-acceptance-smoke.mjs",
     "test:native": "node --test scripts/native-release.test.mjs",
-    "test:source": "node --test scripts/repository-files.test.mjs scripts/clean-copy-source.test.mjs"
+    "test:source": "node --test scripts/repository-files.test.mjs scripts/clean-copy-source.test.mjs",
+    "test:sites-preview": "npm run build:runtime && node --test packages/publisher-runtime/test/sites-preview.test.mjs packages/publisher-runtime/test/sites-commands.test.mjs"
   },
   "dependencies": {
     "qrcode-generator": "2.0.4"
