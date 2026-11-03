@@ -134,6 +134,7 @@ test('keeps a local Persona image out of the public Creator avatar', async (t) =
     assert.equal(result.publishedInventory.personaAvatarSkippedReason, 'public_identity_preserved');
     assert.deepEqual(calls.map((call) => `${call.method} ${call.url}`), [
       'GET /stax/profile',
+      'GET /profile/me',
       'GET /stax/cards/me',
       'GET /stax/studio/cards/me',
       'PUT /stax/studio/cards/me',
@@ -235,6 +236,7 @@ test('publishes Stax when a local Persona avatar exists but the publisher token 
     assert.equal(result.publishedInventory.personaAvatarSkippedReason, 'public_identity_preserved');
     assert.deepEqual(calls.map((call) => `${call.method} ${call.url}`), [
       'GET /stax/profile',
+      'GET /profile/me',
       'GET /stax/cards/me',
       'GET /stax/studio/cards/me',
       'PUT /stax/studio/cards/me',

@@ -43,11 +43,6 @@ const DETECTOR_SOURCE_FILES = new Set([
 
 const ALLOWED_PUBLIC_LITERALS = [
   {
-    path: 'creator/scripts/creator-profile.mjs',
-    name: 'DEFAULT_TAKU_SUPABASE_ANON_KEY',
-    reason: 'Supabase anon key is explicitly public client configuration.',
-  },
-  {
     path: 'packages/publisher-runtime/src/auth.ts',
     name: 'SUPABASE_PUBLIC_CLIENT_VALUE',
     reason: 'Supabase publishable value is explicitly public client configuration.',

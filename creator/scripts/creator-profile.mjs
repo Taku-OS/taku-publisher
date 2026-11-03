@@ -4,8 +4,6 @@ import {
 } from './publish-client.mjs';
 import { cleanText, isRecord, publicHttpUrl } from './privacy.mjs';
 
-const DEFAULT_TAKU_SUPABASE_URL = 'https://auth.taku.ai';
-const DEFAULT_TAKU_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF2cXB1c2RvZXJsYmJzeWN3dW52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3MzU2OTIsImV4cCI6MjA3MjMxMTY5Mn0.aDD2EJSQvo5ybeVgL9SbbXPlZMCGLyBL5zJzN3eObPo';
 const PROFILE_AVATAR_TIMEOUT_MS = 5000;
 
 export async function fetchTakuCreatorProfile({ workerUrl, token, siteUrl }) {
@@ -18,7 +16,7 @@ export async function fetchTakuCreatorProfile({ workerUrl, token, siteUrl }) {
       ok: true,
       endpoint: staxProfile.endpoint,
       data: staxProfile.data,
-      profile: await normalizeTakuCreatorProfile(staxProfile.data, token),
+      profile: await normalizeTakuCreatorProfile(staxProfile.data, token, workerUrl),
       staxProfile: staxProfile.profile,
     };
   }
@@ -38,7 +36,7 @@ export async function fetchTakuCreatorProfile({ workerUrl, token, siteUrl }) {
         ok: true,
         endpoint: retriedStaxProfile.endpoint,
         data: retriedStaxProfile.data,
-        profile: await normalizeTakuCreatorProfile(retriedStaxProfile.data, token),
+        profile: await normalizeTakuCreatorProfile(retriedStaxProfile.data, token, workerUrl),
         staxProfile: retriedStaxProfile.profile,
         fallbackEndpoint: endpoint,
       };
@@ -47,7 +45,7 @@ export async function fetchTakuCreatorProfile({ workerUrl, token, siteUrl }) {
       ok: true,
       endpoint,
       data,
-      profile: await normalizeTakuCreatorProfile(data, token),
+      profile: await normalizeTakuCreatorProfile(data, token, workerUrl),
     };
   }
   return {
@@ -82,7 +80,7 @@ export async function fetchTakuStaxProfile({ workerUrl, token, siteUrl }) {
   };
 }
 
-export async function normalizeTakuCreatorProfile(value, token = '') {
+export async function normalizeTakuCreatorProfile(value, token = '', workerUrl = '') {
   const jwtPayload = decodeJwtPayload(token);
   const displayName = extractTakuProfileDisplayName(value)
     || extractTakuProfileDisplayName(jwtPayload?.user_metadata)
@@ -90,6 +88,7 @@ export async function normalizeTakuCreatorProfile(value, token = '') {
   const accountAvatarUrl = await resolveTakuProfileAvatarUrl({
     creatorProfile: value,
     token,
+    workerUrl,
   });
   const avatarUrl = accountAvatarUrl !== undefined
     ? accountAvatarUrl
@@ -101,8 +100,8 @@ export async function normalizeTakuCreatorProfile(value, token = '') {
   };
 }
 
-export async function resolveTakuProfileAvatarUrl({ creatorProfile, token }) {
-  const accountAvatarUrl = await fetchSupabaseUserProfileAvatarUrl(token).catch(
+export async function resolveTakuProfileAvatarUrl({ creatorProfile, token, workerUrl }) {
+  const accountAvatarUrl = await fetchWorkerUserProfileAvatarUrl(workerUrl, token).catch(
     () => undefined,
   );
   if (accountAvatarUrl !== undefined) return accountAvatarUrl;
@@ -152,37 +151,23 @@ function collectProfileDisplayNames(value, depth, seen) {
   return candidates;
 }
 
-async function fetchSupabaseUserProfileAvatarUrl(token) {
+async function fetchWorkerUserProfileAvatarUrl(workerUrl, token) {
   const accessToken = String(token || '').trim();
-  const userId = getUserIdFromJwt(accessToken);
-  if (!accessToken || !userId) return undefined;
-  const supabaseUrl = resolveSupabaseUrl();
-  const anonKey = resolveSupabaseAnonKey();
-  if (!supabaseUrl || !anonKey) return undefined;
-  const url = new URL('/rest/v1/user_profiles', supabaseUrl);
-  url.searchParams.set('id', `eq.${userId}`);
-  url.searchParams.set('select', 'avatar_url');
-  url.searchParams.set('limit', '1');
-  const response = await fetch(url, {
+  const baseUrl = String(workerUrl || '').trim().replace(/\/+$/, '');
+  if (!accessToken || !baseUrl) return undefined;
+  const response = await fetch(`${baseUrl}/profile/me`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      apikey: anonKey,
       accept: 'application/json',
     },
     signal: AbortSignal.timeout(PROFILE_AVATAR_TIMEOUT_MS),
   });
   if (!response.ok) return undefined;
-  const rows = await response.json().catch(() => []);
-  const row = Array.isArray(rows) ? rows[0] : undefined;
-  if (!row) return undefined;
-  return publicHttpUrl(row.avatar_url) || null;
-}
-
-function getUserIdFromJwt(token) {
-  const payload = decodeJwtPayload(token);
-  return typeof payload?.sub === 'string' && payload.sub.trim()
-    ? payload.sub.trim()
-    : undefined;
+  const payload = await response.json().catch(() => null);
+  const profile = isRecord(payload) && isRecord(payload.profile) ? payload.profile : null;
+  if (!profile || !Object.hasOwn(profile, 'avatar_url')) return undefined;
+  if (profile.avatar_url === null) return null;
+  return publicHttpUrl(profile.avatar_url);
 }
 
 function decodeJwtPayload(token) {
@@ -195,24 +180,6 @@ function decodeJwtPayload(token) {
   } catch {
     return undefined;
   }
-}
-
-function resolveSupabaseUrl() {
-  return String(
-    process.env.TAKU_SUPABASE_URL
-    || process.env.SUPABASE_URL
-    || process.env.VITE_SUPABASE_URL
-    || DEFAULT_TAKU_SUPABASE_URL
-  ).trim().replace(/\/+$/, '');
-}
-
-function resolveSupabaseAnonKey() {
-  return String(
-    process.env.TAKU_SUPABASE_ANON_KEY
-    || process.env.SUPABASE_ANON_KEY
-    || process.env.VITE_SUPABASE_ANON_KEY
-    || DEFAULT_TAKU_SUPABASE_ANON_KEY
-  ).trim();
 }
 
 function extractTakuProfileAvatarUrl(value) {

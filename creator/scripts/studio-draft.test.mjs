@@ -117,6 +117,7 @@ test('saving a Studio draft uploads the exact Publisher renderer without publish
   assert.equal(savedPayload.content.studioRenderer.model.handle, '@cloud-builder');
   assert.deepEqual(calls, [
     'GET /stax/profile',
+    'GET /profile/me',
     'GET /stax/studio/cards/me',
     'PUT /stax/studio/cards/me',
   ]);
@@ -130,8 +131,9 @@ test('saving a Studio draft uploads the exact Publisher renderer without publish
     localResult.studioUrl,
     `http://localhost:3001/studio/stax-card?launch=taku_studio_launch_${'a'.repeat(32)}`,
   );
-  assert.deepEqual(calls.slice(3), [
+  assert.deepEqual(calls.slice(4), [
     'GET /stax/profile',
+    'GET /profile/me',
     'GET /stax/studio/cards/me',
     'PUT /stax/studio/cards/me',
   ]);
