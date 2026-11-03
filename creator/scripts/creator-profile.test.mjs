@@ -57,6 +57,41 @@ test('keeps a public provider avatar from the signed-in Taku account', async () 
   assert.equal(profile.avatarUrl, 'https://lh3.googleusercontent.com/a/public-avatar');
 });
 
+test('reads the signed-in profile avatar from the Worker profile endpoint', async () => {
+  const calls = [];
+  const server = createServer((request, response) => {
+    calls.push({
+      url: request.url,
+      authorization: request.headers.authorization,
+    });
+    response.setHeader('Content-Type', 'application/json');
+    response.end(JSON.stringify({
+      profile: {
+        avatar_url: 'https://cdn.example.test/worker-avatar.png',
+      },
+    }));
+  });
+  const loopback = ['127', '0', '0', '1'].join('.');
+  await new Promise((resolve) => server.listen(0, loopback, resolve));
+  const workerUrl = `http://${loopback}:${server.address().port}`;
+
+  try {
+    const profile = await normalizeTakuCreatorProfile(
+      { avatar_url: 'https://cdn.example.test/stale-avatar.png' },
+      'test-token',
+      workerUrl,
+    );
+
+    assert.equal(profile.avatarUrl, 'https://cdn.example.test/worker-avatar.png');
+    assert.deepEqual(calls, [{
+      url: '/profile/me',
+      authorization: 'Bearer test-token',
+    }]);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('preserves an explicit account avatar removal', async () => {
   const profile = await normalizeTakuCreatorProfile({
     data: {
@@ -123,10 +158,16 @@ test('reads signed-in Stax identity from the Stax profile endpoint', async () =>
       serialNumber: 'TAKU-000417',
       serial: { display: 'No. 000417' },
     });
-    assert.deepEqual(calls, [{
-      url: '/stax/profile',
-      authorization: 'Bearer test-token',
-    }]);
+    assert.deepEqual(calls, [
+      {
+        url: '/stax/profile',
+        authorization: 'Bearer test-token',
+      },
+      {
+        url: '/profile/me',
+        authorization: 'Bearer test-token',
+      },
+    ]);
   } finally {
     if (previousNoProxy === undefined) delete process.env.NO_PROXY;
     else process.env.NO_PROXY = previousNoProxy;
@@ -193,6 +234,7 @@ test('retries the Stax profile after creating the creator profile fallback', asy
       '/stax/profile',
       '/stax/creators/me',
       '/stax/profile',
+      '/profile/me',
     ]);
   } finally {
     if (previousNoProxy === undefined) delete process.env.NO_PROXY;
